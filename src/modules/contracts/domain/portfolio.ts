@@ -31,6 +31,13 @@ export interface PortfolioMonth {
   /** Row 45: cumulative default over cumulative principal originated. */
   cumulativeLossRate: number | null;
   liveContracts: number;
+  /**
+   * Additive analytics row (not in the workbook's Summary): expected IRR of the
+   * contracts live in the month, weighted by their asset value and annualised
+   * as (1 + weighted monthly)^12 - 1. Null when nothing is live or no contract
+   * live that month has a solvable rate.
+   */
+  weightedAnnualIrr: number | null;
 }
 
 export function buildPortfolio(schedules: readonly ContractSchedule[], range?: { from: MonthKey; to: MonthKey }): PortfolioMonth[] {
@@ -44,6 +51,8 @@ export function buildPortfolio(schedules: readonly ContractSchedule[], range?: {
   const inst = zeros(), int = zeros(), pri = zeros();
   const newP = zeros(), newI = zeros(), def = zeros(), bottomUp = zeros();
   const newCount = new Int32Array(size), live = new Int32Array(size);
+  // Asset value of the live contracts, and that value times their expected rate.
+  const irrWeight = zeros(), irrWeighted = zeros();
 
   for (const s of schedules) {
     for (const r of s.rows) {
@@ -73,7 +82,13 @@ export function buildPortfolio(schedules: readonly ContractSchedule[], range?: {
         ? 0
         : s.assetBase - collected - (s.cancelKey !== null && k >= s.cancelKey ? s.writeOff : 0);
       bottomUp[k - from] += balance;
-      if (k <= lastKey && (s.cancelKey === null || k <= s.cancelKey)) live[k - from] += 1;
+      if (k <= lastKey && (s.cancelKey === null || k <= s.cancelKey)) {
+        live[k - from] += 1;
+        if (s.expectedMonthlyIrr !== null) {
+          irrWeight[k - from] += s.assetBase;
+          irrWeighted[k - from] += s.assetBase * s.expectedMonthlyIrr;
+        }
+      }
     }
   }
 
@@ -113,6 +128,7 @@ export function buildPortfolio(schedules: readonly ContractSchedule[], range?: {
       reconciliationDiff: closingP - bottomUp[idx],
       cumulativeLossRate: cumOriginated > 0 ? cumDefault / cumOriginated : null,
       liveContracts: live[idx],
+      weightedAnnualIrr: irrWeight[idx] > 0 ? Math.pow(1 + irrWeighted[idx] / irrWeight[idx], 12) - 1 : null,
     });
   }
   return months;

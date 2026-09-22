@@ -27,6 +27,7 @@ const ROWS: (Row | "sep")[] = [
   { label: "Principal pendiente — cierre", get: (m) => m.closingPrincipal, strong: true, ref: "28" },
   { label: "Interés pendiente — cierre", get: (m) => m.closingInterest },
   { label: "Contratos vivos", get: (m) => m.liveContracts, format: "int" },
+  { label: "IRR anualizada ponderada", get: (m) => m.weightedAnnualIrr, format: "pct" },
   "sep",
   { label: "Default acumulado", get: (m) => m.cumulativeDefaults, ref: "23" },
   { label: "Loss rate acumulado (s/ originado)", get: (m) => m.cumulativeLossRate, format: "pct", ref: "45" },
