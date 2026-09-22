@@ -70,6 +70,11 @@ async function main() {
       note({ code: r.code, row: r.row, what: "HX expected IRR", excel: p.expectedIrr, engine: eng });
     }
 
+    // Col BD: the unrecovered principal reported per contract as default.
+    if (p.principalResult !== null && Math.abs(p.principalResult - s.principalResult) > TOLERANCE) {
+      note({ code: r.code, row: r.row, what: "BD default", excel: p.principalResult, engine: s.principalResult });
+    }
+
     const pri = new Array<number | null>(GRID_MONTHS).fill(null);
     const int = new Array<number | null>(GRID_MONTHS).fill(null);
     for (const row of s.rows) {
@@ -102,6 +107,9 @@ async function main() {
   const excelInterest = [...(wb.interest?.values() ?? [])].reduce((a, p) => a + (p.total ?? 0), 0);
 
   console.log(`\nCells compared: ${cells.toLocaleString()} per grid x 3`);
+  const engineDefaults = schedules.reduce((a, s) => a + (s.principalResult < 0 ? -s.principalResult : 0), 0);
+  const excelDefaults = [...(wb.principal?.values() ?? [])].reduce((a, p) => a + ((p.principalResult ?? 0) < 0 ? -(p.principalResult ?? 0) : 0), 0);
+  console.log(`Default (col BD)  excel ${fmt(excelDefaults)}  engine ${fmt(engineDefaults)}`);
   console.log(`Engine totals  installments ${fmt(totals.inst)}  principal ${fmt(totals.pri)}  interest ${fmt(totals.int)}  defaults ${fmt(totals.def)}`);
   console.log(`Excel totals   principal ${fmt(excelTotals)}  interest ${fmt(excelInterest)}`);
   console.log(`Summary row 30 equivalent (roll-forward vs bottom-up), max |diff|: ${maxRecon.toExponential(2)}`);

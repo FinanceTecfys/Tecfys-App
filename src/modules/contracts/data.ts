@@ -5,7 +5,8 @@ import { monthKeyOfDate } from "./domain/month-key";
 import { buildSchedule, type ContractInput, type ContractSchedule, principalOutstandingAt } from "./domain/schedule";
 
 const CONTRACT_SELECT = `
-  id, contract_number, loan_book_ref, contract_type, tranche_lender, product_type, rating, sector,
+  id, contract_number, loan_book_ref, contract_type, tranche_lender, product_type, rating, sector, country,
+  settlement_amount,
   signing_date, duration_months, installment, residual_value, purchase_value, expo_adjustment,
   has_guarantor, guarantor_name, guarantor_nif, cancel_date, additional_status, residual_waived,
   amortize_over_real_life, workflow_status, notes, created_at, scoring_id,
@@ -15,7 +16,7 @@ const CONTRACT_SELECT = `
   guarantor_representative_nif, product_description,
   company:companies ( id, cif, name ),
   distributor:distributors ( id, name ),
-  asset_type:asset_types ( id, name ),
+  asset_type:asset_types ( id, name, cluster ),
   type:contract_types ( billing_lag_months ),
   mandate:sepa_mandates ( mandate_reference, debtor_name, debtor_address, debtor_postal_code, debtor_city, debtor_province, iban, bic, recurrent, signed_place, signed_at )
 `;
@@ -45,6 +46,7 @@ export function toContractInput(row: ContractRow): ContractInput {
     purchaseValue: Number(row.purchase_value),
     expoAdjustment: Number(row.expo_adjustment),
     cancelDate: row.cancel_date,
+    settlementAmount: row.settlement_amount === null ? null : Number(row.settlement_amount),
     residualWaived: row.residual_waived,
     amortizeOverRealLife: row.amortize_over_real_life,
   };

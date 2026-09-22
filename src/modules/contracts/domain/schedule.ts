@@ -34,6 +34,15 @@ export interface ContractInput {
   /** Workbook col AS; the asset base is purchaseValue - expoAdjustment. */
   expoAdjustment: number;
   cancelDate: string | null;
+  /**
+   * Amount actually collected to settle a cancellation before term (CAP / CAC).
+   * It replaces the residual in the settlement month, exactly as the workbook
+   * does by typing the settlement over col. AR (changes_rationale item 15).
+   * The expected IRR keeps discounting the contractual residual: it measures
+   * the rate the contract was written at, not what was collected.
+   * Null - the whole imported book - leaves the schedule untouched.
+   */
+  settlementAmount?: number | null;
   /** Gesico contracts: the residual is never billed. */
   residualWaived: boolean;
   /** Per-contract override: amortise over min(N, real life) instead of N. */
@@ -134,19 +143,21 @@ export function buildSchedule(input: ContractInput, asOf: Date): ContractSchedul
   }
 
   if (!input.residualWaived) {
+    // The settlement of an early cancellation is billed instead of the residual.
+    const billed = input.settlementAmount ?? residual;
     let principal = 0;
     if (hy > 0) {
-      // Settlement: the residual recovers what is left of the amortisation
-      // schedule at the payment horizon, capped at the residual billed.
+      // It recovers what is left of the amortisation schedule at the payment
+      // horizon, capped at the amount actually billed; the rest is interest.
       const remaining = pv(i, Math.max(0, hy - paymentHorizon), -m, -hz / (1 + i));
-      principal = Number.isFinite(remaining) ? Math.max(0, Math.min(residual, remaining)) : hz;
+      principal = Number.isFinite(remaining) ? Math.max(0, Math.min(billed, remaining)) : hz;
     }
     rows.push({
       key: billingStartKey + paymentHorizon,
       age: paymentHorizon,
-      installment: residual,
+      installment: billed,
       principal,
-      interest: residual - principal,
+      interest: billed - principal,
       isResidual: true,
     });
   }

@@ -10,6 +10,7 @@ import { Stat } from "@/components/ui/stat";
 import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
 import { markContractSigned } from "@/modules/contracts/actions";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
+import { CancellationForm } from "@/modules/contracts/components/cancellation-form";
 import { ScheduleTable } from "@/modules/contracts/components/schedule-table";
 import { draftSourceFromContract, getContract, toContractInput } from "@/modules/contracts/data";
 import { cityLine } from "@/modules/contracts/domain/contract-template";
@@ -57,6 +58,8 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
     ["Avalista", contract.has_guarantor ? `${contract.guarantor_name ?? "Sí"}${contract.guarantor_nif ? ` (${contract.guarantor_nif})` : ""}` : "No"],
     ["Fecha de cancelación", fmtDate(contract.cancel_date)],
     ["Estado adicional", contract.additional_status ?? "—"],
+    ["Importe de liquidación", contract.settlement_amount === null ? "—" : fmtEur(Number(contract.settlement_amount), 2)],
+    ["País", contract.country ?? "—"],
     ["Ref. Loan book", contract.loan_book_ref ?? "—"],
     ["Tramo / lender", contract.tranche_lender ?? "—"],
   ];
@@ -137,6 +140,17 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               <FileDown className="h-4 w-4" aria-hidden />
               {signed ? "Descargar contrato (.docx)" : "Descargar contrato borrador (.docx)"}
             </a>
+          )}
+          {signed && (
+            <Card title="Gestión del contrato" subtitle="Cancelación, estado y liquidación">
+              <CancellationForm
+                contractId={contract.id}
+                cancelDate={contract.cancel_date}
+                additionalStatus={contract.additional_status}
+                settlementAmount={contract.settlement_amount === null ? null : Number(contract.settlement_amount)}
+                outstanding={outstanding}
+              />
+            </Card>
           )}
           {!signed && (
             <Card title="Firma" subtitle="Signaturit">

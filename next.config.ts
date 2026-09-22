@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
     // Informa PDFs are uploaded through a Server Action (default limit is 1 MB).
     serverActions: { bodySizeLimit: "20mb" },
   },
-  // pdf.js (via unpdf) must stay a runtime dependency of the server bundle.
-  serverExternalPackages: ["unpdf"],
+  // pdf.js (unpdf), exceljs and pdfkit ship their own assets: keep them external.
+  serverExternalPackages: ["unpdf", "exceljs", "pdfkit"],
 };
 
 export default nextConfig;
