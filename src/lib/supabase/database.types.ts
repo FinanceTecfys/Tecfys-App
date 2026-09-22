@@ -198,6 +198,7 @@ export type Database = {
           contact_phone: string | null
           contract_number: string
           contract_type: string
+          country: string | null
           created_at: string
           delivery_address: string | null
           delivery_same_as_fiscal: boolean
@@ -226,6 +227,7 @@ export type Database = {
           residual_waived: boolean
           scoring_id: string | null
           sector: string | null
+          settlement_amount: number | null
           signatory_address: string | null
           signatory_name: string | null
           signatory_nif: string | null
@@ -247,6 +249,7 @@ export type Database = {
           contact_phone?: string | null
           contract_number?: string
           contract_type: string
+          country?: string | null
           created_at?: string
           delivery_address?: string | null
           delivery_same_as_fiscal?: boolean
@@ -275,6 +278,7 @@ export type Database = {
           residual_waived?: boolean
           scoring_id?: string | null
           sector?: string | null
+          settlement_amount?: number | null
           signatory_address?: string | null
           signatory_name?: string | null
           signatory_nif?: string | null
@@ -296,6 +300,7 @@ export type Database = {
           contact_phone?: string | null
           contract_number?: string
           contract_type?: string
+          country?: string | null
           created_at?: string
           delivery_address?: string | null
           delivery_same_as_fiscal?: boolean
@@ -324,6 +329,7 @@ export type Database = {
           residual_waived?: boolean
           scoring_id?: string | null
           sector?: string | null
+          settlement_amount?: number | null
           signatory_address?: string | null
           signatory_name?: string | null
           signatory_nif?: string | null

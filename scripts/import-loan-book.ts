@@ -90,6 +90,7 @@ async function main() {
       product_type: r.productType,
       rating: r.rating,
       sector: r.sector,
+      country: r.country,
       signing_date: r.signingDate,
       duration_months: Math.max(0, Math.round(r.durationMonths)),
       installment: r.installment,

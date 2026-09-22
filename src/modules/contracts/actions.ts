@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/supabase/server";
+import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
 import { type OperationInput, operationSchema } from "./domain/operation";
 
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
@@ -139,4 +140,43 @@ export async function markContractSigned(formData: FormData): Promise<void> {
   if (error) throw new Error(error.message);
   revalidatePath(`/contracts/${id}`);
   revalidatePath("/contracts");
+}
+
+export type CancellationResult = { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+/**
+ * Set or clear a contract's cancellation (date, additional status, settlement).
+ * Only the stored inputs change: the loan book, the outstanding balance and the
+ * default are recomputed by the schedule engine on the next read.
+ */
+export async function updateContractCancellation(input: CancellationInput): Promise<CancellationResult> {
+  const parsed = cancellationSchema.safeParse(input);
+  if (!parsed.success) {
+    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
+    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
+  }
+  const fields = resolveCancellation(parsed.data);
+
+  const { data: contract, error: readError } = await db()
+    .from("contracts")
+    .select("id, signing_date, workflow_status")
+    .eq("id", parsed.data.contractId)
+    .maybeSingle();
+  if (readError) return { ok: false, error: readError.message };
+  if (!contract) return { ok: false, error: "Contrato no encontrado" };
+  if (contract.workflow_status !== "signed") {
+    return { ok: false, error: "Solo se puede cancelar un contrato firmado" };
+  }
+  if (fields.cancel_date && fields.cancel_date < contract.signing_date) {
+    return { ok: false, error: "Revisa los datos marcados", fieldErrors: { cancelDate: "Anterior a la fecha de firma" } };
+  }
+
+  const { error } = await db().from("contracts").update(fields).eq("id", contract.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/contracts/${contract.id}`);
+  revalidatePath("/contracts");
+  revalidatePath("/portfolio");
+  revalidatePath("/");
+  return { ok: true };
 }
