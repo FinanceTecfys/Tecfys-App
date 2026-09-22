@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# env
+.env
+.env*.local
+!.env.example
+
+# supabase local
+supabase/.branches
+supabase/.temp
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+coverage/
+.vercel
+
+# Legacy source workbooks hold real client data - never commit them
+Legacy/*.xlsx
+~$*
