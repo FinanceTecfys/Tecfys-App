@@ -1,0 +1,3226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Tecfys Credit Scoring</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: { 950: '#040D08', 900: '#071A0F', 800: '#0C2618', 700: '#123422', 600: '#1A4530', 500: '#235A40' },
+          mint: { 400: '#33FFB5', 500: '#00F7A1', 600: '#00D389', 700: '#00A56C' },
+          paper: '#F6F8F5',
+        },
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          display: ['Inter', 'sans-serif'],
+        },
+      }
+    }
+  }
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { background: #040D08; color: #E8F0EA; font-family: 'Inter', sans-serif; }
+  .num { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #071A0F; }
+  ::-webkit-scrollbar-thumb { background: #1A4530; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #235A40; }
+  .gridlines { background-image: linear-gradient(to right, rgba(0,247,161,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,247,161,0.03) 1px, transparent 1px); background-size: 24px 24px; }
+  @keyframes pulse-mint { 0%,100% { box-shadow: 0 0 0 0 rgba(0,247,161,0.4); } 50% { box-shadow: 0 0 0 8px rgba(0,247,161,0); } }
+  .pulse-mint { animation: pulse-mint 2s infinite; }
+  input:focus, select:focus, textarea:focus { outline: none; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* =====================================================================
+   DEFAULT CRITERIA (Marcus / Tecfys scoring model)
+   ===================================================================== */
+const DEFAULT_CRITERIA = {
+  weights: {
+    guarantee: 0.32, solvency: 0.27, indebtedness: 0.20, netMargin: 0.05,
+    sectorialRisk: 0.05, maturity: 0.05, economicProfit: 0.02, financialProfit: 0.02,
+    paymentPeriod: 0.01, collectionPeriod: 0.01,
+  },
+  // Each ratio has its own normalisation:
+  //   tiers       — list of [rating, threshold] from best→worst (compared with direction)
+  //   scoreTable  — per-rating normalised score (1-10) for THIS ratio
+  // Sum of (scoreTable[rating] × weight) across all ratios = final score on a 10-point scale.
+  ratios: {
+    guarantee:         { direction: 'higher', label: 'Guarantee (Collateral)',   formula: 'Total Assets / Total Liabilities',
+                         tiers: [['AAA',60],['AA',2.5],['A',2.2],['BBB',2.0],['BB',1.1],['CCC',0.9],['CC',0.7],['C',0.5]],
+                         scoreTable: { AAA:10, AA:9.9, A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    solvency:          { direction: 'higher', label: 'Solvency ratio',           formula: 'Current Assets / Current Liabilities',
+                         tiers: [['AAA',90],['AA',5.0],['A',3.5],['BBB',2.5],['BB',1.5],['CCC',1.0],['CC',0.7],['C',0.5]],
+                         scoreTable: { AAA:10, AA:9.8, A:8,   BBB:7, BB:5, CCC:4, CC:3, C:1 } },
+    indebtedness:      { direction: 'lower',  label: 'Debt ratio (Indebtedness)',formula: 'Total Liabilities / Equity',
+                         tiers: [['AAA',0.01],['AA',0.1],['A',0.75],['BBB',1.15],['BB',2.0],['CCC',5.0],['CC',10.0],['C',60.0]],
+                         scoreTable: { AAA:10, AA:9,   A:8,   BBB:7, BB:6, CCC:5, CC:4, C:3 } },
+    netMargin:         { direction: 'higher', label: 'Net margin',               formula: 'Net Result / Revenue',
+                         tiers: [['AAA',150],['AA',0.6],['A',0.3],['BBB',0.2],['BB',0.1],['CCC',0.05],['CC',0.01],['C',-0.01]],
+                         scoreTable: { AAA:10, AA:10,  A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    sectorialRisk:     { direction: 'rating', label: 'Sectorial risk',           formula: 'Sector → rating lookup',
+                         tiers: [],
+                         scoreTable: { AAA:10, AA:8,   A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    maturity:          { direction: 'higher', label: 'Maturity (years)',         formula: 'Years since constitution',
+                         tiers: [['AAA',102],['AA',15],['A',10],['BBB',8],['BB',6],['CCC',3],['CC',2],['C',1]],
+                         scoreTable: { AAA:10, AA:9.5, A:8.5, BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    economicProfit:    { direction: 'higher', label: 'Economic profitability (ROA)', formula: 'Net Result / Total Assets',
+                         tiers: [['AAA',3.0],['AA',0.6],['A',0.3],['BBB',0.1],['BB',0.05],['CCC',0.01],['CC',-0.05],['C',-1.0]],
+                         scoreTable: { AAA:10, AA:8,   A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    financialProfit:   { direction: 'higher', label: 'Financial profitability (ROE)', formula: 'Net Result / Equity',
+                         tiers: [['AAA',400],['AA',0.7],['A',0.6],['BBB',0.5],['BB',0.3],['CCC',0.2],['CC',-0.05],['C',-1.0]],
+                         scoreTable: { AAA:10, AA:8,   A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    paymentPeriod:     { direction: 'lower',  label: 'Avg. payment period (days)',  formula: '(Avg Payables / Procurement) × 365',
+                         tiers: [['AAA',0],['AA',20],['A',60],['BBB',70],['BB',90],['CCC',180],['CC',280],['C',300]],
+                         scoreTable: { AAA:10, AA:8,   A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+    collectionPeriod:  { direction: 'lower',  label: 'Avg. collection period (days)', formula: '(Avg Receivables / Sales) × 365',
+                         tiers: [['AAA',0],['AA',20],['A',60],['BBB',70],['BB',90],['CCC',180],['CC',280],['C',300]],
+                         scoreTable: { AAA:10, AA:8,   A:7,   BBB:6, BB:5, CCC:4, CC:3, C:1 } },
+  },
+  // Score → final rating buckets (lower bound inclusive)
+  scoreBuckets: [
+    ['AAA', 9.5], ['AA', 8.5], ['A', 7.0], ['BBB', 6.0], ['BB', 5.0], ['CCC', 4.0], ['CC', 3.0], ['C', 0]
+  ],
+  // Adjusted EBITDA × prudence = Credit Opinion
+  prudence: { AAA: 0.30, AA: 0.25, A: 0.25, BBB: 0.18, BB: 0.12, CCC: 0.10, CC: 0.08, C: 0.05 },
+  decisionRules: {
+    AAA: 'auto', AA: 'auto', A: 'auto', BBB: 'limited', BB: 'manual', CCC: 'reject', CC: 'reject', C: 'reject'
+  },
+  // Sector → rating mapping (Tecfys credit committee, per Image "Sectors")
+  sectorRating: {
+    'Pharmaceuticals and biotechnology': 'AAA',
+    'Information technology': 'AAA',
+    'Telecommunications': 'AA',
+    'Renewable energies': 'AA',
+    'Basic food': 'A',
+    'Automotive': 'BBB',
+    'Construction and materials': 'BB',
+    'Transportation and logistics': 'BB',
+    'Retail trade': 'BB',
+    'Professional services': 'BBB',
+    'Hotels and tourism': 'CCC',
+    'Textile and fashion': 'CCC',
+    'Leisure and entertainment': 'CCC',
+    'Catering': 'CCC',
+    'Speculative real estate activities': 'CC',
+    'Agriculture and fishing': 'C',
+    'Other': 'BBB',
+  }
+};
+
+const RATINGS_ORDERED = ['AAA','AA','A','BBB','BB','CCC','CC','C'];
+
+/* =====================================================================
+   SCORING ENGINE
+   ===================================================================== */
+function ratingForRatio(value, ratio) {
+  if (value === null || value === undefined || isNaN(value)) return 'C';
+  if (ratio.direction === 'higher') {
+    for (const [r, t] of ratio.tiers) if (value >= t) return r;
+    return 'C';
+  }
+  if (ratio.direction === 'lower') {
+    for (const [r, t] of ratio.tiers) if (value <= t) return r;
+    return 'C';
+  }
+  return 'C';
+}
+
+function ratingFromScore(score, buckets) {
+  if (score === null || isNaN(score)) return 'C';
+  for (const [r, lower] of buckets) {
+    if (score >= lower) return r;
+  }
+  return 'C';
+}
+
+function computeRatios(f) {
+  const totalLiab = (f.nonCurrentLiabilities||0) + (f.currentLiabilities||0);
+  const totalAssets = (f.nonCurrentAssets||0) + (f.currentAssets||0);
+  const procurement = f.procurement || (f.totalRevenue ? f.totalRevenue - (f.grossMargin||0) : 0);
+  return {
+    guarantee:        totalLiab > 0 ? totalAssets / totalLiab : null,
+    solvency:         f.currentLiabilities > 0 ? f.currentAssets / f.currentLiabilities : null,
+    indebtedness:     f.equity > 0 ? totalLiab / f.equity : null,
+    netMargin:        f.totalRevenue > 0 && f.netResult != null ? f.netResult / f.totalRevenue : null,
+    maturity:         f.maturityYears != null ? f.maturityYears : null,
+    economicProfit:   totalAssets > 0 && f.netResult != null ? f.netResult / totalAssets : null,
+    financialProfit:  f.equity > 0 && f.netResult != null ? f.netResult / f.equity : null,
+    paymentPeriod:    procurement > 0 && f.payables != null ? (f.payables / procurement) * 365 : null,
+    collectionPeriod: f.totalRevenue > 0 && f.receivables != null ? (f.receivables / f.totalRevenue) * 365 : null,
+  };
+}
+
+function score(financials, criteria) {
+  const ratios = computeRatios(financials);
+  const breakdown = {};
+  let total = 0;
+
+  Object.entries(criteria.ratios).forEach(([key, def]) => {
+    const weight = criteria.weights[key] || 0;
+    let rat;
+    let value;
+    if (key === 'sectorialRisk') {
+      rat = criteria.sectorRating[financials.sector] || 'BBB';
+      value = financials.sector || '—';
+    } else {
+      value = ratios[key];
+      rat = ratingForRatio(value, def);
+    }
+    // Per-ratio normalised score (1-10) — each ratio has its own scoring scale.
+    // Fallback chain: ratio's own scoreTable → legacy global ratingScores → 1.
+    const ratingScore = (def.scoreTable && def.scoreTable[rat] != null)
+      ? def.scoreTable[rat]
+      : (criteria.ratingScores ? (criteria.ratingScores[rat] ?? 1) : 1);
+    const contribution = ratingScore * weight;
+    total += contribution;
+    breakdown[key] = { value, rating: rat, ratingScore, weight, contribution, label: def.label, formula: def.formula };
+  });
+
+  const finalRating = ratingFromScore(total, criteria.scoreBuckets);
+  const prudence = criteria.prudence[finalRating] ?? 0.10;
+  const adjustedEbitda = financials.adjustedEbitda != null ? financials.adjustedEbitda : (financials.ebitda || 0);
+  const creditOpinion = Math.max(0, adjustedEbitda * prudence);
+  const decision = criteria.decisionRules[finalRating] || 'reject';
+
+  return { ratios, breakdown, totalScore: total, finalRating, prudence, adjustedEbitda, creditOpinion, decision };
+}
+
+/* =====================================================================
+   FORMATTING HELPERS
+   ===================================================================== */
+const fmtEur = (n) => n == null || isNaN(n) ? '—' : n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const fmtNum = (n, d=2) => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtPct = (n, d=1) => n == null || isNaN(n) ? '—' : (n*100).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
+
+const RATING_COLORS = {
+  AAA: 'text-mint-400 bg-mint-500/10 border-mint-500/40',
+  AA:  'text-mint-400 bg-mint-500/10 border-mint-500/40',
+  A:   'text-emerald-300 bg-emerald-500/10 border-emerald-500/40',
+  BBB: 'text-yellow-300 bg-yellow-500/10 border-yellow-500/40',
+  BB:  'text-orange-300 bg-orange-500/10 border-orange-500/40',
+  CCC: 'text-red-300 bg-red-500/10 border-red-500/40',
+  CC:  'text-red-400 bg-red-500/15 border-red-500/40',
+  C:   'text-red-500 bg-red-500/20 border-red-500/50',
+};
+
+const DECISION_META = {
+  auto:    { label: 'Auto approved',         color: 'text-mint-400',  bg: 'bg-mint-500/10 border-mint-500/40' },
+  limited: { label: 'Approved with limits',  color: 'text-yellow-300', bg: 'bg-yellow-500/10 border-yellow-500/40' },
+  manual:  { label: 'Manual review',         color: 'text-orange-300', bg: 'bg-orange-500/10 border-orange-500/40' },
+  reject:  { label: 'Rejected',              color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/40' },
+};
+
+/* =====================================================================
+   PERSISTENCE
+   ===================================================================== */
+async function storageGet(key, fallback=null) {
+  try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : fallback; }
+  catch { return fallback; }
+}
+async function storageSet(key, value) {
+  try { await window.storage.set(key, JSON.stringify(value)); } catch (e) { console.warn('storage failed', e); }
+}
+
+/* =====================================================================
+   ICONS (inline SVG)
+   ===================================================================== */
+const Icon = ({ path, className = 'w-5 h-5' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>
+);
+const I = {
+  dash: <Icon path={<><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></>} />,
+  score: <Icon path={<><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 17l2 2 4-4"/></>} />,
+  cif: <Icon path={<><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></>} />,
+  pdf: <Icon path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>} />,
+  book: <Icon path={<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>} />,
+  cog: <Icon path={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></>} />,
+  chev: <Icon path={<polyline points="9 18 15 12 9 6"/>} />,
+  check: <Icon path={<polyline points="20 6 9 17 4 12"/>} />,
+  x: <Icon path={<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>} />,
+  upload: <Icon path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>} />,
+  download: <Icon path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>} />,
+  plus: <Icon path={<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>} />,
+  alert: <Icon path={<><path d="m21.7 16.5-9-15.5a2 2 0 0 0-3.4 0l-9 15.5a2 2 0 0 0 1.7 3h18a2 2 0 0 0 1.7-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>} />,
+  info: <Icon path={<><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>} />,
+  trash: <Icon path={<><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>} />,
+  save: <Icon path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />,
+  reset: <Icon path={<><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></>} />,
+  euro: <Icon path={<><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.7 5.2-2"/></>} />,
+  trend: <Icon path={<><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></>} />,
+  building: <Icon path={<><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 22V12h6v10"/><path d="M9 7h1"/><path d="M14 7h1"/></>} />,
+  tag: <Icon path={<><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></>} />,
+  calc: <Icon path={<><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="8" y1="14" x2="8.01" y2="14"/><line x1="12" y1="14" x2="12.01" y2="14"/><line x1="16" y1="14" x2="16.01" y2="14"/><line x1="8" y1="18" x2="8.01" y2="18"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="16" y1="18" x2="16.01" y2="18"/></>} />,
+};
+
+/* =====================================================================
+   INFORMA PDF PARSER
+   Parses standard INFORMA D&B reports (NICTON-like structure)
+   ===================================================================== */
+async function parseInformaPdf(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let allText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(it => it.str).join(' ');
+    allText += '\n\n=== PAGE ' + i + ' ===\n' + pageText;
+  }
+
+  // Helpers
+  const N = (s) => {
+    if (!s) return null;
+    s = s.replace(/\./g, '').replace(',', '.').replace(/[€\s]/g, '');
+    const v = parseFloat(s);
+    return isNaN(v) ? null : v;
+  };
+  const grab = (re, src=allText) => { const m = src.match(re); return m ? m[1] : null; };
+
+  // Identification
+  const name = grab(/Informa Comercial\s+([A-ZÁÉÍÓÚÑ0-9 ,.\-&]+SL\.?|[A-ZÁÉÍÓÚÑ0-9 ,.\-&]+S\.A\.?)/) || grab(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 .,&\-]+(SL|S\.L|S\.A|SA))\.?/m);
+  const cif = grab(/NIF\s+([A-Z][0-9]{8})/);
+  const address = grab(/DOMICILIO SOCIAL\s+([^\n]+?)\s+\d{5}\s+/);
+  const cnae = grab(/CNAE 2009\)\s+(\d{4})/) || grab(/CNAE 2009:\s+(\d{4})/) || grab(/ACTIVIDAD CNAE\s+(?:CNAE 2009:\s+)?(\d{4})/);
+  const phones = grab(/TELÉFONOS\s+(\d+)/);
+  const web = grab(/PÁGINA WEB\s+(\S+)/);
+  const email = grab(/EMAIL CORPORATIVO\s+(\S+@\S+)/);
+  const constitutionDate = grab(/FECHA DE CONSTITUCIÓN\s+(\d{2}\/\d{2}\/\d{4})/);
+  const employees = N(grab(/EMPLEADOS\s+(\d+)/));
+  const adminName = grab(/ADMINISTRADOR ÚNICO\s+([A-ZÁÉÍÓÚÑ ,]+?)\s+(?:Estructura|ACCIONISTA|Cargo)/);
+
+  // Informa scoring (label changed from "RATING INFORMA" to "NOTA INFORMA" in recent reports)
+  const informaRating = grab(/(?:RATING INFORMA|NOTA INFORMA)\s+(\d+\/\d+)/);
+  const creditOpinionInforma = N(grab(/OPINIÓN DE CRÉDITO\s+([\d.,]+)\s*€/));
+  const scoreLiquidez = grab(/SCORE LIQUIDEZ\s+(\d+\/\d+)/);
+  const resilience = grab(/RESILIENCIA\s+(\d+\/\d+)/);
+
+  // Reference year (most recent FY shown in the report — always the leftmost column)
+  const referenceYear = grab(/VENTAS BALANCE\s+\((\d{4})\)/) || grab(/ACTIVO TOTAL\s+\((\d{4})\)/) || grab(/DEPÓSITO INDIVIDUAL\s+(\d{4})/);
+
+  // Executive summary fallbacks (rounded euros, used only if detailed P&L parsing fails)
+  let totalRevenue = N(grab(/VENTAS BALANCE.*?([\d.,]+)\s*€\s*\(Registro/));
+  let netResult    = N(grab(/RESULTADOS BALANCE.*?(-?[\d.,]+)\s*€\s*\(Registro/));
+  const totalAssets  = N(grab(/ACTIVO TOTAL.*?([\d.,]+)\s*€/));
+  const shareCapital = N(grab(/CAPITAL SOCIAL\s+([\d.,]+)\s*€/));
+
+  // === Balance Sheet — row-aligned extraction ===
+  // Each row has yearCount × 2 numbers (value + % per year). Latest year = leftmost column = index 0 of each row.
+  // Rows in order: NCA, CA, Equity, NCL, CL → indices [0], [stride], [2·stride], [3·stride], [4·stride]
+  let nonCurrentAssets = null, currentAssets = null, equity = null, ncLiab = null, cLiab = null;
+  const balanceMatch = allText.match(/Análisis del Balance([\s\S]{0,2500}?)(?=Balance Activo|Balance Pasivo|Comentarios del Balance|Datos financieros|$)/);
+  if (balanceMatch) {
+    const section = balanceMatch[1];
+    const yearHeaders = (section.match(/31\/12\/\d{4}/g) || []).length;
+    const yearCount = Math.max(1, Math.min(5, yearHeaders || 3));
+    // Capture signed numbers — negatives appear in distressed equity/liabilities
+    const nums = [...section.matchAll(/(-?[\d]{1,3}(?:\.\d{3})*,\d{2})/g)].map(m => N(m[1]));
+    const stride = yearCount * 2;
+    if (nums.length >= 5 * stride) {
+      nonCurrentAssets = nums[0];
+      currentAssets    = nums[stride];
+      equity           = nums[2 * stride];
+      ncLiab           = nums[3 * stride];
+      cLiab            = nums[4 * stride];
+    }
+  }
+
+  // === P&L — row-aligned extraction ===
+  // Ventas row has yearCount values (no %). Margen/EBITDA/EBIT/Net rows have yearCount × 2 (value + %). Tax row yearCount values.
+  // Latest year positions: Ventas=0, Margen=yearCount, EBITDA=3·yearCount, EBIT=5·yearCount, Net=7·yearCount
+  let grossMargin = null, ebitda = null, ebit = null;
+  const plMatch = allText.match(/Análisis de la Cuenta de Pérdidas y Ganancias([\s\S]{0,3000}?)(?=Comentarios de la Cuenta|Distribución de resultados|Datos financieros|Comparativa Sectorial|$)/);
+  if (plMatch) {
+    const section = plMatch[1];
+    const yearHeaders = (section.match(/31\/12\/\d{4}/g) || []).length;
+    const yearCount = Math.max(1, Math.min(5, yearHeaders || 3));
+    const nums = [...section.matchAll(/(-?[\d]{1,3}(?:\.\d{3})*,\d{2})/g)].map(m => N(m[1]));
+    if (nums.length >= 7 * yearCount + 1) {
+      const revenuePL = nums[0];
+      grossMargin     = nums[yearCount];
+      ebitda          = nums[3 * yearCount];
+      ebit            = nums[5 * yearCount];
+      const netPL     = nums[7 * yearCount];
+      // Detailed P&L values have cent precision — prefer over rounded executive summary
+      if (revenuePL != null) totalRevenue = revenuePL;
+      if (netPL != null)     netResult    = netPL;
+    }
+  }
+
+  // Payment period (días) — direct extraction from "Pagos a Proveedores" section
+  const paymentPeriodDays = N(grab(/Periodo medio de pago a proveedores\s+(\d+)/));
+
+  // Sector inference from CNAE
+  const sector = cnaeToSector(cnae);
+
+  // Maturity (years since constitution)
+  let maturityYears = null;
+  if (constitutionDate) {
+    const [d,m,y] = constitutionDate.split('/').map(Number);
+    const founded = new Date(y, m-1, d);
+    maturityYears = Math.floor((Date.now() - founded.getTime()) / (365.25 * 24 * 3600 * 1000));
+  }
+
+  return {
+    raw: allText.length,
+    name: name ? name.trim() : null,
+    cif,
+    address: address ? address.trim() : null,
+    cnae,
+    sector,
+    phones,
+    web,
+    email,
+    constitutionDate,
+    maturityYears,
+    employees,
+    adminName: adminName ? adminName.trim() : null,
+    informaRating,
+    creditOpinionInforma,
+    scoreLiquidez,
+    resilience,
+    totalRevenue,
+    netResult,
+    totalAssets,
+    shareCapital,
+    nonCurrentAssets,
+    currentAssets,
+    equity,
+    nonCurrentLiabilities: ncLiab,
+    currentLiabilities: cLiab,
+    grossMargin,
+    ebitda,
+    ebit,
+    paymentPeriodDays,
+    referenceYear,
+    // adjusted EBITDA defaults to EBITDA — user can override
+    adjustedEbitda: ebitda,
+  };
+}
+
+/* =====================================================================
+   SHARED CNAE → SECTOR MAP
+   Used by both the PDF parser and the live Informa API normalizer.
+   ===================================================================== */
+const CNAE_TO_SECTOR = {
+  '8299': 'Professional services',
+  '4121': 'Construction and materials',
+  '4312': 'Construction and materials',
+  '6201': 'Information technology', '6202': 'Information technology', '6209': 'Information technology',
+  '5510': 'Hotels and tourism', '5520': 'Hotels and tourism', '7911': 'Hotels and tourism',
+  '4711': 'Retail trade', '4719': 'Retail trade',
+  '4920': 'Transportation and logistics', '4941': 'Transportation and logistics',
+  '6810': 'Speculative real estate activities', '6820': 'Speculative real estate activities',
+  '0111': 'Agriculture and fishing', '0311': 'Agriculture and fishing',
+  '2110': 'Pharmaceuticals and biotechnology', '2120': 'Pharmaceuticals and biotechnology',
+  '6110': 'Telecommunications', '6120': 'Telecommunications',
+  '3511': 'Renewable energies',
+  '1011': 'Basic food', '1071': 'Basic food',
+  '2910': 'Automotive', '4511': 'Automotive',
+  '1410': 'Textile and fashion', '1413': 'Textile and fashion',
+  '5610': 'Catering', '5611': 'Catering', '5630': 'Catering', '5621': 'Catering', '5629': 'Catering',
+  '4639': 'Retail trade', '4634': 'Retail trade',
+};
+function cnaeToSector(cnae) {
+  return (cnae && CNAE_TO_SECTOR[cnae]) || 'Professional services';
+}
+
+/* =====================================================================
+   INFORMA D&B — LIVE API ADAPTER
+   The Tecfys app cannot call api.informa.es directly from the browser:
+   the endpoint requires HTTP Basic auth (user/pass) which would be
+   exposed in client-side JS, and Informa does not enable arbitrary CORS.
+
+   Architecture used here:
+     Tecfys app  →  Tecfys API proxy  →  Informa REST API
+                    └ holds credentials in env vars
+                    └ adds CORS for the Tecfys frontend origin
+                    └ optionally caches responses (Informa charges per call)
+
+   The proxy contract this app expects (see API Settings panel for full doc):
+
+     GET  {proxyUrl}/health
+       Returns { status:'ok', mode:'live'|'mock', informaUser?:'<masked>' }
+
+     GET  {proxyUrl}/informa/company/{cif}
+       Headers: X-API-Key: <user-key>
+       Returns the raw Informa JSON envelope
+       Errors:  404 if CIF unknown · 502 on upstream failure · 401 on bad key
+
+   The proxy can target whichever Informa product (Summarized, Credit,
+   Financial Report). The normalizer below pulls fields defensively
+   from common locations in the schema documented by the Informa
+   API Empresas corporate manual.
+   ===================================================================== */
+const INFORMA_ERRORS = {
+  10000: 'Informa: connection to the commercial management system failed.',
+  10001: 'Informa: invalid credentials (the proxy could not authenticate).',
+  10002: 'Informa: the configured user does not have permission for this product.',
+  10003: 'Informa: the configured password has expired and must be renewed.',
+  11000: 'Informa: the data source is temporarily unavailable.',
+  11001: 'Informa: the requested product is not available for this CIF.',
+  11002: 'Informa: the CIF does not meet the minimum required data quality.',
+  11003: 'CIF not found in the Informa census.',
+  11005: 'Informa: this company is temporarily blocked while data is being updated.',
+  12000: 'Informa: the request is missing required parameters.',
+  12001: 'Informa: internal server error.',
+};
+
+function buildAddressFromInforma(loc) {
+  if (!loc) return null;
+  const parts = [loc.direccion, loc.codigoPostal, loc.localidad || loc.poblacion, loc.provincia].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+function computeMaturityFromDate(dateStr) {
+  if (!dateStr) return null;
+  let y;
+  const mDmy = String(dateStr).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const mYmd = String(dateStr).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (mDmy) y = parseInt(mDmy[3]);
+  else if (mYmd) y = parseInt(mYmd[1]);
+  else return null;
+  return new Date().getFullYear() - y;
+}
+
+/**
+ * Map Informa's nested coded JSON → flat financials object used by the scoring engine.
+ * Defensive on field names: the exact schema varies by Informa product version.
+ */
+function normalizeInformaResponse(json) {
+  const dp   = json?.datosProducto || {};
+  const ic   = dp.informacionComercial || {};
+  const id   = ic.identificacion || {};
+  const loc  = ic.localizacion || ic.domicilio || {};
+  const act  = ic.actividad || {};
+  const fin  = dp.informacionFinanciera || dp.informacionEconomica || {};
+  const risk = dp.informacionRiesgo || dp.indicadoresRiesgo || dp.posicionamientoRiesgo || {};
+
+  // Always pick the latest reported FY
+  const balanceList = Array.isArray(fin.balances) ? fin.balances : (Array.isArray(fin.listaBalances) ? fin.listaBalances : (fin.balance ? [fin.balance] : []));
+  const pnlList     = Array.isArray(fin.cuentasResultados) ? fin.cuentasResultados : (Array.isArray(fin.listaCuentasResultados) ? fin.listaCuentasResultados : (fin.cuentaResultados ? [fin.cuentaResultados] : []));
+  const byYearDesc  = (a, b) => (b.ejercicio || b.anio || b.year || 0) - (a.ejercicio || a.anio || a.year || 0);
+  const bal = balanceList.slice().sort(byYearDesc)[0] || {};
+  const pl  = pnlList.slice().sort(byYearDesc)[0] || {};
+
+  const cnae = act.cnae?.codigo || act.codigoCnae || act.cnae2009?.codigo || act.codigoActividad;
+  const constitutionDate = id.fechaConstitucion || ic.fechaConstitucion || dp.fechaConstitucion;
+
+  const notaInforma    = risk.notaInforma ?? risk.scoreCese ?? null;
+  const scoreLiq       = risk.scoreLiquidez ?? null;
+  const resiliencia    = risk.indiceResiliencia ?? risk.resiliencia ?? null;
+  const opinionCredito = (risk.opinionCredito && typeof risk.opinionCredito === 'object')
+    ? (risk.opinionCredito.importe ?? risk.opinionCredito.valor)
+    : risk.opinionCredito;
+
+  const admins = ic.organoAdministracion?.administradores || ic.administradores || dp.administradores || [];
+  const firstAdmin = admins.find(a => a?.vigente !== false) || admins[0];
+  const adminName = firstAdmin?.nombreApellidos || firstAdmin?.denominacion || null;
+
+  return {
+    cif:               id.cif || id.nif,
+    name:              id.denominacionActual || id.denominacion || id.razonSocial,
+    address:           buildAddressFromInforma(loc),
+    cnae,
+    sector:            cnaeToSector(cnae),
+    phones:            id.listaTelefonos?.[0] || id.telefono,
+    email:             id.email,
+    web:               id.listaUrls?.[0] || id.web,
+    constitutionDate,
+    maturityYears:     computeMaturityFromDate(constitutionDate),
+    employees:         ic.tamano?.empleados ?? ic.empleados ?? dp.empleados ?? null,
+    adminName,
+
+    informaRating:        notaInforma != null ? `${notaInforma}/20` : null,
+    creditOpinionInforma: opinionCredito != null ? Number(opinionCredito) : null,
+    scoreLiquidez:        scoreLiq != null ? `${scoreLiq}/100` : null,
+    resilience:           resiliencia != null ? `${resiliencia}/100` : null,
+
+    totalRevenue:      pl.importeNetoCifraNegocios ?? pl.ventas ?? pl.cifraVentas ?? null,
+    grossMargin:       pl.margenBruto ?? null,
+    ebitda:            pl.ebitda ?? null,
+    ebit:              pl.ebit ?? pl.resultadoExplotacion ?? null,
+    netResult:         pl.resultadoNeto ?? pl.resultadoEjercicio ?? null,
+    financialExpenses: pl.gastosFinancieros ?? pl.resultadoFinanciero ?? null,
+
+    totalAssets:           bal.totalActivo ?? bal.activoTotal ?? null,
+    nonCurrentAssets:      bal.activoNoCorriente ?? bal.activoFijo ?? null,
+    currentAssets:         bal.activoCorriente ?? bal.activoCirculante ?? null,
+    equity:                bal.patrimonioNeto ?? bal.fondosPropios ?? null,
+    nonCurrentLiabilities: bal.pasivoNoCorriente ?? bal.pasivoFijo ?? null,
+    currentLiabilities:    bal.pasivoCorriente ?? bal.pasivoCirculante ?? null,
+    shareCapital:          id.capitalSocial ?? ic.capitalSocial ?? null,
+
+    receivables:       bal.clientesComerciales ?? bal.deudoresComerciales ?? null,
+    payables:          bal.acreedoresComerciales ?? bal.proveedores ?? null,
+    procurement:       pl.consumos ?? pl.aprovisionamientos ?? null,
+
+    referenceYear:     bal.ejercicio ?? bal.anio ?? pl.ejercicio ?? pl.anio ?? null,
+    paymentPeriodDays: ic.periodoMedioPagoProveedores ?? null,
+    country:           'ES',
+    adjustedEbitda:    pl.ebitda ?? null,
+
+    amount: null, durationMonths: null, intervalPayment: null, paymentFrequency: 'monthly',
+    distributor: '', assetType: '', productName: '', assetValue: null, residualValue: null,
+    partner: '', irr: null,
+
+    _source: 'live-informa-api',
+  };
+}
+
+/** Live lookup against the Tecfys proxy. Throws on any failure with a clean message. */
+async function informaLookupLive(cif, config) {
+  if (!config?.proxyUrl) throw new Error('Live API not configured — set the proxy URL in API settings.');
+  const baseUrl = config.proxyUrl.replace(/\/+$/, '');
+  const headers = { 'Accept': 'application/json' };
+  if (config.apiKey) headers['X-API-Key'] = config.apiKey;
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/informa/company/${encodeURIComponent(cif)}`, { headers });
+  } catch (e) {
+    throw new Error(`Network error reaching the proxy at ${baseUrl}. Check the URL and CORS for this origin.`);
+  }
+  if (res.status === 401) throw new Error('Proxy rejected the X-API-Key — check the value in API settings.');
+  if (res.status === 404) throw new Error(INFORMA_ERRORS[11003]);
+  if (res.status === 502 || res.status === 503) throw new Error('Upstream Informa API is unreachable through the proxy.');
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Proxy returned HTTP ${res.status}. ${body.slice(0, 200)}`);
+  }
+  const json = await res.json();
+  const informaCode = json?.campoCodificadoRespuesta?.valor;
+  if (informaCode != null && informaCode !== 0) {
+    throw new Error(INFORMA_ERRORS[informaCode] || `Informa returned error code ${informaCode}.`);
+  }
+  const normalized = normalizeInformaResponse(json);
+  if (!normalized.cif && !normalized.name) {
+    throw new Error('The proxy responded but the payload could not be normalized — verify the proxy maps Informa\'s schema correctly.');
+  }
+  return normalized;
+}
+
+/** Hit /health on the proxy and return diagnostic info, or throw a clean error. */
+async function informaTestConnection(config) {
+  if (!config?.proxyUrl) throw new Error('Set the proxy URL first.');
+  const baseUrl = config.proxyUrl.replace(/\/+$/, '');
+  const headers = { 'Accept': 'application/json' };
+  if (config.apiKey) headers['X-API-Key'] = config.apiKey;
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/health`, { headers });
+  } catch (e) {
+    throw new Error('Could not reach the proxy. Verify the URL and that CORS is enabled for this origin.');
+  }
+  if (!res.ok) throw new Error(`Health check failed with HTTP ${res.status}.`);
+  const body = await res.json().catch(() => ({}));
+  return { ok: true, mode: body.mode || 'live', latencyMs: Math.round(performance.now() - t0), payload: body };
+}
+
+/** Public entry point used by CifLookup. Routes to live API or mock based on config. */
+async function informaLookup(cif, config) {
+  if (config?.useLive && config?.proxyUrl) {
+    return await informaLookupLive(cif, config);
+  }
+  return await mockInformaApi(cif);
+}
+
+const DEFAULT_API_CONFIG = { useLive: false, proxyUrl: '', apiKey: '', productCode: 'informeFinanciero' };
+
+/* =====================================================================
+   MOCK INFORMA API
+   Lookup by CIF returns demo data (NICTON example as reference dataset)
+   ===================================================================== */
+const INFORMA_API_DB = {
+  'B65944837': {
+    name: 'NICTON PLUS SL.',
+    cif: 'B65944837',
+    address: 'RONDA GENERAL MITRE, 172 - BJ DR, 08006 BARCELONA',
+    cnae: '8299',
+    sector: 'Professional services',
+    phones: '934181568',
+    web: 'www.nictonplus.com',
+    email: 'comercial@nictonplus.com',
+    constitutionDate: '07/01/2013',
+    maturityYears: 13,
+    employees: 15,
+    adminName: 'GIL MARSA, DAVID',
+    informaRating: '11/20',
+    creditOpinionInforma: 50000,
+    scoreLiquidez: '38/100',
+    resilience: '52/100',
+    totalRevenue: 2350082.75,
+    grossMargin: 1643278.03,
+    ebitda: 21114.47,
+    ebit: 18073.12,
+    netResult: 906.09,
+    financialExpenses: -17167.03,
+    totalAssets: 864629.52,
+    nonCurrentAssets: 32442.67,
+    currentAssets: 832186.85,
+    equity: 368376.18,
+    nonCurrentLiabilities: 199040.10,
+    currentLiabilities: 297213.24,
+    shareCapital: 3000,
+    receivables: 832186.85,
+    payables: 297213.24,
+    procurement: 706804.72,
+    adjustedEbitda: 21114.47,
+  }
+};
+async function mockInformaApi(cif) {
+  await new Promise(r => setTimeout(r, 800));
+  const found = INFORMA_API_DB[cif.toUpperCase()];
+  if (!found) throw new Error('CIF not found in the demo dataset. Try B65944837 (NICTON PLUS SL) or configure a live Informa proxy in API settings.');
+  return { ...found, _source: 'mock-demo' };
+}
+
+/* =====================================================================
+   SHARED UI ELEMENTS
+   ===================================================================== */
+const Card = ({ children, className = '', title = null, subtitle = null, action = null }) => (
+  <div className={"bg-ink-900 border border-ink-700 rounded-xl " + className}>
+    {(title || action) && (
+      <div className="flex items-center justify-between px-5 py-4 border-b border-ink-700">
+        <div>
+          {title && <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-mint-500/80">{title}</h3>}
+          {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+        </div>
+        {action}
+      </div>
+    )}
+    <div className="p-5">{children}</div>
+  </div>
+);
+
+const Field = ({ label, value, onChange, type='text', suffix=null, options=null, disabled=false, hint=null, autoFocus=false }) => (
+  <label className="block">
+    <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">{label}</span>
+    {options ? (
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)} disabled={disabled}
+        className="w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition">
+        <option value="">— Select —</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    ) : (
+      <div className="relative">
+        <input
+          autoFocus={autoFocus}
+          type={type}
+          value={value ?? ''}
+          onChange={e => onChange(type === 'number' ? (e.target.value === '' ? null : parseFloat(e.target.value)) : e.target.value)}
+          disabled={disabled}
+          className={"w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition num " + (disabled ? 'opacity-60' : '')}
+        />
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">{suffix}</span>}
+      </div>
+    )}
+    {hint && <span className="block mt-1 text-[10px] text-slate-500">{hint}</span>}
+  </label>
+);
+
+const RatingBadge = ({ r, size='md' }) => {
+  const cls = RATING_COLORS[r] || RATING_COLORS.C;
+  const sz = size === 'lg' ? 'text-2xl px-4 py-2' : size === 'sm' ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1';
+  return <span className={`inline-flex items-center font-bold border rounded-md ${cls} ${sz} num tracking-wide`}>{r}</span>;
+};
+
+const Decision = ({ d, size='md' }) => {
+  const meta = DECISION_META[d] || DECISION_META.reject;
+  const sz = size === 'lg' ? 'text-base px-4 py-2' : 'text-xs px-2.5 py-1';
+  return <span className={`inline-flex items-center font-semibold border rounded-md ${meta.bg} ${meta.color} ${sz} uppercase tracking-wider`}>{meta.label}</span>;
+};
+
+/* =====================================================================
+   NAV / SHELL
+   ===================================================================== */
+const NAV = [
+  { id: 'dashboard', label: 'Dashboard',     icon: I.dash },
+  { id: 'new',       label: 'New Scoring',   icon: I.score },
+  { id: 'cif',       label: 'CIF Lookup',    icon: I.cif },
+  { id: 'pdf',       label: 'Informa PDF',   icon: I.pdf },
+  { id: 'loanbook',  label: 'Loan Book',     icon: I.book },
+  { id: 'pricing',   label: 'Pricing',       icon: I.tag },
+  { id: 'criteria',  label: 'Criteria',      icon: I.cog },
+];
+
+function Sidebar({ view, setView }) {
+  return (
+    <aside className="w-60 bg-ink-950 border-r border-ink-700 flex flex-col">
+      <div className="px-5 py-5 border-b border-ink-700">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-md bg-mint-500 flex items-center justify-center text-ink-950 font-black text-sm pulse-mint">T</div>
+          <div>
+            <div className="text-sm font-bold tracking-wide">TECFYS</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-mint-500/70">Credit Scoring</div>
+          </div>
+        </div>
+      </div>
+      <nav className="flex-1 px-2 py-4 space-y-1">
+        {NAV.map(n => (
+          <button key={n.id} onClick={() => setView(n.id)}
+            className={"w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition " +
+              (view === n.id ? 'bg-mint-500/10 text-mint-400 border border-mint-500/30' : 'text-slate-400 hover:bg-ink-800 hover:text-slate-100 border border-transparent')}>
+            <span className={view === n.id ? 'text-mint-500' : 'text-slate-500'}>{n.icon}</span>
+            <span className="font-medium">{n.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="px-4 py-4 border-t border-ink-700 text-[10px] text-slate-500 uppercase tracking-wider">
+        v1.0 · Internal use
+      </div>
+    </aside>
+  );
+}
+
+/* =====================================================================
+   VIEW: Dashboard
+   ===================================================================== */
+function Dashboard({ loanbook, setView }) {
+  const SIZE_BUCKETS = [
+    { label: '<1k',     min: 0,      max: 1000 },
+    { label: '1k–5k',   min: 1000,   max: 5000 },
+    { label: '5k–10k',  min: 5000,   max: 10000 },
+    { label: '10k–20k', min: 10000,  max: 20000 },
+    { label: '20k–50k', min: 20000,  max: 50000 },
+    { label: '>50k',    min: 50000,  max: Infinity },
+  ];
+
+  const stats = useMemo(() => {
+    const total = loanbook.length;
+    const exposure = loanbook.reduce((s, l) => s + (l.amount || 0), 0);
+    const avgIrr = loanbook.length ? loanbook.reduce((s,l) => s + (l.irr||0), 0) / loanbook.length : 0;
+    const dist = {};
+    RATINGS_ORDERED.forEach(r => dist[r] = 0);
+    loanbook.forEach(l => { if (dist[l.rating] !== undefined) dist[l.rating]++; });
+    const sectors = {};
+    loanbook.forEach(l => { sectors[l.sector || 'Other'] = (sectors[l.sector || 'Other'] || 0) + (l.amount || 0); });
+    const countries = {};
+    loanbook.forEach(l => { countries[l.country || 'Other'] = (countries[l.country || 'Other'] || 0) + (l.amount || 0); });
+    const buckets = SIZE_BUCKETS.map(b => {
+      const items = loanbook.filter(l => (l.amount || 0) >= b.min && (l.amount || 0) < b.max);
+      return { ...b, count: items.length, amount: items.reduce((s,l) => s + (l.amount || 0), 0) };
+    });
+    return { total, exposure, avgIrr, dist, sectors, countries, buckets };
+  }, [loanbook]);
+
+  const maxDist = Math.max(1, ...Object.values(stats.dist));
+  const sectorList = Object.entries(stats.sectors).sort((a,b) => b[1]-a[1]).slice(0,6);
+  const maxSector = sectorList[0]?.[1] || 1;
+  const countryList = Object.entries(stats.countries).sort((a,b) => b[1]-a[1]).slice(0,6);
+  const maxCountry = countryList[0]?.[1] || 1;
+  const maxBucket = Math.max(1, ...stats.buckets.map(b => b.amount));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Portfolio overview</h2>
+          <p className="text-sm text-slate-400 mt-1">Real-time view of active scorings and approved exposures.</p>
+        </div>
+        <button onClick={() => setView('new')} className="flex items-center gap-2 bg-mint-500 text-ink-950 font-semibold px-4 py-2 rounded-md hover:bg-mint-400 transition text-sm">
+          {I.plus} New scoring
+        </button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Active operations</div>
+          <div className="text-3xl font-bold mt-2 num">{stats.total}</div>
+          <div className="text-xs text-slate-500 mt-1">In loan book</div>
+        </Card>
+        <Card>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Total exposure</div>
+          <div className="text-3xl font-bold mt-2 num text-mint-400">{fmtEur(stats.exposure)}</div>
+          <div className="text-xs text-slate-500 mt-1">Approved financing</div>
+        </Card>
+        <Card>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Avg. IRR</div>
+          <div className="text-3xl font-bold mt-2 num">{fmtPct(stats.avgIrr)}</div>
+          <div className="text-xs text-slate-500 mt-1">Across all deals</div>
+        </Card>
+        <Card>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Concentration</div>
+          <div className="text-3xl font-bold mt-2 num">{sectorList.length ? sectorList[0][0].split(' ')[0] : '—'}</div>
+          <div className="text-xs text-slate-500 mt-1">{sectorList.length ? fmtEur(sectorList[0][1]) + ' in top sector' : 'No data'}</div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <Card title="Rating distribution">
+          <div className="space-y-3">
+            {RATINGS_ORDERED.map(r => {
+              const v = stats.dist[r];
+              const pct = (v / maxDist) * 100;
+              return (
+                <div key={r} className="flex items-center gap-3">
+                  <RatingBadge r={r} size="sm" />
+                  <div className="flex-1 h-6 bg-ink-800 rounded relative overflow-hidden">
+                    <div className="h-full bg-mint-500/40 transition-all" style={{ width: pct + '%' }}/>
+                    <span className="absolute left-2 top-0 h-full flex items-center text-xs num text-slate-200">{v}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+        <Card title="Sector exposure (top 6)">
+          {sectorList.length === 0 ? (
+            <div className="text-sm text-slate-500 italic">No exposures yet. Score a company to populate.</div>
+          ) : (
+            <div className="space-y-3">
+              {sectorList.map(([s, amt]) => (
+                <div key={s}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-300 truncate pr-2">{s}</span>
+                    <span className="num text-mint-400 whitespace-nowrap">{fmtEur(amt)}</span>
+                  </div>
+                  <div className="h-1.5 bg-ink-800 rounded">
+                    <div className="h-full bg-mint-500 rounded" style={{ width: ((amt/maxSector)*100) + '%' }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card title="Country exposure">
+          {countryList.length === 0 ? (
+            <div className="text-sm text-slate-500 italic">No exposures yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {countryList.map(([c, amt]) => (
+                <div key={c}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-300 num tracking-widest">{c}</span>
+                    <span className="num text-mint-400 whitespace-nowrap">{fmtEur(amt)}</span>
+                  </div>
+                  <div className="h-1.5 bg-ink-800 rounded">
+                    <div className="h-full bg-mint-600 rounded" style={{ width: ((amt/maxCountry)*100) + '%' }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Card title="Contracts by loan size" subtitle="Approved exposure distribution across ticket buckets.">
+        {loanbook.length === 0 ? (
+          <div className="text-sm text-slate-500 italic py-6 text-center">Score and register an operation to populate.</div>
+        ) : (
+          <div className="flex items-end gap-3 h-56 pt-4">
+            {stats.buckets.map((b, idx) => {
+              // Mint progression: deeper green for bigger tickets
+              const palette = ['#1A4530','#235A40','#00A56C','#00D389','#00F7A1','#33FFB5'];
+              const color = palette[idx];
+              const heightPct = (b.amount / maxBucket) * 100;
+              return (
+                <div key={b.label} className="flex-1 flex flex-col items-center gap-2 group">
+                  <div className="text-[10px] num text-slate-300 font-semibold opacity-0 group-hover:opacity-100 transition">{fmtEur(b.amount)}</div>
+                  <div className="w-full flex-1 flex items-end">
+                    <div className="w-full rounded-t transition-all duration-500 relative"
+                      style={{ height: Math.max(heightPct, 2) + '%', backgroundColor: color, minHeight: b.amount > 0 ? '4px' : '0' }}>
+                      <div className="absolute -top-5 left-0 right-0 text-center text-[10px] num text-slate-400">{b.count > 0 ? b.count : ''}</div>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-400 num font-medium">{b.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Recent operations" action={
+        <button onClick={() => setView('loanbook')} className="text-xs text-mint-400 hover:text-mint-300 font-semibold uppercase tracking-wider flex items-center gap-1">View loan book {I.chev}</button>
+      }>
+        {loanbook.length === 0 ? (
+          <div className="text-sm text-slate-500 italic py-8 text-center">
+            <div className="mb-3">No operations registered yet.</div>
+            <button onClick={() => setView('new')} className="text-mint-400 hover:text-mint-300 underline">Score your first company</button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.14em] text-slate-500 border-b border-ink-700">
+                  <th className="text-left py-2 font-medium">Date</th>
+                  <th className="text-left py-2 font-medium">CIF</th>
+                  <th className="text-left py-2 font-medium">Client</th>
+                  <th className="text-left py-2 font-medium">Sector</th>
+                  <th className="text-right py-2 font-medium">Amount</th>
+                  <th className="text-center py-2 font-medium">Rating</th>
+                  <th className="text-right py-2 font-medium">Credit limit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loanbook.slice(-7).reverse().map(l => (
+                  <tr key={l.id} className="border-b border-ink-800/60 last:border-0">
+                    <td className="py-2.5 text-slate-400 num">{l.date}</td>
+                    <td className="py-2.5 num text-slate-200">{l.cif}</td>
+                    <td className="py-2.5 text-slate-100">{l.name}</td>
+                    <td className="py-2.5 text-slate-400 text-xs">{l.sector}</td>
+                    <td className="py-2.5 num text-right">{fmtEur(l.amount)}</td>
+                    <td className="py-2.5 text-center"><RatingBadge r={l.rating} size="sm"/></td>
+                    <td className="py-2.5 num text-right text-mint-400">{fmtEur(l.creditOpinion)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+const PRICING_SEED = [
+  {id:"prc_seed_000",distributor:"NICTON PLUS",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:12,priceCAPEX:300.0,installment:27.5,residualValue:27.5},
+  {id:"prc_seed_001",distributor:"NICTON PLUS",assetType:"Laptops",productName:"ASUS",durationMonths:12,priceCAPEX:450.0,installment:41.25,residualValue:41.25},
+  {id:"prc_seed_002",distributor:"NICTON PLUS",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:12,priceCAPEX:600.0,installment:55.0,residualValue:55.0},
+  {id:"prc_seed_003",distributor:"NICTON PLUS",assetType:"TV",productName:"Sony",durationMonths:12,priceCAPEX:250.0,installment:22.9167,residualValue:22.9167},
+  {id:"prc_seed_004",distributor:"NICTON PLUS",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:12,priceCAPEX:40.0,installment:3.6667,residualValue:3.6667},
+  {id:"prc_seed_005",distributor:"NICTON PLUS",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:12,priceCAPEX:150.0,installment:13.75,residualValue:13.75},
+  {id:"prc_seed_006",distributor:"NICTON PLUS",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:12,priceCAPEX:50.0,installment:4.5833,residualValue:4.5833},
+  {id:"prc_seed_007",distributor:"NICTON PLUS",assetType:"Other",productName:"Drons",durationMonths:12,priceCAPEX:250.0,installment:22.9167,residualValue:22.9167},
+  {id:"prc_seed_008",distributor:"NICTON PLUS",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:12,priceCAPEX:350.0,installment:32.0833,residualValue:32.0833},
+  {id:"prc_seed_009",distributor:"NICTON PLUS",assetType:"Furniture",productName:"Sofa",durationMonths:12,priceCAPEX:260.0,installment:23.8333,residualValue:23.8333},
+  {id:"prc_seed_010",distributor:"NICTON PLUS",assetType:"Mobility",productName:"Biike A2",durationMonths:12,priceCAPEX:300.0,installment:27.5,residualValue:27.5},
+  {id:"prc_seed_011",distributor:"FLEET",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:12,priceCAPEX:300.0,installment:27.5,residualValue:27.5},
+  {id:"prc_seed_012",distributor:"FLEET",assetType:"Laptops",productName:"ASUS",durationMonths:12,priceCAPEX:450.0,installment:41.25,residualValue:41.25},
+  {id:"prc_seed_013",distributor:"FLEET",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:12,priceCAPEX:600.0,installment:55.0,residualValue:55.0},
+  {id:"prc_seed_014",distributor:"FLEET",assetType:"TV",productName:"Sony",durationMonths:12,priceCAPEX:250.0,installment:22.9167,residualValue:22.9167},
+  {id:"prc_seed_015",distributor:"FLEET",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:12,priceCAPEX:40.0,installment:3.6667,residualValue:3.6667},
+  {id:"prc_seed_016",distributor:"FLEET",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:12,priceCAPEX:150.0,installment:13.75,residualValue:13.75},
+  {id:"prc_seed_017",distributor:"FLEET",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:12,priceCAPEX:50.0,installment:4.5833,residualValue:4.5833},
+  {id:"prc_seed_018",distributor:"FLEET",assetType:"Other",productName:"Drons",durationMonths:12,priceCAPEX:250.0,installment:22.9167,residualValue:22.9167},
+  {id:"prc_seed_019",distributor:"FLEET",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:12,priceCAPEX:350.0,installment:32.0833,residualValue:32.0833},
+  {id:"prc_seed_020",distributor:"FLEET",assetType:"Furniture",productName:"Sofa",durationMonths:12,priceCAPEX:260.0,installment:23.8333,residualValue:23.8333},
+  {id:"prc_seed_021",distributor:"FLEET",assetType:"Mobility",productName:"Biike A2",durationMonths:12,priceCAPEX:300.0,installment:27.5,residualValue:27.5},
+  {id:"prc_seed_022",distributor:"NICTON PLUS",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:24,priceCAPEX:300.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_023",distributor:"NICTON PLUS",assetType:"Laptops",productName:"ASUS",durationMonths:24,priceCAPEX:450.0,installment:20.4375,residualValue:20.4375},
+  {id:"prc_seed_024",distributor:"NICTON PLUS",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:24,priceCAPEX:600.0,installment:27.25,residualValue:27.25},
+  {id:"prc_seed_025",distributor:"NICTON PLUS",assetType:"TV",productName:"Sony",durationMonths:24,priceCAPEX:250.0,installment:11.3542,residualValue:11.3542},
+  {id:"prc_seed_026",distributor:"NICTON PLUS",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:24,priceCAPEX:40.0,installment:1.8167,residualValue:1.8167},
+  {id:"prc_seed_027",distributor:"NICTON PLUS",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:24,priceCAPEX:150.0,installment:6.8125,residualValue:6.8125},
+  {id:"prc_seed_028",distributor:"NICTON PLUS",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:24,priceCAPEX:50.0,installment:2.2708,residualValue:2.2708},
+  {id:"prc_seed_029",distributor:"NICTON PLUS",assetType:"Other",productName:"Drons",durationMonths:24,priceCAPEX:250.0,installment:11.3542,residualValue:11.3542},
+  {id:"prc_seed_030",distributor:"NICTON PLUS",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:24,priceCAPEX:350.0,installment:15.8958,residualValue:15.8958},
+  {id:"prc_seed_031",distributor:"NICTON PLUS",assetType:"Furniture",productName:"Sofa",durationMonths:24,priceCAPEX:260.0,installment:11.8083,residualValue:11.8083},
+  {id:"prc_seed_032",distributor:"NICTON PLUS",assetType:"Mobility",productName:"Biike A2",durationMonths:24,priceCAPEX:300.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_033",distributor:"FLEET",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:24,priceCAPEX:300.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_034",distributor:"FLEET",assetType:"Laptops",productName:"ASUS",durationMonths:24,priceCAPEX:450.0,installment:20.4375,residualValue:20.4375},
+  {id:"prc_seed_035",distributor:"FLEET",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:24,priceCAPEX:600.0,installment:27.25,residualValue:27.25},
+  {id:"prc_seed_036",distributor:"FLEET",assetType:"TV",productName:"Sony",durationMonths:24,priceCAPEX:250.0,installment:11.3542,residualValue:11.3542},
+  {id:"prc_seed_037",distributor:"FLEET",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:24,priceCAPEX:40.0,installment:1.8167,residualValue:1.8167},
+  {id:"prc_seed_038",distributor:"FLEET",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:24,priceCAPEX:150.0,installment:6.8125,residualValue:6.8125},
+  {id:"prc_seed_039",distributor:"FLEET",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:24,priceCAPEX:50.0,installment:2.2708,residualValue:2.2708},
+  {id:"prc_seed_040",distributor:"FLEET",assetType:"Other",productName:"Drons",durationMonths:24,priceCAPEX:250.0,installment:11.3542,residualValue:11.3542},
+  {id:"prc_seed_041",distributor:"FLEET",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:24,priceCAPEX:350.0,installment:15.8958,residualValue:15.8958},
+  {id:"prc_seed_042",distributor:"FLEET",assetType:"Furniture",productName:"Sofa",durationMonths:24,priceCAPEX:260.0,installment:11.8083,residualValue:11.8083},
+  {id:"prc_seed_043",distributor:"FLEET",assetType:"Mobility",productName:"Biike A2",durationMonths:24,priceCAPEX:300.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_044",distributor:"NICTON PLUS",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:36,priceCAPEX:300.0,installment:9.0,residualValue:9.0},
+  {id:"prc_seed_045",distributor:"NICTON PLUS",assetType:"Laptops",productName:"ASUS",durationMonths:36,priceCAPEX:450.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_046",distributor:"NICTON PLUS",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:36,priceCAPEX:600.0,installment:18.1667,residualValue:18.1667},
+  {id:"prc_seed_047",distributor:"NICTON PLUS",assetType:"TV",productName:"Sony",durationMonths:36,priceCAPEX:250.0,installment:7.5694,residualValue:7.5694},
+  {id:"prc_seed_048",distributor:"NICTON PLUS",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:36,priceCAPEX:40.0,installment:1.2111,residualValue:1.2111},
+  {id:"prc_seed_049",distributor:"NICTON PLUS",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:36,priceCAPEX:150.0,installment:4.5417,residualValue:4.5417},
+  {id:"prc_seed_050",distributor:"NICTON PLUS",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:36,priceCAPEX:50.0,installment:1.5139,residualValue:1.5139},
+  {id:"prc_seed_051",distributor:"NICTON PLUS",assetType:"Other",productName:"Drons",durationMonths:36,priceCAPEX:250.0,installment:7.5694,residualValue:7.5694},
+  {id:"prc_seed_052",distributor:"NICTON PLUS",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:36,priceCAPEX:350.0,installment:10.5972,residualValue:10.5972},
+  {id:"prc_seed_053",distributor:"NICTON PLUS",assetType:"Furniture",productName:"Sofa",durationMonths:36,priceCAPEX:260.0,installment:7.8722,residualValue:7.8722},
+  {id:"prc_seed_054",distributor:"NICTON PLUS",assetType:"Mobility",productName:"Biike A2",durationMonths:36,priceCAPEX:300.0,installment:9.0833,residualValue:9.0833},
+  {id:"prc_seed_055",distributor:"FLEET",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:36,priceCAPEX:300.0,installment:9.0,residualValue:9.0},
+  {id:"prc_seed_056",distributor:"FLEET",assetType:"Laptops",productName:"ASUS",durationMonths:36,priceCAPEX:450.0,installment:13.625,residualValue:13.625},
+  {id:"prc_seed_057",distributor:"FLEET",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:36,priceCAPEX:600.0,installment:18.1667,residualValue:18.1667},
+  {id:"prc_seed_058",distributor:"FLEET",assetType:"TV",productName:"Sony",durationMonths:36,priceCAPEX:250.0,installment:7.5694,residualValue:7.5694},
+  {id:"prc_seed_059",distributor:"FLEET",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:36,priceCAPEX:40.0,installment:1.2111,residualValue:1.2111},
+  {id:"prc_seed_060",distributor:"FLEET",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:36,priceCAPEX:150.0,installment:4.5417,residualValue:4.5417},
+  {id:"prc_seed_061",distributor:"FLEET",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:36,priceCAPEX:50.0,installment:1.5139,residualValue:1.5139},
+  {id:"prc_seed_062",distributor:"FLEET",assetType:"Other",productName:"Drons",durationMonths:36,priceCAPEX:250.0,installment:7.5694,residualValue:7.5694},
+  {id:"prc_seed_063",distributor:"FLEET",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:36,priceCAPEX:350.0,installment:10.5972,residualValue:10.5972},
+  {id:"prc_seed_064",distributor:"FLEET",assetType:"Furniture",productName:"Sofa",durationMonths:36,priceCAPEX:260.0,installment:7.8722,residualValue:7.8722},
+  {id:"prc_seed_065",distributor:"FLEET",assetType:"Mobility",productName:"Biike A2",durationMonths:36,priceCAPEX:300.0,installment:9.0833,residualValue:9.0833},
+  {id:"prc_seed_066",distributor:"NICTON PLUS",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:48,priceCAPEX:300.0,installment:6.625,residualValue:6.625},
+  {id:"prc_seed_067",distributor:"NICTON PLUS",assetType:"Laptops",productName:"ASUS",durationMonths:48,priceCAPEX:450.0,installment:9.9375,residualValue:9.9375},
+  {id:"prc_seed_068",distributor:"NICTON PLUS",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:48,priceCAPEX:600.0,installment:13.25,residualValue:13.25},
+  {id:"prc_seed_069",distributor:"NICTON PLUS",assetType:"TV",productName:"Sony",durationMonths:48,priceCAPEX:500.0,installment:5.5208,residualValue:5.5208},
+  {id:"prc_seed_070",distributor:"NICTON PLUS",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:48,priceCAPEX:40.0,installment:0.8833,residualValue:0.8833},
+  {id:"prc_seed_071",distributor:"NICTON PLUS",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:48,priceCAPEX:150.0,installment:3.3125,residualValue:3.3125},
+  {id:"prc_seed_072",distributor:"NICTON PLUS",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:48,priceCAPEX:50.0,installment:1.1042,residualValue:1.1042},
+  {id:"prc_seed_073",distributor:"NICTON PLUS",assetType:"Other",productName:"Drons",durationMonths:48,priceCAPEX:250.0,installment:5.5208,residualValue:5.5208},
+  {id:"prc_seed_074",distributor:"NICTON PLUS",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:48,priceCAPEX:350.0,installment:7.7292,residualValue:7.7292},
+  {id:"prc_seed_075",distributor:"NICTON PLUS",assetType:"Furniture",productName:"Sofa",durationMonths:48,priceCAPEX:260.0,installment:5.7417,residualValue:5.7417},
+  {id:"prc_seed_076",distributor:"NICTON PLUS",assetType:"Mobility",productName:"Biike A2",durationMonths:48,priceCAPEX:300.0,installment:6.625,residualValue:6.625},
+  {id:"prc_seed_077",distributor:"FLEET",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:48,priceCAPEX:300.0,installment:6.625,residualValue:6.625},
+  {id:"prc_seed_078",distributor:"FLEET",assetType:"Laptops",productName:"ASUS",durationMonths:48,priceCAPEX:450.0,installment:9.9375,residualValue:9.9375},
+  {id:"prc_seed_079",distributor:"FLEET",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:48,priceCAPEX:600.0,installment:13.25,residualValue:13.25},
+  {id:"prc_seed_080",distributor:"FLEET",assetType:"TV",productName:"Sony",durationMonths:48,priceCAPEX:250.0,installment:5.5208,residualValue:5.5208},
+  {id:"prc_seed_081",distributor:"FLEET",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:48,priceCAPEX:40.0,installment:0.8833,residualValue:0.8833},
+  {id:"prc_seed_082",distributor:"FLEET",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:48,priceCAPEX:150.0,installment:3.3125,residualValue:3.3125},
+  {id:"prc_seed_083",distributor:"FLEET",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:48,priceCAPEX:50.0,installment:1.1042,residualValue:1.1042},
+  {id:"prc_seed_084",distributor:"FLEET",assetType:"Other",productName:"Drons",durationMonths:48,priceCAPEX:250.0,installment:5.5208,residualValue:5.5208},
+  {id:"prc_seed_085",distributor:"FLEET",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:48,priceCAPEX:350.0,installment:7.7292,residualValue:7.7292},
+  {id:"prc_seed_086",distributor:"FLEET",assetType:"Furniture",productName:"Sofa",durationMonths:48,priceCAPEX:260.0,installment:5.7417,residualValue:5.7417},
+  {id:"prc_seed_087",distributor:"FLEET",assetType:"Mobility",productName:"Biike A2",durationMonths:48,priceCAPEX:300.0,installment:6.625,residualValue:6.625},
+  {id:"prc_seed_088",distributor:"NICTON PLUS",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:60,priceCAPEX:300.0,installment:5.3,residualValue:5.3},
+  {id:"prc_seed_089",distributor:"NICTON PLUS",assetType:"Laptops",productName:"ASUS",durationMonths:60,priceCAPEX:450.0,installment:7.95,residualValue:7.95},
+  {id:"prc_seed_090",distributor:"NICTON PLUS",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:60,priceCAPEX:600.0,installment:10.6,residualValue:10.6},
+  {id:"prc_seed_091",distributor:"NICTON PLUS",assetType:"TV",productName:"Sony",durationMonths:60,priceCAPEX:250.0,installment:4.4167,residualValue:4.4167},
+  {id:"prc_seed_092",distributor:"NICTON PLUS",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:60,priceCAPEX:40.0,installment:0.7067,residualValue:0.7067},
+  {id:"prc_seed_093",distributor:"NICTON PLUS",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:60,priceCAPEX:150.0,installment:2.65,residualValue:2.65},
+  {id:"prc_seed_094",distributor:"NICTON PLUS",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:60,priceCAPEX:50.0,installment:0.8833,residualValue:0.8833},
+  {id:"prc_seed_095",distributor:"NICTON PLUS",assetType:"Other",productName:"Drons",durationMonths:60,priceCAPEX:250.0,installment:4.4167,residualValue:4.4167},
+  {id:"prc_seed_096",distributor:"NICTON PLUS",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:60,priceCAPEX:350.0,installment:6.1833,residualValue:6.1833},
+  {id:"prc_seed_097",distributor:"NICTON PLUS",assetType:"Furniture",productName:"Sofa",durationMonths:60,priceCAPEX:260.0,installment:4.5933,residualValue:4.5933},
+  {id:"prc_seed_098",distributor:"NICTON PLUS",assetType:"Mobility",productName:"Biike A2",durationMonths:60,priceCAPEX:300.0,installment:5.3,residualValue:5.3},
+  {id:"prc_seed_099",distributor:"FLEET",assetType:"Electrical Appliances",productName:"Dish washer",durationMonths:60,priceCAPEX:300.0,installment:5.3,residualValue:5.3},
+  {id:"prc_seed_100",distributor:"FLEET",assetType:"Laptops",productName:"ASUS",durationMonths:60,priceCAPEX:450.0,installment:7.95,residualValue:7.95},
+  {id:"prc_seed_101",distributor:"FLEET",assetType:"Móviles & Tablets",productName:"Pixel 9",durationMonths:60,priceCAPEX:600.0,installment:10.6,residualValue:10.6},
+  {id:"prc_seed_102",distributor:"FLEET",assetType:"TV",productName:"Sony",durationMonths:60,priceCAPEX:250.0,installment:4.4167,residualValue:4.4167},
+  {id:"prc_seed_103",distributor:"FLEET",assetType:"Technological Accessories",productName:"Keboard alcatel",durationMonths:60,priceCAPEX:40.0,installment:0.7067,residualValue:0.7067},
+  {id:"prc_seed_104",distributor:"FLEET",assetType:"Small Appliances",productName:"Coffe machine",durationMonths:60,priceCAPEX:150.0,installment:2.65,residualValue:2.65},
+  {id:"prc_seed_105",distributor:"FLEET",assetType:"Water Dispenser",productName:"Aqua service",durationMonths:60,priceCAPEX:50.0,installment:0.8833,residualValue:0.8833},
+  {id:"prc_seed_106",distributor:"FLEET",assetType:"Other",productName:"Drons",durationMonths:60,priceCAPEX:250.0,installment:4.4167,residualValue:4.4167},
+  {id:"prc_seed_107",distributor:"FLEET",assetType:"Hospitality Machinery",productName:"Washer machine",durationMonths:60,priceCAPEX:350.0,installment:6.1833,residualValue:6.1833},
+  {id:"prc_seed_108",distributor:"FLEET",assetType:"Furniture",productName:"Sofa",durationMonths:60,priceCAPEX:260.0,installment:4.5933,residualValue:4.5933},
+  {id:"prc_seed_109",distributor:"FLEET",assetType:"Mobility",productName:"Biike A2",durationMonths:60,priceCAPEX:300.0,installment:5.3,residualValue:5.3},
+];
+
+/* =====================================================================
+   IRR CALCULATION
+   Cash flow structure (matches the Excel "Workings" sheet):
+     t=0:       -CAPEX (Tecfys's outflow to buy the asset)
+     t=1..N:    +installment (periodic income)
+     t=N+1:     +residualValue (final balloon income, separate cash flow)
+   This is "Approach C" — verified to match Excel IRR of 12.7062%
+   for the Dish washer 24-month reference row.
+   ===================================================================== */
+function calcPeriodIRR(cashFlows, guess = 0.01) {
+  if (!cashFlows || cashFlows.length < 2) return null;
+  let r = guess;
+  for (let i = 0; i < 200; i++) {
+    let npv = 0, dnpv = 0;
+    for (let t = 0; t < cashFlows.length; t++) {
+      const pow = Math.pow(1 + r, t);
+      npv += cashFlows[t] / pow;
+      if (t > 0) dnpv -= t * cashFlows[t] / (pow * (1 + r));
+    }
+    if (Math.abs(npv) < 1e-10) return r;
+    if (dnpv === 0 || !isFinite(dnpv)) return null;
+    const step = npv / dnpv;
+    r = r - step;
+    if (r <= -0.99) r = -0.5;        // bounce from invalid territory
+    if (!isFinite(r)) return null;
+    if (Math.abs(step) < 1e-12) return r;
+  }
+  return r;
+}
+
+/* Build the periodic cash-flow vector for a leasing operation. */
+function buildLeasingCashFlows(capex, installment, residual, periods) {
+  if (!(capex > 0) || !(installment > 0) || !(periods > 0)) return null;
+  const cf = [-Math.abs(capex)];
+  for (let t = 0; t < periods; t++) cf.push(installment);
+  cf.push(residual || 0);
+  return cf;
+}
+
+/* Compute annualized target IRR — formula: (1 + monthlyIRR)^12 - 1 (or quarterly variant) */
+function computeTargetIRR({ assetValue, intervalPayment, residualValue, durationMonths, paymentFrequency }) {
+  if (!assetValue || !intervalPayment || !durationMonths) return null;
+  const periodsPerYear = paymentFrequency === 'quarterly' ? 4 : 12;
+  const periods = paymentFrequency === 'quarterly' ? Math.floor(durationMonths / 3) : durationMonths;
+  if (periods <= 0) return null;
+  const cf = buildLeasingCashFlows(assetValue, intervalPayment, residualValue || 0, periods);
+  if (!cf) return null;
+  const periodIRR = calcPeriodIRR(cf, 0.01);
+  if (periodIRR == null || !isFinite(periodIRR)) return null;
+  return Math.pow(1 + periodIRR, periodsPerYear) - 1;
+}
+
+
+/* =====================================================================
+   VIEW: New Scoring (manual workings)
+   ===================================================================== */
+const EMPTY_FINANCIALS = {
+  // Company info
+  cif: '', name: '', country: 'ES', sector: '', maturityYears: null, employees: null,
+  // P&L
+  totalRevenue: null, grossMargin: null, ebitda: null, ebit: null, netResult: null,
+  financialExpenses: null, procurement: null,
+  // BS
+  nonCurrentAssets: null, currentAssets: null, equity: null,
+  nonCurrentLiabilities: null, currentLiabilities: null, shareCapital: null,
+  receivables: null, payables: null,
+  // Operation
+  amount: null, durationMonths: null, intervalPayment: null, paymentFrequency: 'monthly', assetType: '', assetValue: null,
+  residualValue: null, partner: '', irr: null,
+  // Pricing catalog selectors (when sourced from Pricing module)
+  distributor: '', productName: '',
+  // Manual override
+  adjustedEbitda: null,
+};
+
+/* ---------- IntervalPaymentField: paired input + frequency selector ---------- */
+function IntervalPaymentField({ amount, frequency, onAmount, onFrequency }) {
+  return (
+    <div>
+      <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">Interval payment</span>
+      <div className="flex gap-1">
+        <div className="relative flex-1">
+          <input type="number" value={amount ?? ''}
+            onChange={e => onAmount(e.target.value === '' ? null : parseFloat(e.target.value))}
+            className="w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition num pr-7"/>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">€</span>
+        </div>
+        <select value={frequency} onChange={e => onFrequency(e.target.value)}
+          className="bg-ink-800 border border-ink-700 rounded-md px-2 py-2 text-xs text-slate-100 focus:border-mint-500 transition uppercase tracking-wider">
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- PartnerField: dropdown of saved partners + inline create ---------- */
+function PartnerField({ value, onChange, partners, onAdd }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const submit = () => {
+    const name = draft.trim();
+    if (!name) return;
+    onAdd(name);
+    onChange(name);
+    setDraft(''); setAdding(false);
+  };
+  return (
+    <div>
+      <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">Partner</span>
+      {adding ? (
+        <div className="flex gap-1">
+          <input autoFocus value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') setAdding(false); }}
+            placeholder="New partner name"
+            className="flex-1 bg-ink-800 border border-mint-500 rounded-md px-3 py-2 text-sm text-slate-100"/>
+          <button onClick={submit} className="px-3 bg-mint-500 text-ink-950 font-bold rounded hover:bg-mint-400 transition">{I.check}</button>
+          <button onClick={() => { setAdding(false); setDraft(''); }} className="px-3 border border-ink-700 text-slate-400 rounded hover:text-white">{I.x}</button>
+        </div>
+      ) : (
+        <div className="flex gap-1">
+          <select value={value || ''} onChange={e => onChange(e.target.value)}
+            className="flex-1 bg-ink-800 border border-ink-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition">
+            <option value="">— Select partner —</option>
+            {partners.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <button onClick={() => setAdding(true)} title="Add new partner"
+            className="px-3 border border-mint-500/50 text-mint-400 hover:bg-mint-500/10 hover:border-mint-500 rounded transition">{I.plus}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- PricingPicker: 4 cascading dropdowns that autofill CAPEX/installment/residual ---------- */
+function PricingPicker({ pricing, financials, setFinancials }) {
+  // Suggestions filter progressively but never block manual typing.
+  const distributors = useMemo(() => [...new Set(pricing.map(p => p.distributor))].sort(), [pricing]);
+  const assetTypes = useMemo(() => {
+    const src = financials.distributor
+      ? pricing.filter(p => p.distributor === financials.distributor)
+      : pricing;
+    return [...new Set(src.map(p => p.assetType))].sort();
+  }, [pricing, financials.distributor]);
+  const productNames = useMemo(() => {
+    const src = pricing.filter(p =>
+      (!financials.distributor || p.distributor === financials.distributor) &&
+      (!financials.assetType   || p.assetType   === financials.assetType)
+    );
+    return [...new Set(src.map(p => p.productName))].sort();
+  }, [pricing, financials.distributor, financials.assetType]);
+  const durations = useMemo(() => {
+    const src = pricing.filter(p =>
+      (!financials.distributor || p.distributor === financials.distributor) &&
+      (!financials.assetType   || p.assetType   === financials.assetType) &&
+      (!financials.productName || p.productName === financials.productName)
+    );
+    return [...new Set(src.map(p => p.durationMonths))].sort((a,b) => a - b);
+  }, [pricing, financials.distributor, financials.assetType, financials.productName]);
+
+  // When any of the four selectors changes, look for a full catalog match and autofill CAPEX/installment/residual.
+  const tryAutofill = (next) => {
+    const merged = { ...financials, ...next };
+    const match = pricing.find(p =>
+      p.distributor    === merged.distributor &&
+      p.assetType      === merged.assetType &&
+      p.productName    === merged.productName &&
+      p.durationMonths === parseInt(merged.durationMonths)
+    );
+    if (match) {
+      setFinancials(prev => ({
+        ...prev,
+        ...next,
+        durationMonths: match.durationMonths,
+        assetValue:     match.priceCAPEX,
+        intervalPayment: match.installment,
+        residualValue:  match.residualValue,
+        amount:         match.priceCAPEX,
+      }));
+    } else {
+      setFinancials(prev => ({ ...prev, ...next }));
+    }
+  };
+
+  const setDistributor = (v) => tryAutofill({ distributor: v });
+  const setAssetType   = (v) => tryAutofill({ assetType: v });
+  const setProductName = (v) => tryAutofill({ productName: v });
+  const setDuration    = (v) => tryAutofill({ durationMonths: v === '' ? null : (parseInt(v) || null) });
+
+  const matched = pricing.find(p =>
+    p.distributor    === financials.distributor &&
+    p.assetType      === financials.assetType &&
+    p.productName    === financials.productName &&
+    p.durationMonths === parseInt(financials.durationMonths)
+  );
+
+  const cls = "w-full bg-ink-900/70 border border-mint-500/20 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition";
+
+  return (
+    <div className="mb-4 p-3 bg-mint-500/[0.04] border border-mint-500/15 rounded-md">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-mint-400 font-semibold flex items-center gap-2">
+          Pricing catalog
+          {matched && <span className="text-[9px] px-1.5 py-0.5 rounded bg-mint-500/15 border border-mint-500/30 tracking-wider">Autofilled</span>}
+        </div>
+        <div className="text-[10px] text-slate-500">Pick from catalog or type any value manually · CAPEX/installment/residual auto-fill on full match</div>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Distributor</span>
+          <input type="text" list="pp-distributors" value={financials.distributor || ''} placeholder="e.g. NICTON PLUS"
+            onChange={e => setDistributor(e.target.value)} className={cls}/>
+          <datalist id="pp-distributors">{distributors.map(d => <option key={d} value={d}/>)}</datalist>
+        </div>
+        <div>
+          <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Asset type</span>
+          <input type="text" list="pp-assettypes" value={financials.assetType || ''} placeholder="e.g. Laptops"
+            onChange={e => setAssetType(e.target.value)} className={cls}/>
+          <datalist id="pp-assettypes">{assetTypes.map(a => <option key={a} value={a}/>)}</datalist>
+        </div>
+        <div>
+          <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Product</span>
+          <input type="text" list="pp-products" value={financials.productName || ''} placeholder="e.g. ASUS"
+            onChange={e => setProductName(e.target.value)} className={cls}/>
+          <datalist id="pp-products">{productNames.map(p => <option key={p} value={p}/>)}</datalist>
+        </div>
+        <div>
+          <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Duration (months)</span>
+          <input type="number" list="pp-durations" value={financials.durationMonths ?? ''} placeholder="e.g. 24"
+            onChange={e => setDuration(e.target.value)} className={cls + ' num'}/>
+          <datalist id="pp-durations">{durations.map(d => <option key={d} value={d}/>)}</datalist>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- ComputedIRRField: read-only annualized IRR from cash flows ---------- */
+function ComputedIRRField({ financials }) {
+  const irr = useMemo(() => computeTargetIRR({
+    assetValue: financials.assetValue,
+    intervalPayment: financials.intervalPayment,
+    residualValue: financials.residualValue,
+    durationMonths: financials.durationMonths,
+    paymentFrequency: financials.paymentFrequency,
+  }), [financials.assetValue, financials.intervalPayment, financials.residualValue, financials.durationMonths, financials.paymentFrequency]);
+
+  const ready = irr != null && isFinite(irr);
+  const isPositive = ready && irr > 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Target IRR (auto)</span>
+        <span className="text-[9px] text-mint-500/70 uppercase tracking-wider">{financials.paymentFrequency === 'quarterly' ? '(1+q)^4–1' : '(1+m)^12–1'}</span>
+      </div>
+      <div className={"w-full bg-ink-900 border rounded-md px-3 py-2 text-sm num font-bold tabular-nums tracking-tight " +
+        (ready ? (isPositive ? 'border-mint-500/40 text-mint-300' : 'border-red-500/40 text-red-300') : 'border-ink-700 text-slate-600')}>
+        {ready ? (irr * 100).toFixed(4) + ' %' : '— enter CAPEX, installment & duration'}
+      </div>
+      {ready && (
+        <div className="text-[10px] text-slate-500 mt-1 num">
+          Cash flow: −{Math.round(financials.assetValue).toLocaleString()} · {financials.intervalPayment?.toFixed(2)}×{financials.paymentFrequency === 'quarterly' ? Math.floor(financials.durationMonths/3) : financials.durationMonths} · +{Math.round(financials.residualValue || 0).toLocaleString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewScoring({ criteria, financials, setFinancials, registerLoan, setView, pushToast, partners, addPartner, pricing }) {
+  const result = useMemo(() => score(financials, criteria), [financials, criteria]);
+
+  const update = (key) => (v) => setFinancials(prev => ({ ...prev, [key]: v }));
+
+  const handleApprove = async () => {
+    if (!financials.cif || !financials.name) {
+      pushToast('CIF and client name are required to register the operation.', 'error');
+      return;
+    }
+    const computedIRR = computeTargetIRR({
+      assetValue: financials.assetValue,
+      intervalPayment: financials.intervalPayment,
+      residualValue: financials.residualValue,
+      durationMonths: financials.durationMonths,
+      paymentFrequency: financials.paymentFrequency,
+    });
+    const op = {
+      id: Date.now(),
+      date: new Date().toISOString().slice(0,10),
+      cif: financials.cif,
+      name: financials.name,
+      country: financials.country,
+      sector: financials.sector,
+      amount: financials.amount,
+      durationMonths: financials.durationMonths,
+      intervalPayment: financials.intervalPayment,
+      paymentFrequency: financials.paymentFrequency,
+      distributor: financials.distributor,
+      assetType: financials.assetType,
+      productName: financials.productName,
+      assetValue: financials.assetValue,
+      residualValue: financials.residualValue,
+      partner: financials.partner,
+      irr: computedIRR,
+      rating: result.finalRating,
+      totalScore: result.totalScore,
+      creditOpinion: result.creditOpinion,
+      decision: result.decision,
+      adjustedEbitda: result.adjustedEbitda,
+      financials: { ...financials, irr: computedIRR },
+    };
+    await registerLoan(op);
+    pushToast(`Operation registered. ${financials.name} added to loan book.`, 'success');
+    setView('loanbook');
+  };
+
+  const sectors = Object.keys(criteria.sectorRating);
+  const decisionMeta = DECISION_META[result.decision] || DECISION_META.reject;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">New scoring</h2>
+          <p className="text-sm text-slate-400 mt-1">Manual workings — fill financial inputs to compute rating and credit limit.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setFinancials(EMPTY_FINANCIALS)} className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm">{I.reset} Reset</button>
+          <button onClick={() => setFinancials(INFORMA_API_DB['B65944837'])} className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-mint-400 px-3 py-2 rounded-md text-sm">Demo: NICTON</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-6">
+          <Card title="1. Company">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="CIF" value={financials.cif} onChange={update('cif')} />
+              <Field label="Client name" value={financials.name} onChange={update('name')} />
+              <Field label="Country" value={financials.country} onChange={update('country')} options={['ES','PT','IT','FR','UK','DE','MX','CO']} />
+              <Field label="Sector" value={financials.sector} onChange={update('sector')} options={sectors} />
+              <Field label="Maturity (years)" type="number" value={financials.maturityYears} onChange={update('maturityYears')} />
+              <Field label="Employees" type="number" value={financials.employees} onChange={update('employees')} />
+            </div>
+          </Card>
+
+          <Card title="2. Profit & Loss (last FY)">
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Total revenue" type="number" value={financials.totalRevenue} onChange={update('totalRevenue')} suffix="€" />
+              <Field label="Gross margin" type="number" value={financials.grossMargin} onChange={update('grossMargin')} suffix="€" />
+              <Field label="EBITDA" type="number" value={financials.ebitda} onChange={update('ebitda')} suffix="€" />
+              <Field label="EBIT" type="number" value={financials.ebit} onChange={update('ebit')} suffix="€" />
+              <Field label="Net result" type="number" value={financials.netResult} onChange={update('netResult')} suffix="€" />
+              <Field label="Financial expenses" type="number" value={financials.financialExpenses} onChange={update('financialExpenses')} suffix="€" hint="Enter as negative number" />
+              <Field label="Procurement / COGS" type="number" value={financials.procurement} onChange={update('procurement')} suffix="€" hint="For payment period" />
+              <Field label="Adjusted EBITDA" type="number" value={financials.adjustedEbitda} onChange={update('adjustedEbitda')} suffix="€" hint="Override for credit calc — defaults to EBITDA" />
+            </div>
+          </Card>
+
+          <Card title="3. Balance Sheet">
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Non-current assets" type="number" value={financials.nonCurrentAssets} onChange={update('nonCurrentAssets')} suffix="€" />
+              <Field label="Current assets" type="number" value={financials.currentAssets} onChange={update('currentAssets')} suffix="€" />
+              <Field label="Equity" type="number" value={financials.equity} onChange={update('equity')} suffix="€" />
+              <Field label="Non-current liabilities" type="number" value={financials.nonCurrentLiabilities} onChange={update('nonCurrentLiabilities')} suffix="€" />
+              <Field label="Current liabilities" type="number" value={financials.currentLiabilities} onChange={update('currentLiabilities')} suffix="€" />
+              <Field label="Share capital" type="number" value={financials.shareCapital} onChange={update('shareCapital')} suffix="€" />
+              <Field label="Trade receivables" type="number" value={financials.receivables} onChange={update('receivables')} suffix="€" />
+              <Field label="Trade payables" type="number" value={financials.payables} onChange={update('payables')} suffix="€" />
+            </div>
+          </Card>
+
+          <Card title="4. Operation details">
+            {pricing && pricing.length > 0 && (
+              <PricingPicker pricing={pricing} financials={financials} setFinancials={setFinancials} />
+            )}
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Amount" type="number" value={financials.amount} onChange={update('amount')} suffix="€" />
+              <Field label="Duration" type="number" value={financials.durationMonths} onChange={update('durationMonths')} suffix="months" />
+              <IntervalPaymentField
+                amount={financials.intervalPayment}
+                frequency={financials.paymentFrequency}
+                onAmount={update('intervalPayment')}
+                onFrequency={update('paymentFrequency')}
+              />
+              <Field label="Asset value (CAPEX)" type="number" value={financials.assetValue} onChange={update('assetValue')} suffix="€" />
+              <Field label="Residual value" type="number" value={financials.residualValue} onChange={update('residualValue')} suffix="€" />
+              <ComputedIRRField financials={financials} />
+              <PartnerField
+                value={financials.partner}
+                onChange={update('partner')}
+                partners={partners}
+                onAdd={addPartner}
+              />
+            </div>
+          </Card>
+        </div>
+
+        {/* Live result panel */}
+        <div className="space-y-4 sticky top-6 self-start">
+          <Card>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-mint-500/80 mb-3">Final rating</div>
+            <div className="flex items-center justify-between mb-4">
+              <RatingBadge r={result.finalRating} size="lg"/>
+              <div className="text-right">
+                <div className="num text-3xl font-bold">{fmtNum(result.totalScore, 2)}</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Total score / 10</div>
+              </div>
+            </div>
+            <div className="border-t border-ink-700 pt-4 space-y-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Decision</div>
+                <div className="mt-1.5"><Decision d={result.decision} size="lg"/></div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Credit opinion</div>
+                <div className="num text-2xl font-bold text-mint-400 mt-1">{fmtEur(result.creditOpinion)}</div>
+                <div className="text-[10px] text-slate-500 mt-1 num">Adj. EBITDA {fmtEur(result.adjustedEbitda)} × {fmtPct(result.prudence, 0)} prudence</div>
+              </div>
+            </div>
+            {result.decision !== 'reject' && (
+              <button onClick={handleApprove} className="mt-5 w-full bg-mint-500 text-ink-950 font-bold py-2.5 rounded-md hover:bg-mint-400 transition flex items-center justify-center gap-2 text-sm">
+                {I.save} Register in loan book
+              </button>
+            )}
+            {result.decision === 'reject' && (
+              <div className="mt-5 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-md text-xs text-red-300 flex items-start gap-2">
+                {I.alert} Score below threshold — not eligible for registration.
+              </div>
+            )}
+          </Card>
+
+          <Card title="Score breakdown" subtitle="Each ratio's value maps to a rating, then to a normalised score (1-10) specific to that ratio, weighted, and summed.">
+            <div className="space-y-2.5">
+              {Object.entries(result.breakdown).map(([k, b]) => (
+                <div key={k} className="text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300 font-medium">{b.label}</span>
+                    <div className="flex items-center gap-2">
+                      <RatingBadge r={b.rating} size="sm"/>
+                      <span className="num text-slate-300 font-semibold w-12 text-right">{fmtNum(b.ratingScore, 1)}/10</span>
+                      <span className="num text-slate-500 w-12 text-right">×{fmtPct(b.weight, 0)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-slate-500">
+                    <span className="num">{typeof b.value === 'number' ? fmtNum(b.value, 3) : (b.value || '—')}</span>
+                    <span className="num text-mint-400 font-semibold">+{fmtNum(b.contribution, 3)}</span>
+                  </div>
+                  <div className="h-0.5 bg-ink-800 mt-1.5">
+                    <div className="h-full bg-mint-500/40" style={{ width: ((b.contribution/Math.max(0.001,b.weight*10))*100) + '%' }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-3 border-t border-ink-700 flex items-center justify-between text-sm">
+              <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Total weighted score</span>
+              <span className="num font-bold text-mint-300 text-lg">{fmtNum(result.totalScore, 4)} / 10</span>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   VIEW: CIF Lookup (Informa API)
+   ===================================================================== */
+/* ---------- APISettingsPanel: configure the live Informa proxy ---------- */
+function APISettingsPanel({ config, setConfig, pushToast, onClose }) {
+  const [draft, setDraft] = useState(config);
+  const [showKey, setShowKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(config);
+
+  const save = () => {
+    setConfig(draft);
+    pushToast('API settings saved.', 'success');
+    setTestResult(null);
+  };
+  const test = async () => {
+    setTesting(true); setTestResult(null);
+    try {
+      const r = await informaTestConnection(draft);
+      setTestResult({ ok: true, msg: `Reachable · mode=${r.mode} · ${r.latencyMs}ms` });
+    } catch (e) {
+      setTestResult({ ok: false, msg: e.message });
+    }
+    setTesting(false);
+  };
+
+  const inputCls = "w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-mint-500 transition";
+  const codeCls = "block bg-ink-900 border border-ink-700 rounded p-2 text-[11px] num text-slate-300 whitespace-pre overflow-x-auto";
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">{I.cog} Informa API settings</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Configure the proxy endpoint that talks to Informa D&amp;B on Tecfys' behalf.</div>
+        </div>
+        {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white p-1">{I.x}</button>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">Mode</span>
+          <div className="flex bg-ink-800 border border-ink-700 rounded-md p-1">
+            <button onClick={() => setDraft({...draft, useLive: false})}
+              className={"flex-1 text-xs font-semibold py-1.5 rounded transition " + (!draft.useLive ? 'bg-slate-700/60 text-white' : 'text-slate-400 hover:text-slate-200')}>
+              Mock (demo)
+            </button>
+            <button onClick={() => setDraft({...draft, useLive: true})}
+              className={"flex-1 text-xs font-semibold py-1.5 rounded transition " + (draft.useLive ? 'bg-mint-500 text-ink-950' : 'text-slate-400 hover:text-slate-200')}>
+              Live Informa
+            </button>
+          </div>
+        </div>
+        <div>
+          <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">Product</span>
+          <select value={draft.productCode} onChange={e => setDraft({...draft, productCode: e.target.value})} className={inputCls}>
+            <option value="informeFinanciero">Financial report (Informe financiero)</option>
+            <option value="informeCredito">Credit report (Informe de crédito)</option>
+            <option value="informeReducido">Summarized report (Informe reducido)</option>
+            <option value="fichaEmpresa">Company card (Ficha empresa)</option>
+          </select>
+          <div className="text-[10px] text-slate-500 mt-1">Selected product is forwarded to your proxy via the <span className="num">?product=</span> query when needed.</div>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">Proxy base URL</span>
+        <input type="url" value={draft.proxyUrl} onChange={e => setDraft({...draft, proxyUrl: e.target.value})}
+          placeholder="https://api.tecfys.com/v1"
+          className={inputCls + ' num'}/>
+        <div className="text-[10px] text-slate-500 mt-1">No trailing slash needed. The app will append <span className="num">/informa/company/&#123;cif&#125;</span> and <span className="num">/health</span>.</div>
+      </div>
+
+      <div className="mb-4">
+        <span className="block text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-1.5">API key</span>
+        <div className="flex gap-2">
+          <input type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={e => setDraft({...draft, apiKey: e.target.value})}
+            placeholder="Sent as X-API-Key header" className={inputCls + ' num flex-1'}/>
+          <button onClick={() => setShowKey(s => !s)} className="px-3 border border-ink-700 rounded text-slate-300 hover:text-white text-xs">{showKey ? 'Hide' : 'Show'}</button>
+        </div>
+        <div className="text-[10px] text-slate-500 mt-1">Stored only in this browser. The Informa user/password live on your proxy, not here.</div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-5">
+        <button onClick={test} disabled={testing || !draft.proxyUrl} className="bg-ink-700 hover:bg-ink-600 disabled:opacity-40 text-slate-100 text-xs font-semibold px-3 py-2 rounded flex items-center gap-2">
+          {testing ? <span className="w-3 h-3 border-2 border-slate-300 border-t-transparent rounded-full animate-spin"/> : I.check}
+          Test connection
+        </button>
+        <button onClick={save} disabled={!dirty} className="bg-mint-500 hover:bg-mint-400 disabled:opacity-40 text-ink-950 text-xs font-bold px-4 py-2 rounded flex items-center gap-2">
+          {I.save} Save
+        </button>
+        {dirty && <span className="text-[10px] text-amber-400 uppercase tracking-wider">unsaved</span>}
+      </div>
+
+      {testResult && (
+        <div className={"mb-4 text-xs px-3 py-2 rounded flex items-start gap-2 " + (testResult.ok ? 'bg-mint-500/10 border border-mint-500/30 text-mint-300' : 'bg-red-500/10 border border-red-500/30 text-red-300')}>
+          {testResult.ok ? I.check : I.alert}
+          <span>{testResult.msg}</span>
+        </div>
+      )}
+
+      <div className="border-t border-ink-700 pt-4 mt-2">
+        <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 mb-2">Expected proxy contract</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-[10px] uppercase text-slate-500 mb-1 tracking-wider">Health</div>
+            <code className={codeCls}>{`GET  {proxyUrl}/health
+→ 200 OK
+{ "status": "ok",
+  "mode": "live" }`}</code>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase text-slate-500 mb-1 tracking-wider">Company lookup</div>
+            <code className={codeCls}>{`GET  {proxyUrl}/informa/company/{cif}
+     X-API-Key: <key>
+→ 200 OK   Informa JSON envelope
+→ 404      CIF not in census
+→ 401      bad key
+→ 502/503  upstream Informa down`}</code>
+          </div>
+        </div>
+        <details className="mt-3 text-[11px] text-slate-400">
+          <summary className="cursor-pointer hover:text-slate-200 select-none">Reference proxy implementation (Node/Express)</summary>
+          <code className={codeCls + ' mt-2'}>{`// Tecfys → Informa proxy
+// env: INFORMA_USER, INFORMA_PASS, INFORMA_BASE_URL, TECFYS_API_KEY
+import express from 'express';
+const app = express();
+
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin',  'https://app.tecfys.com');
+  res.set('Access-Control-Allow-Headers', 'X-API-Key, Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+const requireKey = (req, res, next) =>
+  req.headers['x-api-key'] === process.env.TECFYS_API_KEY
+    ? next() : res.status(401).json({ error: 'bad key' });
+
+app.get('/health', (_, res) => res.json({ status:'ok', mode:'live' }));
+
+app.get('/informa/company/:cif', requireKey, async (req, res) => {
+  const basic = Buffer.from(\`\${process.env.INFORMA_USER}:\${process.env.INFORMA_PASS}\`).toString('base64');
+  const r = await fetch(\`\${process.env.INFORMA_BASE_URL}/get-product\`, {
+    method: 'POST',
+    headers: { Authorization: \`Basic \${basic}\`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productoSolicitado: 'informeFinanciero',
+      parametrosCliente: { cif: req.params.cif }
+    })
+  });
+  if (!r.ok) return res.status(502).json({ error: 'informa upstream' });
+  res.json(await r.json());
+});
+
+app.listen(8080);`}</code>
+        </details>
+        <div className="text-[10px] text-slate-500 mt-3 leading-relaxed">
+          The proxy can be deployed wherever (Cloud Run, Fly.io, AWS Lambda + API Gateway, a small VPS). It just needs to: hold Informa's HTTP Basic credentials, expose the two endpoints above with CORS for this app's origin, and ideally cache responses since Informa charges per query. Caching by CIF for 24h is a good starting point.
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CifLookup({ criteria, setFinancials, setView, pushToast, apiConfig, setApiConfig }) {
+  const [cif, setCif] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const isLive = !!(apiConfig?.useLive && apiConfig?.proxyUrl);
+
+  const run = async () => {
+    if (!cif) { pushToast('Enter a CIF first.', 'error'); return; }
+    setLoading(true); setError(null); setData(null);
+    try {
+      const r = await informaLookup(cif.trim().toUpperCase(), apiConfig);
+      setData(r);
+      if (r._source === 'live-informa-api') {
+        pushToast(`Live data loaded from Informa for ${r.cif}.`, 'success');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  const result = data ? score(data, criteria) : null;
+
+  const moveToWorkings = () => {
+    setFinancials(data);
+    setView('new');
+    pushToast(`${data.name} loaded into manual scoring — review and approve.`, 'success');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Quick CIF lookup</h2>
+          <p className="text-sm text-slate-400 mt-1">Enter a Spanish CIF — we pull financials from Informa D&amp;B and score automatically.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={"text-[11px] uppercase tracking-[0.14em] px-2.5 py-1 rounded border " + (isLive ? 'border-mint-500/40 bg-mint-500/10 text-mint-300' : 'border-amber-500/30 bg-amber-500/5 text-amber-300')}>
+            <span className="num">●</span> {isLive ? 'Live Informa API' : 'Mock dataset'}
+          </div>
+          <button onClick={() => setShowSettings(s => !s)} className="flex items-center gap-2 border border-ink-700 hover:border-mint-500/50 text-slate-300 hover:text-mint-400 px-3 py-1.5 rounded text-xs transition">
+            {I.cog} API settings
+          </button>
+        </div>
+      </div>
+
+      {showSettings && <APISettingsPanel config={apiConfig} setConfig={setApiConfig} pushToast={pushToast} onClose={() => setShowSettings(false)}/>}
+
+      <Card>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <Field label="CIF" value={cif} onChange={setCif} autoFocus hint={isLive ? `Lookup will hit ${apiConfig.proxyUrl}` : 'Try B65944837 (NICTON PLUS SL — demo dataset)'}/>
+          </div>
+          <button onClick={run} disabled={loading} className="bg-mint-500 text-ink-950 font-semibold px-5 py-2.5 rounded-md hover:bg-mint-400 transition text-sm flex items-center gap-2 disabled:opacity-50">
+            {loading ? (<><span className="w-4 h-4 border-2 border-ink-950 border-t-transparent rounded-full animate-spin"/> Querying{isLive ? ' Informa…' : '…'}</>) : (<>{I.cif} Lookup</>)}
+          </button>
+        </div>
+        {error && (
+          <div className="mt-4 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-md text-xs text-red-300 flex items-start gap-2">
+            {I.alert}
+            <div>
+              <div className="font-semibold mb-0.5">Lookup failed</div>
+              <div className="text-red-200/80">{error}</div>
+              {isLive && <div className="mt-1 text-[10px] text-red-300/70">Try toggling to mock mode in API settings to keep working while you debug the proxy.</div>}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {data && (
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-6">
+            <Card title="Company identification" action={
+              <span className={"text-[10px] uppercase tracking-[0.14em] px-2 py-0.5 rounded " + (data._source === 'live-informa-api' ? 'bg-mint-500/10 text-mint-300 border border-mint-500/30' : 'bg-amber-500/10 text-amber-300 border border-amber-500/20')}>
+                source: {data._source === 'live-informa-api' ? 'live Informa' : 'mock'}
+              </span>
+            }>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <Datum label="Name" value={data.name}/>
+                <Datum label="CIF" value={data.cif} mono/>
+                <Datum label="Address" value={data.address}/>
+                <Datum label="CNAE" value={data.cnae} mono/>
+                <Datum label="Sector" value={data.sector}/>
+                <Datum label="Phone" value={data.phones} mono/>
+                <Datum label="Website" value={data.web}/>
+                <Datum label="Email" value={data.email}/>
+                <Datum label="Founded" value={data.constitutionDate}/>
+                <Datum label="Maturity" value={data.maturityYears != null ? data.maturityYears + ' years' : '—'}/>
+                <Datum label="Employees" value={data.employees}/>
+                <Datum label="Administrator" value={data.adminName}/>
+              </div>
+            </Card>
+
+            <Card title="Informa D&amp;B scoring">
+              <div className="grid grid-cols-4 gap-4">
+                <KPI label="Informa rating" value={data.informaRating} accent/>
+                <KPI label="Informa credit op." value={fmtEur(data.creditOpinionInforma)}/>
+                <KPI label="Liquidity score" value={data.scoreLiquidez}/>
+                <KPI label="Resilience" value={data.resilience}/>
+              </div>
+            </Card>
+
+            <Card title={"Financials" + (data.referenceYear ? ` (FY ${data.referenceYear})` : '')}>
+              <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                <Datum label="Total revenue" value={fmtEur(data.totalRevenue)} mono right/>
+                <Datum label="Gross margin" value={fmtEur(data.grossMargin)} mono right/>
+                <Datum label="EBITDA" value={fmtEur(data.ebitda)} mono right/>
+                <Datum label="EBIT" value={fmtEur(data.ebit)} mono right/>
+                <Datum label="Net result" value={fmtEur(data.netResult)} mono right/>
+                <Datum label="Financial expenses" value={fmtEur(data.financialExpenses)} mono right/>
+                <Datum label="Total assets" value={fmtEur(data.totalAssets)} mono right/>
+                <Datum label="Non-current assets" value={fmtEur(data.nonCurrentAssets)} mono right/>
+                <Datum label="Current assets" value={fmtEur(data.currentAssets)} mono right/>
+                <Datum label="Equity" value={fmtEur(data.equity)} mono right/>
+                <Datum label="NC liabilities" value={fmtEur(data.nonCurrentLiabilities)} mono right/>
+                <Datum label="C liabilities" value={fmtEur(data.currentLiabilities)} mono right/>
+              </div>
+            </Card>
+          </div>
+
+          {/* Scoring result */}
+          <div className="space-y-4">
+            <Card>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-mint-500/80 mb-3">Tecfys scoring</div>
+              <div className="flex items-center justify-between mb-4">
+                <RatingBadge r={result.finalRating} size="lg"/>
+                <div className="text-right">
+                  <div className="num text-3xl font-bold">{fmtNum(result.totalScore, 2)}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500">Score / 10</div>
+                </div>
+              </div>
+              <div className="border-t border-ink-700 pt-4 space-y-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Decision</div>
+                  <div className="mt-1.5"><Decision d={result.decision} size="lg"/></div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Tecfys credit opinion</div>
+                  <div className="num text-2xl font-bold text-mint-400 mt-1">{fmtEur(result.creditOpinion)}</div>
+                  <div className="text-[10px] text-slate-500 mt-1 num">{fmtEur(result.adjustedEbitda)} × {fmtPct(result.prudence,0)}</div>
+                </div>
+                <div className="border-t border-ink-700 pt-3">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Informa credit opinion</div>
+                  <div className="num text-lg text-slate-300 mt-1">{fmtEur(data.creditOpinionInforma)}</div>
+                  {data.creditOpinionInforma != null && (
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      Δ vs Tecfys: <span className={result.creditOpinion >= data.creditOpinionInforma ? 'text-mint-400' : 'text-red-400'}>
+                        {result.creditOpinion - data.creditOpinionInforma >= 0 ? '+' : ''}{fmtEur(result.creditOpinion - data.creditOpinionInforma)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {result.decision !== 'reject' && (
+                <button onClick={moveToWorkings} className="mt-5 w-full bg-mint-500 text-ink-950 font-bold py-2.5 rounded-md hover:bg-mint-400 transition flex items-center justify-center gap-2 text-sm">
+                  {I.score} Continue to scoring
+                </button>
+              )}
+            </Card>
+
+            <Card title="Explainability">
+              <ul className="text-xs space-y-2 text-slate-300">
+                {Object.entries(result.breakdown).slice(0, 5).map(([k, b]) => (
+                  <li key={k} className="flex items-start gap-2">
+                    <RatingBadge r={b.rating} size="sm"/>
+                    <div>
+                      <div className="font-medium">{b.label}</div>
+                      <div className="text-[10px] text-slate-500 num">{typeof b.value === 'number' ? fmtNum(b.value, 2) : (b.value || '—')} · weight {fmtPct(b.weight,0)}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Datum({ label, value, mono = false, right = false }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className={"text-sm text-slate-100 mt-0.5 " + (mono ? 'num' : '') + (right ? ' text-right' : '')}>{value || '—'}</div>
+    </div>
+  );
+}
+function KPI({ label, value, accent = false }) {
+  return (
+    <div className="bg-ink-800 border border-ink-700 rounded-md p-3">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className={"text-lg font-semibold num mt-1 " + (accent ? 'text-mint-400' : 'text-slate-100')}>{value || '—'}</div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   VIEW: PDF Drop (real Informa PDF parser)
+   ===================================================================== */
+function PdfDrop({ criteria, setFinancials, setView, pushToast }) {
+  const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [extracted, setExtracted] = useState(null);
+  const [error, setError] = useState(null);
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Please drop a PDF file.'); return;
+    }
+    setLoading(true); setError(null); setExtracted(null);
+    try {
+      const data = await parseInformaPdf(file);
+      data.adjustedEbitda = data.ebitda;
+      data.amount = null; data.durationMonths = null; data.partner = '';
+      data.intervalPayment = null; data.paymentFrequency = 'monthly';
+      data.country = data.country || 'ES';
+      data.financialExpenses = data.financialExpenses ?? null;
+      setExtracted({ ...data, _filename: file.name });
+    } catch (e) {
+      console.error(e);
+      setError('Could not parse PDF: ' + e.message);
+    }
+    setLoading(false);
+  };
+
+  const onDrop = (e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+
+  const result = extracted ? score(extracted, criteria) : null;
+
+  const moveToWorkings = () => {
+    setFinancials(extracted);
+    setView('new');
+    pushToast(`Data from ${extracted._filename} loaded — review and register.`, 'success');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">Informa PDF parser</h2>
+        <p className="text-sm text-slate-400 mt-1">Drop a standard Informa D&amp;B commercial report — we extract identification, financials and run the scoring automatically.</p>
+      </div>
+
+      {!extracted && (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          className={"border-2 border-dashed rounded-xl p-16 text-center cursor-pointer transition " +
+            (dragOver ? 'border-mint-500 bg-mint-500/5' : 'border-ink-700 bg-ink-900/40 hover:border-ink-500')}
+        >
+          <input ref={inputRef} type="file" accept=".pdf" hidden onChange={e => e.target.files[0] && handleFile(e.target.files[0])}/>
+          <div className="text-mint-500 flex justify-center mb-4">{I.upload}</div>
+          {loading ? (
+            <>
+              <div className="flex items-center justify-center gap-2 text-mint-400">
+                <span className="w-5 h-5 border-2 border-mint-500 border-t-transparent rounded-full animate-spin"/>
+                <span className="text-sm">Parsing PDF…</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Extracting identification, balance sheet, P&amp;L and Informa indicators.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-slate-200">Drop your Informa PDF here</p>
+              <p className="text-xs text-slate-500 mt-1">or click to browse · all reports follow the same structure</p>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && <Card><div className="text-sm text-red-300 flex items-center gap-2">{I.alert} {error}</div></Card>}
+
+      {extracted && (
+        <>
+          <div className="flex items-center justify-between bg-mint-500/10 border border-mint-500/30 rounded-md px-4 py-3">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-mint-400">{I.check}</span>
+              <span className="text-slate-200">Parsed <span className="font-bold">{extracted._filename}</span> — {extracted.raw.toLocaleString()} chars · {Object.entries(extracted).filter(([k,v]) => v != null && !k.startsWith('_')).length} fields extracted</span>
+            </div>
+            <button onClick={() => { setExtracted(null); setError(null); }} className="text-xs text-slate-400 hover:text-white">Parse another</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-6">
+              <Card title="Identification (extracted)">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <Datum label="Name" value={extracted.name}/>
+                  <Datum label="CIF" value={extracted.cif} mono/>
+                  <Datum label="Address" value={extracted.address}/>
+                  <Datum label="CNAE" value={extracted.cnae} mono/>
+                  <Datum label="Inferred sector" value={extracted.sector}/>
+                  <Datum label="Founded" value={extracted.constitutionDate}/>
+                  <Datum label="Maturity" value={extracted.maturityYears != null ? extracted.maturityYears + ' years' : '—'}/>
+                  <Datum label="Employees" value={extracted.employees}/>
+                  <Datum label="Phone" value={extracted.phones} mono/>
+                  <Datum label="Website" value={extracted.web}/>
+                </div>
+              </Card>
+
+              <Card title="Informa indicators (extracted)">
+                <div className="grid grid-cols-4 gap-4">
+                  <KPI label="Informa rating" value={extracted.informaRating} accent/>
+                  <KPI label="Informa credit op." value={fmtEur(extracted.creditOpinionInforma)}/>
+                  <KPI label="Liquidity" value={extracted.scoreLiquidez}/>
+                  <KPI label="Resilience" value={extracted.resilience}/>
+                </div>
+              </Card>
+
+              <Card title="Financials (extracted)">
+                <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                  <Datum label="Total revenue" value={fmtEur(extracted.totalRevenue)} mono/>
+                  <Datum label="Gross margin" value={fmtEur(extracted.grossMargin)} mono/>
+                  <Datum label="EBITDA" value={fmtEur(extracted.ebitda)} mono/>
+                  <Datum label="EBIT" value={fmtEur(extracted.ebit)} mono/>
+                  <Datum label="Net result" value={fmtEur(extracted.netResult)} mono/>
+                  <Datum label="Total assets" value={fmtEur(extracted.totalAssets)} mono/>
+                  <Datum label="Non-current assets" value={fmtEur(extracted.nonCurrentAssets)} mono/>
+                  <Datum label="Current assets" value={fmtEur(extracted.currentAssets)} mono/>
+                  <Datum label="Equity" value={fmtEur(extracted.equity)} mono/>
+                  <Datum label="NC liabilities" value={fmtEur(extracted.nonCurrentLiabilities)} mono/>
+                  <Datum label="C liabilities" value={fmtEur(extracted.currentLiabilities)} mono/>
+                  <Datum label="Share capital" value={fmtEur(extracted.shareCapital)} mono/>
+                </div>
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              <Card>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-mint-500/80 mb-3">Tecfys scoring</div>
+                <div className="flex items-center justify-between mb-4">
+                  <RatingBadge r={result.finalRating} size="lg"/>
+                  <div className="text-right">
+                    <div className="num text-3xl font-bold">{fmtNum(result.totalScore, 2)}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500">Score / 10</div>
+                  </div>
+                </div>
+                <div className="border-t border-ink-700 pt-4 space-y-3">
+                  <Decision d={result.decision} size="lg"/>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Credit opinion</div>
+                    <div className="num text-2xl font-bold text-mint-400 mt-1">{fmtEur(result.creditOpinion)}</div>
+                    <div className="text-[10px] text-slate-500 mt-1 num">{fmtEur(result.adjustedEbitda)} × {fmtPct(result.prudence,0)}</div>
+                  </div>
+                </div>
+                {result.decision !== 'reject' && (
+                  <button onClick={moveToWorkings} className="mt-5 w-full bg-mint-500 text-ink-950 font-bold py-2.5 rounded-md hover:bg-mint-400 transition flex items-center justify-center gap-2 text-sm">
+                    {I.score} Continue to scoring
+                  </button>
+                )}
+              </Card>
+
+              <Card title="Top contributing ratios">
+                <div className="space-y-2.5">
+                  {Object.entries(result.breakdown).sort((a,b) => b[1].contribution - a[1].contribution).slice(0, 5).map(([k, b]) => (
+                    <div key={k} className="text-xs flex items-center justify-between">
+                      <span className="text-slate-300">{b.label}</span>
+                      <span className="num text-mint-400">+{fmtNum(b.contribution, 2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================================
+   VIEW: Loan Book
+   Excel import parser — reads the "Import_data_example" template where:
+     Row 1 col A = field label · cols B+ = one operation per column.
+   The parser normalises labels, coerces numbers, auto-calculates IRR,
+   scores each row through the standard scoring engine, and returns
+   a preview array. Nothing is committed until the user confirms.
+   ===================================================================== */
+
+/** Normalise a header label so matching is tolerant of case/spaces/accents/parens. */
+function normalizeLabel(s) {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Header text on col A → key in the financials object we score against. */
+const EXCEL_LABEL_MAP = {
+  // Identification
+  'client': 'name', 'name': 'name', 'client name': 'name', 'razon social': 'name',
+  'nif': 'cif', 'cif': 'cif',
+  'sector': 'sector',
+  'country': 'country',
+  'maturity years': 'maturityYears', 'maturity': 'maturityYears', 'years': 'maturityYears',
+  'capital': 'shareCapital', 'share capital': 'shareCapital', 'capital social': 'shareCapital',
+  // P&L
+  'total revenue': 'totalRevenue', 'revenue': 'totalRevenue', 'sales': 'totalRevenue', 'ventas': 'totalRevenue',
+  'gross margin': 'grossMargin', 'margen bruto': 'grossMargin',
+  'ebitda': 'ebitda',
+  'ebit': 'ebit',
+  'net result': 'netResult', 'resultado neto': 'netResult', 'net income': 'netResult',
+  'financial expenses': 'financialExpenses', 'gastos financieros': 'financialExpenses',
+  // Balance
+  'non current assets': 'nonCurrentAssets', 'activo no corriente': 'nonCurrentAssets',
+  'current assets': 'currentAssets', 'activo corriente': 'currentAssets',
+  'net equity': 'equity', 'equity': 'equity', 'patrimonio neto': 'equity',
+  'non current liabilities': 'nonCurrentLiabilities', 'pasivo no corriente': 'nonCurrentLiabilities',
+  'current liabilities': 'currentLiabilities', 'pasivo corriente': 'currentLiabilities',
+  'receivables': 'receivables', 'payables': 'payables', 'procurement': 'procurement',
+  // Operation
+  'distributor': 'distributor', 'ditributor': 'distributor',
+  'asset type': 'assetType',
+  'product': 'productName', 'product name': 'productName',
+  'duration': 'durationMonths', 'duration months': 'durationMonths',
+  'amount': 'intervalPayment',           // in this template "Amount" is the periodic installment
+  'installment': 'intervalPayment', 'interval payment amount': 'intervalPayment',
+  'interval payment': 'paymentFrequency', // in this template "Interval payment" holds Monthly/Quarterly
+  'payment frequency': 'paymentFrequency', 'frequency': 'paymentFrequency',
+  'asset value capex': 'assetValue', 'asset value': 'assetValue', 'capex': 'assetValue', 'price capex': 'assetValue',
+  'residual value': 'residualValue',
+  'partner': 'partner',
+  'target irr': 'irrManual', 'target irr auto': 'irrManual', 'irr': 'irrManual',
+};
+
+/** Section headers to skip (they contain no data). */
+const EXCEL_SECTION_HEADERS = new Set([
+  '1 client info', '2 profit and loss info', '3 balance sheet info', '4 operational details',
+  'identification', 'profit and loss', 'balance sheet', 'operational details',
+]);
+
+/** Coerce a spreadsheet cell to a number if it looks numeric, else pass through. */
+function coerceNumber(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().replace(/€|\s/g, '').replace(/\.(?=\d{3}(?:[.,]|$))/g, '').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? v : n;
+}
+
+/** Normalise a frequency string to 'monthly' | 'quarterly'. */
+function coerceFrequency(v) {
+  if (!v) return 'monthly';
+  const s = String(v).toLowerCase();
+  if (s.startsWith('quart') || s.startsWith('trimest')) return 'quarterly';
+  return 'monthly';
+}
+
+/**
+ * Match a free-form sector string to the canonical key in sectorRating.
+ * Tolerant of "&"/"and", casing, extra whitespace, and trailing "s".
+ * Returns the canonical key when a match is found, else the original input.
+ */
+function normalizeSectorName(input, sectorRatingMap) {
+  if (!input) return input;
+  if (sectorRatingMap[input]) return input;
+  const canon = (s) => String(s).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+  const target = canon(input);
+  for (const k of Object.keys(sectorRatingMap)) {
+    if (canon(k) === target) return k;
+  }
+  return input;
+}
+
+/**
+ * Parse an ArrayBuffer of an .xlsx into an array of preview rows.
+ * Each preview row = { rowIndex, financials, score, warnings }.
+ */
+async function parseLoanBookExcel(arrayBuffer, criteria) {
+  if (typeof XLSX === 'undefined') throw new Error('The XLSX library did not load — check your internet connection and retry.');
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) throw new Error('The Excel file is empty.');
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+  if (rows.length === 0) throw new Error('The sheet contains no rows.');
+
+  // Determine how many operation columns there are (max non-null cells in any row past col A)
+  const colCount = rows.reduce((max, r) => Math.max(max, (r || []).length), 0);
+  if (colCount < 2) throw new Error('Expected labels in column A and at least one operation column (B, C, …).');
+
+  // Build column-major data: for each operation column index (1..colCount-1), a { field → value } object.
+  const perColumn = [];
+  for (let c = 1; c < colCount; c++) {
+    const record = {};
+    let sawAnything = false;
+    for (const row of rows) {
+      if (!row) continue;
+      const label = row[0];
+      const value = row[c];
+      const norm = normalizeLabel(label);
+      if (!norm || EXCEL_SECTION_HEADERS.has(norm)) continue;
+      // Strip leading numbering "2 " or "3 " that our normalizer sometimes leaves after a section header
+      const key = EXCEL_LABEL_MAP[norm] || EXCEL_LABEL_MAP[norm.replace(/^\d+\s+/, '')];
+      if (!key) continue;
+      if (value !== null && value !== undefined && value !== '') sawAnything = true;
+      if (key === 'paymentFrequency') {
+        record[key] = coerceFrequency(value);
+      } else if (key === 'sector') {
+        record[key] = value == null ? '' : normalizeSectorName(String(value).trim(), criteria.sectorRating);
+      } else if (key === 'country' || key === 'name' || key === 'cif' || key === 'partner' || key === 'distributor' || key === 'assetType' || key === 'productName') {
+        record[key] = value == null ? '' : String(value).trim();
+      } else if (key === 'irrManual') {
+        // Ignore — we always auto-calculate
+      } else {
+        record[key] = coerceNumber(value);
+      }
+    }
+    if (sawAnything && (record.name || record.cif)) {
+      perColumn.push(record);
+    }
+  }
+
+  if (perColumn.length === 0) throw new Error('No operation columns with a client name or CIF were found.');
+
+  // Score each and compute IRR
+  const preview = perColumn.map((rec, idx) => {
+    const warnings = [];
+    const financials = { ...EMPTY_FINANCIALS, ...rec };
+    // Amount defaults to CAPEX if only CAPEX was given
+    if (financials.assetValue && !financials.amount) financials.amount = financials.assetValue;
+    if (!financials.paymentFrequency) financials.paymentFrequency = 'monthly';
+    if (!financials.country) financials.country = 'ES';
+    // Auto-compute the target IRR (never trust an imported manual number)
+    financials.irr = computeTargetIRR({
+      assetValue:     financials.assetValue,
+      intervalPayment: financials.intervalPayment,
+      residualValue:  financials.residualValue,
+      durationMonths: financials.durationMonths,
+      paymentFrequency: financials.paymentFrequency,
+    });
+    if (financials.assetValue && financials.intervalPayment && financials.durationMonths && financials.irr == null) {
+      warnings.push('IRR could not be solved from these cash flows.');
+    }
+    if (!financials.assetValue && !financials.amount) warnings.push('No CAPEX / amount — operation will show 0€ exposure.');
+    if (!financials.sector) warnings.push('No sector — will default to Professional services.');
+    const scoreResult = score(financials, criteria);
+    return { rowIndex: idx + 2, financials, scoreResult, warnings };
+  });
+
+  return preview;
+}
+
+/** Build a downloadable template .xlsx matching what parseLoanBookExcel accepts. */
+function buildLoanBookTemplate() {
+  const rows = [
+    ['Client', 'e.g. NICTON PLUS SL'],
+    ['NIF', 'B65944837'],
+    ['Sector', 'Professional services'],
+    ['Country', 'ES'],
+    ['Maturity (years)', 13],
+    ['Capital', 3000],
+    [null, null],
+    ['2. Profit and Loss info', null],
+    [null, null],
+    ['Total revenue', 2350082.75],
+    ['GROSS MARGIN', 1643278.03],
+    ['EBITDA', 21114.47],
+    ['EBIT', 18073.12],
+    ['NET RESULT', 906.09],
+    [null, null],
+    ['3. Balance Sheet info', null],
+    [null, null],
+    ['NON CURRENT ASSETS', 32442.67],
+    ['CURRENT ASSETS', 832186.85],
+    ['NET EQUITY', 368376.18],
+    ['NON CURRENT LIABILITIES', 199040.10],
+    ['CURRENT LIABILITIES', 297213.24],
+    [null, null],
+    ['4. Operational details', null],
+    [null, null],
+    ['Distributor', 'NICTON PLUS'],
+    ['Asset Type', 'Electrical Appliances'],
+    ['Product', 'Dish washer'],
+    ['Duration', 24],
+    ['Amount', 13.625],
+    ['Interval payment', 'Monthly'],
+    ['Asset Value (CAPEX)', 300],
+    ['RESIDUAL VALUE', 13.625],
+    ['TARGET IRR (AUTO)', 'Calculated on import'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 26 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Loan book import');
+  return XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+}
+
+/* ---------- LoanImportPreview: modal to review parsed rows before committing ---------- */
+function LoanImportPreview({ preview, onCancel, onConfirm }) {
+  const good = preview.filter(p => p.warnings.length === 0).length;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" onClick={onCancel}>
+      <div className="bg-ink-900 border border-ink-700 rounded-lg w-full max-w-6xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-ink-700 flex items-center justify-between">
+          <div>
+            <div className="text-lg font-bold">Preview import</div>
+            <div className="text-xs text-slate-400 mt-0.5">{preview.length} operation{preview.length===1?'':'s'} parsed · {good} clean · {preview.length - good} with warnings. Nothing is committed until you approve.</div>
+          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-white p-1">{I.x}</button>
+        </div>
+        <div className="overflow-auto flex-1 p-5">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.12em] text-slate-500 border-b border-ink-700">
+                <th className="text-left py-2 pr-3 font-medium">Row</th>
+                <th className="text-left py-2 pr-3 font-medium">Client</th>
+                <th className="text-left py-2 pr-3 font-medium">CIF</th>
+                <th className="text-left py-2 pr-3 font-medium">Sector</th>
+                <th className="text-left py-2 pr-3 font-medium">Distributor / Product</th>
+                <th className="text-right py-2 pr-3 font-medium">CAPEX</th>
+                <th className="text-right py-2 pr-3 font-medium">Instal.</th>
+                <th className="text-right py-2 pr-3 font-medium">Dur.</th>
+                <th className="text-right py-2 pr-3 font-medium">IRR</th>
+                <th className="text-center py-2 pr-3 font-medium">Rating</th>
+                <th className="text-right py-2 pr-3 font-medium">Credit</th>
+                <th className="text-left py-2 pr-3 font-medium">Decision</th>
+                <th className="text-left py-2 pr-3 font-medium">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((p, idx) => {
+                const f = p.financials, s = p.scoreResult;
+                return (
+                  <tr key={idx} className="border-b border-ink-800/60 hover:bg-ink-800/30">
+                    <td className="py-2 pr-3 num text-slate-500">col {String.fromCharCode(65 + p.rowIndex - 1)}</td>
+                    <td className="py-2 pr-3 text-slate-100 font-medium">{f.name || '—'}</td>
+                    <td className="py-2 pr-3 num text-slate-300">{f.cif || '—'}</td>
+                    <td className="py-2 pr-3 text-slate-300">{f.sector || '—'}</td>
+                    <td className="py-2 pr-3 text-slate-400 text-[10px]">
+                      <div>{f.distributor || '—'}</div>
+                      <div className="text-slate-500">{[f.assetType, f.productName].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="py-2 pr-3 num text-right text-slate-200">{f.assetValue != null ? fmtEur(f.assetValue) : '—'}</td>
+                    <td className="py-2 pr-3 num text-right text-mint-400">{f.intervalPayment != null ? fmtNum(f.intervalPayment, 2) + ' €' : '—'}</td>
+                    <td className="py-2 pr-3 num text-right text-slate-400">{f.durationMonths ? f.durationMonths + 'm' : '—'}</td>
+                    <td className="py-2 pr-3 num text-right font-semibold">
+                      <span className={f.irr != null ? (f.irr > 0 ? 'text-mint-300' : 'text-red-400') : 'text-slate-600'}>
+                        {f.irr != null && isFinite(f.irr) ? (f.irr*100).toFixed(2) + '%' : '—'}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-center"><RatingBadge r={s.finalRating} size="sm"/></td>
+                    <td className="py-2 pr-3 num text-right text-mint-400 font-semibold">{fmtEur(s.creditOpinion)}</td>
+                    <td className="py-2 pr-3"><Decision d={s.decision} size="sm"/></td>
+                    <td className="py-2 pr-3 text-amber-300 text-[10px] leading-tight">
+                      {p.warnings.length === 0 ? <span className="text-slate-600">—</span> : p.warnings.map((w,i) => <div key={i}>· {w}</div>)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-5 border-t border-ink-700 flex items-center justify-between bg-ink-800/40">
+          <div className="text-xs text-slate-400">
+            Approve to add all {preview.length} operations to the Loan Book. Rows with warnings can still be imported — you can edit them individually afterwards.
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onCancel} className="border border-ink-700 text-slate-300 hover:text-white px-4 py-2 rounded text-xs font-semibold">Cancel</button>
+            <button onClick={onConfirm} className="bg-mint-500 text-ink-950 hover:bg-mint-400 px-5 py-2 rounded text-xs font-bold flex items-center gap-2">{I.check} Import {preview.length}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoanBook({ loanbook, deleteLoan, setView, pushToast, criteria, registerLoan }) {
+  const [filter, setFilter] = useState({ rating: '', sector: '', country: '', partner: '' });
+  const [preview, setPreview] = useState(null);      // rows parsed from Excel awaiting confirmation
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef(null);
+  const filtered = useMemo(() => loanbook.filter(l =>
+    (!filter.rating || l.rating === filter.rating) &&
+    (!filter.sector || l.sector === filter.sector) &&
+    (!filter.country || l.country === filter.country) &&
+    (!filter.partner || (l.partner || '').toLowerCase().includes(filter.partner.toLowerCase()))
+  ), [loanbook, filter]);
+
+  const sectors = [...new Set(loanbook.map(l => l.sector).filter(Boolean))];
+  const countries = [...new Set(loanbook.map(l => l.country).filter(Boolean))];
+
+  const exposureByCif = useMemo(() => {
+    const m = {};
+    loanbook.forEach(l => { if (l.cif) m[l.cif] = (m[l.cif] || 0) + (l.amount || 0); });
+    return m;
+  }, [loanbook]);
+
+  const exportCsv = () => {
+    const headers = ['ID','Date','CIF','Client','Country','Sector','Partner','Distributor','Product','Asset type','Amount','Duration (m)','Interval payment','Frequency','Asset value (CAPEX)','Residual','IRR (annualized)','Rating','Score','Credit opinion','Decision'];
+    const rows = filtered.map(l => [l.id, l.date, l.cif, l.name, l.country, l.sector, l.partner, l.distributor || '', l.productName || '', l.assetType, l.amount, l.durationMonths, l.intervalPayment, l.paymentFrequency, l.assetValue, l.residualValue, l.irr, l.rating, l.totalScore, l.creditOpinion, l.decision]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${(c ?? '').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `tecfys_loanbook_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    pushToast('Loan book exported as CSV.', 'success');
+  };
+
+  const downloadTemplate = () => {
+    try {
+      const buf = buildLoanBookTemplate();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'tecfys_loanbook_template.xlsx'; a.click();
+      URL.revokeObjectURL(url);
+      pushToast('Template downloaded — fill each column with one operation.', 'info');
+    } catch (e) {
+      pushToast('Failed to build template: ' + e.message, 'error');
+    }
+  };
+
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) fileInputRef.current.value = '';   // allow re-selecting the same file later
+    if (!file) return;
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const parsed = await parseLoanBookExcel(buf, criteria);
+      setPreview(parsed);
+    } catch (err) {
+      pushToast('Import failed: ' + err.message, 'error');
+    }
+    setImporting(false);
+  };
+
+  const confirmImport = async () => {
+    if (!preview) return;
+    let approved = 0, rejected = 0;
+    for (const p of preview) {
+      const s = p.scoreResult;
+      const f = p.financials;
+      const op = {
+        id: Date.now() + Math.floor(Math.random() * 10000),
+        date: new Date().toISOString().slice(0,10),
+        cif: f.cif,
+        name: f.name,
+        country: f.country,
+        sector: f.sector,
+        amount: f.amount ?? f.assetValue ?? 0,
+        durationMonths: f.durationMonths,
+        intervalPayment: f.intervalPayment,
+        paymentFrequency: f.paymentFrequency,
+        distributor: f.distributor,
+        assetType: f.assetType,
+        productName: f.productName,
+        assetValue: f.assetValue,
+        residualValue: f.residualValue,
+        partner: f.partner,
+        irr: f.irr,
+        rating: s.finalRating,
+        totalScore: s.totalScore,
+        creditOpinion: s.creditOpinion,
+        decision: s.decision,
+        adjustedEbitda: s.adjustedEbitda,
+        financials: f,
+        _importedAt: new Date().toISOString(),
+      };
+      await registerLoan(op);
+      if (s.decision === 'reject') rejected++; else approved++;
+    }
+    setPreview(null);
+    pushToast(`Imported ${preview.length} operation${preview.length===1?'':'s'} · ${approved} approvable · ${rejected} flagged reject.`, 'success');
+  };
+
+  return (
+    <div className="space-y-6">
+      <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={onFileChosen} className="hidden"/>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Loan book</h2>
+          <p className="text-sm text-slate-400 mt-1">All approved operations with cumulative exposure per CIF.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={downloadTemplate}
+            title="Download an .xlsx template pre-filled with the expected labels"
+            className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-mint-400 px-3 py-2 rounded-md text-sm">
+            {I.download} Template
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+            className="flex items-center gap-2 border border-mint-500/40 text-mint-400 hover:bg-mint-500/10 px-3 py-2 rounded-md text-sm disabled:opacity-50">
+            {importing
+              ? <><span className="w-3.5 h-3.5 border-2 border-mint-400 border-t-transparent rounded-full animate-spin"/> Parsing…</>
+              : <>{I.upload} Import Excel</>}
+          </button>
+          <button onClick={exportCsv} className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-mint-400 px-3 py-2 rounded-md text-sm">{I.download} Export CSV</button>
+          <button onClick={() => setView('new')} className="flex items-center gap-2 bg-mint-500 text-ink-950 font-semibold px-4 py-2 rounded-md hover:bg-mint-400 transition text-sm">{I.plus} New scoring</button>
+        </div>
+      </div>
+
+      {preview && <LoanImportPreview preview={preview} onCancel={() => setPreview(null)} onConfirm={confirmImport}/>}
+
+      <Card>
+        <div className="grid grid-cols-4 gap-3">
+          <Field label="Rating" value={filter.rating} onChange={v => setFilter(f => ({...f, rating: v}))} options={RATINGS_ORDERED}/>
+          <Field label="Sector" value={filter.sector} onChange={v => setFilter(f => ({...f, sector: v}))} options={sectors}/>
+          <Field label="Country" value={filter.country} onChange={v => setFilter(f => ({...f, country: v}))} options={countries}/>
+          <Field label="Partner" value={filter.partner} onChange={v => setFilter(f => ({...f, partner: v}))}/>
+        </div>
+      </Card>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <div className="text-sm text-slate-500 italic py-12 text-center">
+            <div className="mb-3">No operations match the current filters.</div>
+            <button onClick={() => setFilter({rating:'',sector:'',country:'',partner:''})} className="text-mint-400 hover:text-mint-300 underline text-sm">Clear filters</button>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.14em] text-slate-500 border-b border-ink-700">
+                  <th className="text-left py-2 px-2 font-medium">Date</th>
+                  <th className="text-left py-2 px-2 font-medium">CIF</th>
+                  <th className="text-left py-2 px-2 font-medium">Client</th>
+                  <th className="text-left py-2 px-2 font-medium">Sector</th>
+                  <th className="text-left py-2 px-2 font-medium">Country</th>
+                  <th className="text-left py-2 px-2 font-medium">Partner</th>
+                  <th className="text-right py-2 px-2 font-medium">Amount</th>
+                  <th className="text-right py-2 px-2 font-medium">Duration</th>
+                  <th className="text-center py-2 px-2 font-medium">Rating</th>
+                  <th className="text-right py-2 px-2 font-medium">Credit limit</th>
+                  <th className="text-right py-2 px-2 font-medium">Cum. exp.</th>
+                  <th className="text-right py-2 px-2 font-medium">IRR</th>
+                  <th className="w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice().reverse().map(l => (
+                  <tr key={l.id} className="border-b border-ink-800/60 hover:bg-ink-800/30">
+                    <td className="py-2.5 px-2 text-slate-400 num text-xs">{l.date}</td>
+                    <td className="py-2.5 px-2 num text-slate-200 text-xs">{l.cif}</td>
+                    <td className="py-2.5 px-2 text-slate-100 text-xs">{l.name}</td>
+                    <td className="py-2.5 px-2 text-slate-400 text-xs">{l.sector}</td>
+                    <td className="py-2.5 px-2 text-slate-400 num text-xs">{l.country}</td>
+                    <td className="py-2.5 px-2 text-slate-400 text-xs">{l.partner || '—'}</td>
+                    <td className="py-2.5 px-2 num text-right text-xs">{fmtEur(l.amount)}</td>
+                    <td className="py-2.5 px-2 num text-right text-xs text-slate-400">{l.durationMonths ? l.durationMonths + 'm' : '—'}</td>
+                    <td className="py-2.5 px-2 text-center"><RatingBadge r={l.rating} size="sm"/></td>
+                    <td className="py-2.5 px-2 num text-right text-mint-400 text-xs">{fmtEur(l.creditOpinion)}</td>
+                    <td className="py-2.5 px-2 num text-right text-xs">{fmtEur(exposureByCif[l.cif])}</td>
+                    <td className="py-2.5 px-2 num text-right text-xs text-slate-400">{l.irr ? fmtPct(l.irr) : '—'}</td>
+                    <td className="py-2.5 px-2">
+                      <button onClick={() => { if (confirm('Delete operation ' + l.name + '?')) deleteLoan(l.id); }}
+                        className="text-slate-600 hover:text-red-400 transition">{I.trash}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================================
+   VIEW: Criteria Editor
+   ===================================================================== */
+function CriteriaEditor({ criteria, setCriteria, pushToast }) {
+  const [tab, setTab] = useState('weights');
+
+  const updateWeight = (key, val) => {
+    setCriteria(prev => ({ ...prev, weights: { ...prev.weights, [key]: parseFloat(val) || 0 } }));
+  };
+  const updateThreshold = (ratio, rating, val) => {
+    setCriteria(prev => ({
+      ...prev,
+      ratios: {
+        ...prev.ratios,
+        [ratio]: {
+          ...prev.ratios[ratio],
+          tiers: prev.ratios[ratio].tiers.map(([r, t]) => r === rating ? [r, parseFloat(val) || 0] : [r, t])
+        }
+      }
+    }));
+  };
+  const updatePrudence = (rating, val) => {
+    setCriteria(prev => ({ ...prev, prudence: { ...prev.prudence, [rating]: parseFloat(val) || 0 } }));
+  };
+  const updateRatingScore = (ratioKey, rating, val) => {
+    setCriteria(prev => ({
+      ...prev,
+      ratios: {
+        ...prev.ratios,
+        [ratioKey]: {
+          ...prev.ratios[ratioKey],
+          scoreTable: {
+            ...(prev.ratios[ratioKey].scoreTable || {}),
+            [rating]: parseFloat(val) || 0,
+          }
+        }
+      }
+    }));
+  };
+  const updateSectorRating = (sector, val) => {
+    setCriteria(prev => ({ ...prev, sectorRating: { ...prev.sectorRating, [sector]: val } }));
+  };
+  const updateBucket = (rating, val) => {
+    setCriteria(prev => ({
+      ...prev,
+      scoreBuckets: prev.scoreBuckets.map(([r, lb]) => r === rating ? [r, parseFloat(val) || 0] : [r, lb])
+    }));
+  };
+  const updateDecision = (rating, val) => {
+    setCriteria(prev => ({ ...prev, decisionRules: { ...prev.decisionRules, [rating]: val } }));
+  };
+
+  const resetAll = () => {
+    if (confirm('Reset all criteria to defaults? This cannot be undone.')) {
+      setCriteria(DEFAULT_CRITERIA);
+      pushToast('Criteria reset to defaults.', 'success');
+    }
+  };
+
+  const weightSum = Object.values(criteria.weights).reduce((s,v) => s+v, 0);
+
+  const TABS = [
+    { id: 'weights', label: 'Ratio weights' },
+    { id: 'thresholds', label: 'Rating thresholds' },
+    { id: 'scores', label: 'Scoring matrix' },
+    { id: 'buckets', label: 'Score → final rating' },
+    { id: 'prudence', label: 'Prudence factors' },
+    { id: 'sectors', label: 'Sector ratings' },
+    { id: 'decisions', label: 'Decision rules' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Criteria &amp; settings</h2>
+          <p className="text-sm text-slate-400 mt-1">Tune scoring thresholds, weights, sector mappings and approval rules. Changes are saved automatically.</p>
+        </div>
+        <button onClick={resetAll} className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-red-400 px-3 py-2 rounded-md text-sm">{I.reset} Reset to defaults</button>
+      </div>
+
+      <div className="flex border-b border-ink-700 overflow-x-auto">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={"px-4 py-2.5 text-xs uppercase tracking-[0.14em] font-medium border-b-2 -mb-px whitespace-nowrap " +
+              (tab === t.id ? 'border-mint-500 text-mint-400' : 'border-transparent text-slate-400 hover:text-slate-200')}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'weights' && (
+        <Card title={`Ratio weights · sum: ${fmtPct(weightSum,0)} (target 100%)`} subtitle="Weight applied to each ratio's rating score (1-10) to compute total weighted score.">
+          <div className="space-y-3">
+            {Object.entries(criteria.ratios).map(([key, def]) => (
+              <div key={key} className="grid grid-cols-12 gap-3 items-center">
+                <div className="col-span-3 text-sm text-slate-200 font-medium">{def.label}</div>
+                <div className="col-span-4 text-xs text-slate-500 italic">{def.formula}</div>
+                <div className="col-span-3">
+                  <div className="h-2 bg-ink-800 rounded overflow-hidden">
+                    <div className="h-full bg-mint-500" style={{ width: ((criteria.weights[key]||0)*100*3) + '%', maxWidth: '100%' }}/>
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="relative">
+                    <input type="number" step="0.01" value={criteria.weights[key] ?? 0}
+                      onChange={e => updateWeight(key, e.target.value)}
+                      className="w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-1.5 text-sm text-slate-100 num pr-7"/>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">×</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {Math.abs(weightSum - 1) > 0.001 && (
+            <div className="mt-4 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-xs text-yellow-300 flex items-start gap-2">
+              {I.alert} Weight sum is {fmtPct(weightSum,0)} — should equal 100% for balanced scoring.
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === 'thresholds' && (
+        <div className="space-y-4">
+          {Object.entries(criteria.ratios).filter(([k,d]) => d.direction !== 'rating').map(([key, def]) => (
+            <Card key={key} title={def.label} subtitle={`${def.formula} · direction: ${def.direction === 'higher' ? 'higher value = better' : 'lower value = better'}`}>
+              <div className="grid grid-cols-8 gap-2">
+                {def.tiers.map(([r, t]) => (
+                  <div key={r}>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mb-1 text-center">{r}</div>
+                    <input type="number" step="0.01" value={t}
+                      onChange={e => updateThreshold(key, r, e.target.value)}
+                      className="w-full bg-ink-800 border border-ink-700 rounded-md px-2 py-1.5 text-xs text-slate-100 num text-center"/>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {tab === 'scores' && (
+        <Card title="Scoring matrix" subtitle="Each ratio has its own normalisation: a value's rating maps to a per-ratio score (1-10). Score × weight gives the contribution. Column totals show the final score for a company that scores at the same rating across every ratio.">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-ink-700">
+                  <th className="text-left py-2 pr-3 font-medium text-slate-300">Ratio</th>
+                  <th className="text-right py-2 px-2 font-medium text-slate-400 w-16">Weight</th>
+                  {RATINGS_ORDERED.map(r => (
+                    <th key={r} className="px-1.5 py-2 text-center font-medium">
+                      <div className="flex justify-center"><RatingBadge r={r} size="sm"/></div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(criteria.ratios).map(([key, def]) => {
+                  const weight = criteria.weights[key] || 0;
+                  return (
+                    <tr key={key} className="border-b border-ink-800/60 hover:bg-ink-800/30">
+                      <td className="py-2 pr-3">
+                        <div className="font-medium text-slate-200">{def.label}</div>
+                        <div className="text-[10px] text-slate-500 num">{def.formula}</div>
+                      </td>
+                      <td className="py-2 px-2 num text-right text-mint-400 font-semibold">{(weight*100).toFixed(0)}%</td>
+                      {RATINGS_ORDERED.map(r => {
+                        const v = def.scoreTable?.[r] ?? 0;
+                        return (
+                          <td key={r} className="px-1 py-1">
+                            <input type="number" step="0.1" value={v}
+                              onChange={e => updateRatingScore(key, r, e.target.value)}
+                              className="w-full bg-ink-800 border border-ink-700 rounded px-1.5 py-1 text-xs text-slate-100 num text-center focus:border-mint-500"/>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+                {/* Column totals row */}
+                <tr className="border-t-2 border-mint-500/30 bg-mint-500/[0.04]">
+                  <td className="py-3 pr-3 text-[11px] uppercase tracking-[0.14em] text-mint-400 font-semibold">Column total</td>
+                  <td className="py-3 px-2 num text-right text-slate-300">{((Object.values(criteria.weights).reduce((s,v)=>s+v,0))*100).toFixed(0)}%</td>
+                  {RATINGS_ORDERED.map(r => {
+                    const colTotal = Object.entries(criteria.ratios).reduce((sum, [k, def]) =>
+                      sum + (def.scoreTable?.[r] ?? 0) * (criteria.weights[k] || 0), 0);
+                    return (
+                      <td key={r} className="px-1 py-3 num text-center text-sm font-bold text-mint-300">{colTotal.toFixed(3)}</td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 p-3 bg-ink-800/40 border border-ink-700 rounded text-[11px] text-slate-400 leading-relaxed">
+            <strong className="text-slate-300">How to read this:</strong> Each row is a ratio with its weight (sums to 100%). Each cell is the normalised score (1-10) for that ratio at that rating. Final company score = Σ (score<sub>i</sub> × weight<sub>i</sub>). The bottom row shows what a company scoring uniformly at each rating would get — and these are the natural lower bounds for the <span className="text-mint-400">Score → final rating</span> tab.
+          </div>
+        </Card>
+      )}
+
+      {tab === 'buckets' && (
+        <Card title="Score buckets → final rating" subtitle="Total weighted score is mapped to the final rating based on lower bound.">
+          <div className="space-y-2">
+            {criteria.scoreBuckets.map(([r, lb], idx) => (
+              <div key={r} className="grid grid-cols-12 gap-3 items-center">
+                <div className="col-span-2 flex"><RatingBadge r={r}/></div>
+                <div className="col-span-2 text-xs text-slate-500">if score ≥</div>
+                <div className="col-span-2">
+                  <input type="number" step="0.1" value={lb}
+                    onChange={e => updateBucket(r, e.target.value)}
+                    className="w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-1.5 text-sm text-slate-100 num"/>
+                </div>
+                <div className="col-span-6 text-xs text-slate-500">
+                  {idx === 0 ? `Range: ≥ ${lb}` : `Range: ${lb} ≤ score < ${criteria.scoreBuckets[idx-1][1]}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {tab === 'prudence' && (
+        <Card title="Factorial prudence" subtitle="Credit opinion = Adjusted EBITDA × prudence factor (selected by final rating).">
+          <div className="grid grid-cols-8 gap-3">
+            {RATINGS_ORDERED.map(r => (
+              <div key={r}>
+                <div className="flex justify-center mb-2"><RatingBadge r={r}/></div>
+                <input type="number" step="0.01" value={criteria.prudence[r]}
+                  onChange={e => updatePrudence(r, e.target.value)}
+                  className="w-full bg-ink-800 border border-ink-700 rounded-md px-2 py-1.5 text-sm text-slate-100 num text-center"/>
+                <div className="text-[10px] text-slate-500 text-center mt-1">{fmtPct(criteria.prudence[r],0)}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 px-3 py-2 bg-mint-500/10 border border-mint-500/30 rounded-md text-xs text-mint-300 flex items-start gap-2">
+            {I.info} Example: EBITDA 10,000 × AA prudence (0.25) = 2,500 credit opinion.
+          </div>
+        </Card>
+      )}
+
+      {tab === 'sectors' && (
+        <Card title="Sector → rating" subtitle="Each sector is assigned a base rating used in the sectorial risk component.">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+            {Object.entries(criteria.sectorRating).map(([s, r]) => (
+              <div key={s} className="flex items-center justify-between gap-3 border-b border-ink-800 py-2">
+                <span className="text-sm text-slate-200 flex-1">{s}</span>
+                <select value={r} onChange={e => updateSectorRating(s, e.target.value)}
+                  className="bg-ink-800 border border-ink-700 rounded-md px-2 py-1 text-xs text-slate-100 num">
+                  {RATINGS_ORDERED.map(rr => <option key={rr} value={rr}>{rr}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {tab === 'decisions' && (
+        <Card title="Decision rules" subtitle="Outcome assigned automatically per final rating.">
+          <div className="space-y-2">
+            {RATINGS_ORDERED.map(r => (
+              <div key={r} className="grid grid-cols-12 gap-3 items-center">
+                <div className="col-span-2"><RatingBadge r={r}/></div>
+                <div className="col-span-6">
+                  <select value={criteria.decisionRules[r]} onChange={e => updateDecision(r, e.target.value)}
+                    className="w-full bg-ink-800 border border-ink-700 rounded-md px-3 py-1.5 text-sm text-slate-100">
+                    <option value="auto">Auto approved</option>
+                    <option value="limited">Approved with limits</option>
+                    <option value="manual">Manual review</option>
+                    <option value="reject">Rejected</option>
+                  </select>
+                </div>
+                <div className="col-span-4"><Decision d={criteria.decisionRules[r]}/></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================================
+   VIEW: Pricing Catalog (CRUD)
+   ===================================================================== */
+function PricingEditor({ pricing, setPricing, pushToast }) {
+  const [filter, setFilter] = useState({ distributor: '', assetType: '' });
+  const [draft, setDraft] = useState({ distributor: '', assetType: '', productName: '', durationMonths: 12, priceCAPEX: '', installment: '', residualValue: '' });
+  const [editingId, setEditingId] = useState(null);
+
+  const distributors = useMemo(() => [...new Set(pricing.map(p => p.distributor))].sort(), [pricing]);
+  const assetTypes = useMemo(() => [...new Set(pricing.map(p => p.assetType))].sort(), [pricing]);
+
+  const filtered = pricing.filter(p =>
+    (!filter.distributor || p.distributor === filter.distributor) &&
+    (!filter.assetType || p.assetType === filter.assetType)
+  ).sort((a, b) =>
+    a.distributor.localeCompare(b.distributor) ||
+    a.assetType.localeCompare(b.assetType) ||
+    a.productName.localeCompare(b.productName) ||
+    a.durationMonths - b.durationMonths
+  );
+
+  const updateRow = (id, field, val) => {
+    setPricing(pricing.map(p => p.id === id ? { ...p, [field]: val } : p));
+  };
+  const deleteRow = (id) => {
+    if (!window.confirm('Delete this pricing entry?')) return;
+    setPricing(pricing.filter(p => p.id !== id));
+    pushToast('Pricing entry deleted.', 'info');
+  };
+  const addRow = () => {
+    if (!draft.distributor || !draft.assetType || !draft.productName || !draft.priceCAPEX || !draft.installment) {
+      pushToast('Distributor, asset type, product, CAPEX and installment are required.', 'error');
+      return;
+    }
+    const row = {
+      id: 'prc_' + Date.now(),
+      distributor: draft.distributor.trim(),
+      assetType: draft.assetType.trim(),
+      productName: draft.productName.trim(),
+      durationMonths: parseInt(draft.durationMonths) || 12,
+      priceCAPEX: parseFloat(draft.priceCAPEX) || 0,
+      installment: parseFloat(draft.installment) || 0,
+      residualValue: parseFloat(draft.residualValue) || 0,
+    };
+    setPricing([...pricing, row]);
+    setDraft({ distributor: draft.distributor, assetType: draft.assetType, productName: '', durationMonths: 12, priceCAPEX: '', installment: '', residualValue: '' });
+    pushToast('Pricing entry added.', 'success');
+  };
+  const resetToSeed = () => {
+    if (!window.confirm('Reset the entire pricing catalog to the original 110 default entries? Custom rows will be lost.')) return;
+    setPricing(PRICING_SEED);
+    pushToast('Catalog reset to default seed.', 'info');
+  };
+
+  const irrFor = (p) => computeTargetIRR({
+    assetValue: p.priceCAPEX, intervalPayment: p.installment, residualValue: p.residualValue, durationMonths: p.durationMonths, paymentFrequency: 'monthly',
+  });
+
+  const dCls = "bg-ink-800 border border-ink-700 rounded px-2 py-1 text-xs text-slate-100 w-full focus:border-mint-500";
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Pricing catalog</h2>
+          <p className="text-sm text-slate-400 mt-1">Distributor → asset → product → duration. Feeds the Operation Details auto-fill in New Scoring.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-slate-500 mr-2">{pricing.length} entries</div>
+          <button onClick={resetToSeed} className="flex items-center gap-2 border border-ink-700 text-slate-300 hover:text-white px-3 py-2 rounded-md text-xs">{I.reset} Reset to seed</button>
+        </div>
+      </div>
+
+      <Card title="Add new product">
+        <div className="grid grid-cols-7 gap-2 items-end">
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Distributor</span>
+            <input value={draft.distributor} onChange={e => setDraft({...draft, distributor: e.target.value})} placeholder="e.g. NICTON PLUS" list="dist-list" className={dCls}/>
+            <datalist id="dist-list">{distributors.map(d => <option key={d} value={d}/>)}</datalist>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Asset type</span>
+            <input value={draft.assetType} onChange={e => setDraft({...draft, assetType: e.target.value})} placeholder="e.g. Laptops" list="atype-list" className={dCls}/>
+            <datalist id="atype-list">{assetTypes.map(a => <option key={a} value={a}/>)}</datalist>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Product name</span>
+            <input value={draft.productName} onChange={e => setDraft({...draft, productName: e.target.value})} placeholder="e.g. ASUS" className={dCls}/>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Duration (m)</span>
+            <input type="number" value={draft.durationMonths} onChange={e => setDraft({...draft, durationMonths: e.target.value})} className={dCls + ' num'}/>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Price CAPEX (€)</span>
+            <input type="number" step="0.01" value={draft.priceCAPEX} onChange={e => setDraft({...draft, priceCAPEX: e.target.value})} className={dCls + ' num'}/>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Installment (€)</span>
+            <input type="number" step="0.0001" value={draft.installment} onChange={e => setDraft({...draft, installment: e.target.value})} className={dCls + ' num'}/>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Residual (€)</span>
+              <input type="number" step="0.0001" value={draft.residualValue} onChange={e => setDraft({...draft, residualValue: e.target.value})} className={dCls + ' num'}/>
+            </div>
+            <button onClick={addRow} className="bg-mint-500 text-ink-950 font-bold px-3 py-1 rounded text-xs hover:bg-mint-400 transition self-end">{I.plus}</button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title={"Catalog (" + filtered.length + " of " + pricing.length + " shown)"}>
+        <div className="flex gap-3 mb-3 items-end">
+          <div className="w-56">
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Filter by distributor</span>
+            <select value={filter.distributor} onChange={e => setFilter({...filter, distributor: e.target.value})} className={dCls}>
+              <option value="">— All —</option>
+              {distributors.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="w-56">
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Filter by asset type</span>
+            <select value={filter.assetType} onChange={e => setFilter({...filter, assetType: e.target.value})} className={dCls}>
+              <option value="">— All —</option>
+              {assetTypes.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          {(filter.distributor || filter.assetType) && (
+            <button onClick={() => setFilter({distributor: '', assetType: ''})} className="text-xs text-slate-400 hover:text-mint-400 underline">Clear filters</button>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.12em] text-slate-500 border-b border-ink-700">
+                <th className="text-left py-2 px-2 font-medium">Distributor</th>
+                <th className="text-left py-2 px-2 font-medium">Asset type</th>
+                <th className="text-left py-2 px-2 font-medium">Product</th>
+                <th className="text-right py-2 px-2 font-medium">Duration</th>
+                <th className="text-right py-2 px-2 font-medium">Price CAPEX</th>
+                <th className="text-right py-2 px-2 font-medium">Installment</th>
+                <th className="text-right py-2 px-2 font-medium">Residual</th>
+                <th className="text-right py-2 px-2 font-medium">IRR (ann.)</th>
+                <th className="text-right py-2 px-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => {
+                const editing = editingId === p.id;
+                const irr = irrFor(p);
+                return (
+                  <tr key={p.id} className="border-b border-ink-800/60 hover:bg-ink-800/30 transition">
+                    {editing ? (
+                      <>
+                        <td className="py-1.5 px-2"><input value={p.distributor} onChange={e => updateRow(p.id, 'distributor', e.target.value)} className={dCls}/></td>
+                        <td className="py-1.5 px-2"><input value={p.assetType} onChange={e => updateRow(p.id, 'assetType', e.target.value)} className={dCls}/></td>
+                        <td className="py-1.5 px-2"><input value={p.productName} onChange={e => updateRow(p.id, 'productName', e.target.value)} className={dCls}/></td>
+                        <td className="py-1.5 px-2"><input type="number" value={p.durationMonths} onChange={e => updateRow(p.id, 'durationMonths', parseInt(e.target.value) || 0)} className={dCls + ' num text-right'}/></td>
+                        <td className="py-1.5 px-2"><input type="number" step="0.01" value={p.priceCAPEX} onChange={e => updateRow(p.id, 'priceCAPEX', parseFloat(e.target.value) || 0)} className={dCls + ' num text-right'}/></td>
+                        <td className="py-1.5 px-2"><input type="number" step="0.0001" value={p.installment} onChange={e => updateRow(p.id, 'installment', parseFloat(e.target.value) || 0)} className={dCls + ' num text-right'}/></td>
+                        <td className="py-1.5 px-2"><input type="number" step="0.0001" value={p.residualValue} onChange={e => updateRow(p.id, 'residualValue', parseFloat(e.target.value) || 0)} className={dCls + ' num text-right'}/></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 px-2 text-slate-200 font-medium">{p.distributor}</td>
+                        <td className="py-2 px-2 text-slate-300 text-xs">{p.assetType}</td>
+                        <td className="py-2 px-2 text-slate-300">{p.productName}</td>
+                        <td className="py-2 px-2 num text-right text-slate-400">{p.durationMonths}m</td>
+                        <td className="py-2 px-2 num text-right text-slate-200">{fmtEur(p.priceCAPEX)}</td>
+                        <td className="py-2 px-2 num text-right text-mint-400">{p.installment.toFixed(2)} €</td>
+                        <td className="py-2 px-2 num text-right text-slate-400">{p.residualValue.toFixed(2)} €</td>
+                      </>
+                    )}
+                    <td className="py-2 px-2 num text-right text-xs font-semibold">
+                      <span className={irr != null ? (irr > 0 ? 'text-mint-300' : 'text-red-400') : 'text-slate-600'}>
+                        {irr != null && isFinite(irr) ? (irr*100).toFixed(2) + '%' : '—'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditingId(editing ? null : p.id)} className="text-[10px] px-2 py-1 rounded border border-ink-700 hover:border-mint-500 hover:text-mint-400 text-slate-400 transition">
+                          {editing ? 'Done' : 'Edit'}
+                        </button>
+                        <button onClick={() => deleteRow(p.id)} className="text-red-400/70 hover:text-red-400 px-1.5 py-1">{I.trash}</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan="9" className="py-8 text-center text-sm text-slate-500 italic">No entries match the filters.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* =====================================================================
+   TOAST
+   ===================================================================== */
+function Toast({ toast }) {
+  if (!toast) return null;
+  const styles = {
+    success: 'bg-mint-500/10 border-mint-500/40 text-mint-300',
+    error: 'bg-red-500/10 border-red-500/40 text-red-300',
+    info: 'bg-ink-700 border-ink-600 text-slate-200',
+  };
+  return (
+    <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-2">
+      <div className={"px-4 py-3 border rounded-md shadow-2xl backdrop-blur " + (styles[toast.type] || styles.info)}>
+        <div className="flex items-center gap-2 text-sm">
+          {toast.type === 'success' && I.check}
+          {toast.type === 'error' && I.alert}
+          {toast.type === 'info' && I.info}
+          <span>{toast.msg}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================================
+   APP ROOT
+   ===================================================================== */
+function App() {
+  const [view, setView] = useState('dashboard');
+  const [criteria, setCriteriaRaw] = useState(DEFAULT_CRITERIA);
+  const [loanbook, setLoanbookRaw] = useState([]);
+  const [partners, setPartnersRaw] = useState([]);
+  const [pricing, setPricingRaw] = useState(PRICING_SEED);
+  const [apiConfig, setApiConfigRaw] = useState(DEFAULT_API_CONFIG);
+  const [financials, setFinancials] = useState(EMPTY_FINANCIALS);
+  const [toast, setToast] = useState(null);
+  const [booted, setBooted] = useState(false);
+
+  // Load persisted state
+  useEffect(() => {
+    (async () => {
+      const c = await storageGet('tecfys:criteria', null);
+      if (c) {
+        // Migration: stored criteria from an older version may lack per-ratio scoreTable.
+        // Backfill it from DEFAULT_CRITERIA so the new normalised scoring works on saved configs.
+        const migrated = { ...c };
+        if (c.ratios) {
+          migrated.ratios = { ...c.ratios };
+          for (const key of Object.keys(DEFAULT_CRITERIA.ratios)) {
+            const userRatio = c.ratios[key] || {};
+            const defRatio = DEFAULT_CRITERIA.ratios[key];
+            migrated.ratios[key] = {
+              ...defRatio,
+              ...userRatio,
+              scoreTable: userRatio.scoreTable || defRatio.scoreTable,
+            };
+          }
+        }
+        setCriteriaRaw(migrated);
+      }
+      const lb = await storageGet('tecfys:loanbook', []);
+      setLoanbookRaw(lb);
+      const p = await storageGet('tecfys:partners', []);
+      setPartnersRaw(p);
+      const stored = await storageGet('tecfys:pricing', null);
+      if (stored && Array.isArray(stored) && stored.length > 0) setPricingRaw(stored);
+      const cfg = await storageGet('tecfys:api_config', null);
+      if (cfg) setApiConfigRaw({ ...DEFAULT_API_CONFIG, ...cfg });
+      setBooted(true);
+    })();
+  }, []);
+
+  const setCriteria = (updater) => {
+    setCriteriaRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      storageSet('tecfys:criteria', next);
+      return next;
+    });
+  };
+  const setPricing = (updater) => {
+    setPricingRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      storageSet('tecfys:pricing', next);
+      return next;
+    });
+  };
+  const setApiConfig = (updater) => {
+    setApiConfigRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      storageSet('tecfys:api_config', next);
+      return next;
+    });
+  };
+  const registerLoan = async (op) => {
+    const next = [...loanbook, op];
+    setLoanbookRaw(next);
+    await storageSet('tecfys:loanbook', next);
+  };
+  const deleteLoan = async (id) => {
+    const next = loanbook.filter(l => l.id !== id);
+    setLoanbookRaw(next);
+    await storageSet('tecfys:loanbook', next);
+    pushToast('Operation deleted.', 'info');
+  };
+  const addPartner = async (name) => {
+    if (!name || partners.includes(name)) return;
+    const next = [...partners, name].sort((a,b) => a.localeCompare(b));
+    setPartnersRaw(next);
+    await storageSet('tecfys:partners', next);
+  };
+  const pushToast = (msg, type = 'info') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  if (!booted) {
+    return <div className="min-h-screen flex items-center justify-center"><span className="w-6 h-6 border-2 border-mint-500 border-t-transparent rounded-full animate-spin"/></div>;
+  }
+
+  return (
+    <div className="min-h-screen flex">
+      <Sidebar view={view} setView={setView}/>
+      <main className="flex-1 overflow-auto">
+        <div className="gridlines min-h-screen">
+          <div className="max-w-[1400px] mx-auto px-8 py-8">
+            {view === 'dashboard' && <Dashboard loanbook={loanbook} setView={setView}/>}
+            {view === 'new'       && <NewScoring criteria={criteria} financials={financials} setFinancials={setFinancials} registerLoan={registerLoan} setView={setView} pushToast={pushToast} partners={partners} addPartner={addPartner} pricing={pricing}/>}
+            {view === 'cif'       && <CifLookup criteria={criteria} setFinancials={setFinancials} setView={setView} pushToast={pushToast} apiConfig={apiConfig} setApiConfig={setApiConfig}/>}
+            {view === 'pdf'       && <PdfDrop criteria={criteria} setFinancials={setFinancials} setView={setView} pushToast={pushToast}/>}
+            {view === 'loanbook'  && <LoanBook loanbook={loanbook} deleteLoan={deleteLoan} setView={setView} pushToast={pushToast} criteria={criteria} registerLoan={registerLoan}/>}
+            {view === 'pricing'   && <PricingEditor pricing={pricing} setPricing={setPricing} pushToast={pushToast}/>}
+            {view === 'criteria'  && <CriteriaEditor criteria={criteria} setCriteria={setCriteria} pushToast={pushToast}/>}
+          </div>
+        </div>
+      </main>
+      <Toast toast={toast}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
