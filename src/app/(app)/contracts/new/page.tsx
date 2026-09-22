@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { listAssetTypes, listContractTypes, listDistributors } from "@/modules/catalog/data";
 import { OperationForm } from "@/modules/contracts/components/operation-form";
 import { loadLoanBook } from "@/modules/contracts/data";
+import { identityFromCompany } from "@/modules/contracts/domain/operation";
 import { getScoring } from "@/modules/scoring/data";
 
 export const metadata = { title: "Nueva operación" };
@@ -42,7 +43,7 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
     <>
       <PageHeader
         title="Nueva operación"
-        description={`${scoring.company.name} · scoring ${scoring.rating} aprobado. La expected IRR se calcula con el coste del equipo y todos los flujos de cuotas y residual.`}
+        description={`${scoring.company.name} · scoring ${scoring.rating} aprobado. Datos identificativos, orden SEPA y condiciones económicas; al crear el borrador se genera el contrato en Word.`}
       />
       <OperationForm
         scoring={{
@@ -53,6 +54,7 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
           creditOpinion: Number(scoring.credit_opinion),
           currentExposure,
         }}
+        identity={identityFromCompany(scoring.company)}
         distributors={distributors}
         assetTypes={assetTypes}
         contractTypes={contractTypes}

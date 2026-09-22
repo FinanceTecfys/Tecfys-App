@@ -62,6 +62,7 @@ export type Database = {
         Row: {
           address: string | null
           admin_name: string | null
+          admin_nif: string | null
           cif: string
           cnae: string | null
           constitution_date: string | null
@@ -69,6 +70,9 @@ export type Database = {
           created_at: string
           email: string | null
           employees: number | null
+          fiscal_city: string | null
+          fiscal_postal_code: string | null
+          fiscal_province: string | null
           id: string
           name: string
           phone: string | null
@@ -79,6 +83,7 @@ export type Database = {
         Insert: {
           address?: string | null
           admin_name?: string | null
+          admin_nif?: string | null
           cif: string
           cnae?: string | null
           constitution_date?: string | null
@@ -86,6 +91,9 @@ export type Database = {
           created_at?: string
           email?: string | null
           employees?: number | null
+          fiscal_city?: string | null
+          fiscal_postal_code?: string | null
+          fiscal_province?: string | null
           id?: string
           name: string
           phone?: string | null
@@ -96,6 +104,7 @@ export type Database = {
         Update: {
           address?: string | null
           admin_name?: string | null
+          admin_nif?: string | null
           cif?: string
           cnae?: string | null
           constitution_date?: string | null
@@ -103,6 +112,9 @@ export type Database = {
           created_at?: string
           email?: string | null
           employees?: number | null
+          fiscal_city?: string | null
+          fiscal_postal_code?: string | null
+          fiscal_province?: string | null
           id?: string
           name?: string
           phone?: string | null
@@ -178,20 +190,35 @@ export type Database = {
           amortize_over_real_life: boolean
           asset_type_id: string | null
           cancel_date: string | null
+          client_cif: string | null
+          client_name: string | null
           company_id: string
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
           contract_number: string
           contract_type: string
           created_at: string
+          delivery_address: string | null
+          delivery_same_as_fiscal: boolean
           distributor_id: string | null
           duration_months: number
           expo_adjustment: number
+          fiscal_address: string | null
+          fiscal_city: string | null
+          fiscal_postal_code: string | null
+          fiscal_province: string | null
+          guarantor_address: string | null
           guarantor_name: string | null
           guarantor_nif: string | null
+          guarantor_representative: string | null
+          guarantor_representative_nif: string | null
           has_guarantor: boolean
           id: string
           installment: number
           loan_book_ref: string | null
           notes: string | null
+          product_description: string | null
           product_type: string | null
           purchase_value: number
           rating: string | null
@@ -199,6 +226,9 @@ export type Database = {
           residual_waived: boolean
           scoring_id: string | null
           sector: string | null
+          signatory_address: string | null
+          signatory_name: string | null
+          signatory_nif: string | null
           signing_date: string
           tranche_lender: string | null
           updated_at: string
@@ -209,20 +239,35 @@ export type Database = {
           amortize_over_real_life?: boolean
           asset_type_id?: string | null
           cancel_date?: string | null
+          client_cif?: string | null
+          client_name?: string | null
           company_id: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           contract_number?: string
           contract_type: string
           created_at?: string
+          delivery_address?: string | null
+          delivery_same_as_fiscal?: boolean
           distributor_id?: string | null
           duration_months: number
           expo_adjustment?: number
+          fiscal_address?: string | null
+          fiscal_city?: string | null
+          fiscal_postal_code?: string | null
+          fiscal_province?: string | null
+          guarantor_address?: string | null
           guarantor_name?: string | null
           guarantor_nif?: string | null
+          guarantor_representative?: string | null
+          guarantor_representative_nif?: string | null
           has_guarantor?: boolean
           id?: string
           installment: number
           loan_book_ref?: string | null
           notes?: string | null
+          product_description?: string | null
           product_type?: string | null
           purchase_value: number
           rating?: string | null
@@ -230,6 +275,9 @@ export type Database = {
           residual_waived?: boolean
           scoring_id?: string | null
           sector?: string | null
+          signatory_address?: string | null
+          signatory_name?: string | null
+          signatory_nif?: string | null
           signing_date: string
           tranche_lender?: string | null
           updated_at?: string
@@ -240,20 +288,35 @@ export type Database = {
           amortize_over_real_life?: boolean
           asset_type_id?: string | null
           cancel_date?: string | null
+          client_cif?: string | null
+          client_name?: string | null
           company_id?: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           contract_number?: string
           contract_type?: string
           created_at?: string
+          delivery_address?: string | null
+          delivery_same_as_fiscal?: boolean
           distributor_id?: string | null
           duration_months?: number
           expo_adjustment?: number
+          fiscal_address?: string | null
+          fiscal_city?: string | null
+          fiscal_postal_code?: string | null
+          fiscal_province?: string | null
+          guarantor_address?: string | null
           guarantor_name?: string | null
           guarantor_nif?: string | null
+          guarantor_representative?: string | null
+          guarantor_representative_nif?: string | null
           has_guarantor?: boolean
           id?: string
           installment?: number
           loan_book_ref?: string | null
           notes?: string | null
+          product_description?: string | null
           product_type?: string | null
           purchase_value?: number
           rating?: string | null
@@ -261,6 +324,9 @@ export type Database = {
           residual_waived?: boolean
           scoring_id?: string | null
           sector?: string | null
+          signatory_address?: string | null
+          signatory_name?: string | null
+          signatory_nif?: string | null
           signing_date?: string
           tranche_lender?: string | null
           updated_at?: string
@@ -483,6 +549,68 @@ export type Database = {
             columns: ["informa_report_id"]
             isOneToOne: false
             referencedRelation: "informa_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sepa_mandates: {
+        Row: {
+          bic: string | null
+          contract_id: string
+          created_at: string
+          debtor_address: string | null
+          debtor_city: string | null
+          debtor_name: string
+          debtor_postal_code: string | null
+          debtor_province: string | null
+          iban: string
+          id: string
+          mandate_reference: string
+          recurrent: boolean
+          signed_at: string | null
+          signed_place: string | null
+          updated_at: string
+        }
+        Insert: {
+          bic?: string | null
+          contract_id: string
+          created_at?: string
+          debtor_address?: string | null
+          debtor_city?: string | null
+          debtor_name: string
+          debtor_postal_code?: string | null
+          debtor_province?: string | null
+          iban: string
+          id?: string
+          mandate_reference: string
+          recurrent?: boolean
+          signed_at?: string | null
+          signed_place?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bic?: string | null
+          contract_id?: string
+          created_at?: string
+          debtor_address?: string | null
+          debtor_city?: string | null
+          debtor_name?: string
+          debtor_postal_code?: string | null
+          debtor_province?: string | null
+          iban?: string
+          id?: string
+          mandate_reference?: string
+          recurrent?: boolean
+          signed_at?: string | null
+          signed_place?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sepa_mandates_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: true
+            referencedRelation: "contracts"
             referencedColumns: ["id"]
           },
         ]

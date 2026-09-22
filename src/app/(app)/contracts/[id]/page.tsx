@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileDown } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,9 +11,11 @@ import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
 import { markContractSigned } from "@/modules/contracts/actions";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { ScheduleTable } from "@/modules/contracts/components/schedule-table";
-import { getContract, toContractInput } from "@/modules/contracts/data";
+import { draftSourceFromContract, getContract, toContractInput } from "@/modules/contracts/data";
+import { cityLine } from "@/modules/contracts/domain/contract-template";
 import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { buildSchedule, principalOutstandingAt } from "@/modules/contracts/domain/schedule";
+import { formatIban } from "@/modules/contracts/domain/sepa";
 import { signatureProvider } from "@/modules/signature/provider";
 
 export default async function ContractPage({ params }: PageProps<"/contracts/[id]">) {
@@ -26,6 +29,20 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const outstanding = principalOutstandingAt(schedule, todayKey) ?? 0;
   const collected = schedule.rows.filter((r) => r.key <= todayKey).reduce((a, r) => a + r.installment, 0);
   const signed = contract.workflow_status === "signed";
+  const canDownload = draftSourceFromContract(contract) !== null;
+  const mandate = contract.mandate;
+  const fiscalLine = contract.fiscal_address
+    ? `${contract.fiscal_address}, ${cityLine(contract.fiscal_postal_code ?? "", contract.fiscal_city ?? "", contract.fiscal_province)}`
+    : null;
+  const identification: [string, React.ReactNode][] = [
+    ["Razón social", contract.client_name ?? "—"],
+    ["CIF / NIF", contract.client_cif ?? "—"],
+    ["Domicilio fiscal", fiscalLine ?? "—"],
+    ["Firmante", contract.signatory_name ? `${contract.signatory_name}${contract.signatory_nif ? ` (${contract.signatory_nif})` : ""}` : "—"],
+    ["Contacto", [contract.contact_name, contract.contact_phone, contract.contact_email].filter(Boolean).join(" · ") || "—"],
+    ["Domicilio de entrega", contract.delivery_same_as_fiscal ? "Mismo que dirección fiscal" : (contract.delivery_address ?? "—")],
+    ["Producto", contract.product_description ?? "—"],
+  ];
 
   const terms: [string, React.ReactNode][] = [
     ["Cliente", contract.company ? <span key="c">{contract.company.name} <span className="num text-slate-500">{contract.company.cif}</span></span> : "—"],
@@ -82,13 +99,52 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               ))}
             </dl>
           </Card>
+          {contract.client_name && (
+            <Card title="Datos identificativos">
+              <dl className="space-y-2 text-sm">
+                {identification.map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4">
+                    <dt className="shrink-0 text-slate-400">{label}</dt>
+                    <dd className="text-right">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          )}
+          {mandate && (
+            <Card title="Orden de domiciliación SEPA">
+              <dl className="space-y-2 text-sm">
+                {[
+                  ["Referencia", mandate.mandate_reference],
+                  ["Deudor", mandate.debtor_name],
+                  ["IBAN", formatIban(mandate.iban)],
+                  ["BIC", mandate.bic ?? "—"],
+                  ["Tipo de pago", mandate.recurrent ? "Recurrente" : "Único"],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4">
+                    <dt className="text-slate-400">{label}</dt>
+                    <dd className="num text-right">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
+          )}
+          {canDownload && (
+            <a
+              href={`/contracts/${contract.id}/draft`}
+              className="flex items-center justify-center gap-2 rounded-md border border-mint-500/50 px-3.5 py-2 text-sm font-semibold text-mint-400 transition hover:bg-mint-500/10"
+            >
+              <FileDown className="h-4 w-4" aria-hidden />
+              {signed ? "Descargar contrato (.docx)" : "Descargar contrato borrador (.docx)"}
+            </a>
+          )}
           {!signed && (
             <Card title="Firma" subtitle="Signaturit">
               <div className="space-y-4">
                 <Alert tone="info" title="Firma electrónica en preparación">
                   {signatureProvider.isConfigured()
                     ? "Credenciales de Signaturit configuradas; falta la plantilla del contrato."
-                    : "El envío automático a Signaturit llegará en la próxima rama. Mientras tanto, marca el contrato como firmado manualmente para que entre en el loan book."}
+                    : "El envío automático a Signaturit llegará en una próxima rama. Mientras tanto, revisa el borrador descargado, fírmalo fuera de la plataforma y márcalo como firmado para que entre en el loan book."}
                 </Alert>
                 <form action={markContractSigned} className="space-y-3">
                   <input type="hidden" name="id" value={contract.id} />

@@ -31,11 +31,11 @@ export function parseInformaText(text: string, today = new Date()): InformaParse
     grab(/Informa Comercial\s+([A-ZÁÉÍÓÚÑ0-9 ,.\-&]+SL\.?|[A-ZÁÉÍÓÚÑ0-9 ,.\-&]+S\.A\.?)/) ??
     grab(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 .,&-]+(?:SL|S\.L|S\.A|SA))\.?/m);
   const cif = grab(/NIF\s+([A-Z][0-9]{8})/);
-  const address = grab(/DOMICILIO SOCIAL\s+([^\n]+?)\s+\d{5}\s+/);
+  const fiscal = parseFiscalAddress(text);
   const cnae =
     grab(/CNAE 2009\)\s+(\d{4})/) ?? grab(/CNAE 2009:\s+(\d{4})/) ?? grab(/ACTIVIDAD CNAE\s+(?:CNAE 2009:\s+)?(\d{4})/);
   const constitutionDate = grab(/FECHA DE CONSTITUCIÓN\s+(\d{2}\/\d{2}\/\d{4})/);
-  const adminName = grab(/ADMINISTRADOR ÚNICO\s+([A-ZÁÉÍÓÚÑ ,]+?)\s+(?:Estructura|ACCIONISTA|Cargo)/);
+  const adminName = parseAdministrator(text);
 
   // Executive-summary fallbacks (rounded euros), overridden by the detailed P&L.
   let totalRevenue = toNumber(grab(/VENTAS BALANCE.*?([\d.,]+)\s*€\s*\(Registro/));
@@ -93,7 +93,10 @@ export function parseInformaText(text: string, today = new Date()): InformaParse
     ...EMPTY_FINANCIALS,
     cif: cif ?? "",
     name: name?.trim() ?? "",
-    address: address?.trim() ?? null,
+    address: fiscal.street,
+    fiscalPostalCode: fiscal.postalCode,
+    fiscalCity: fiscal.city,
+    fiscalProvince: fiscal.province,
     cnae,
     sector: cnaeToSector(cnae),
     phone: grab(/TELÉFONOS\s+(\d+)/),
@@ -102,7 +105,7 @@ export function parseInformaText(text: string, today = new Date()): InformaParse
     constitutionDate,
     maturityYears,
     employees: toNumber(grab(/EMPLEADOS\s+(\d+)/)),
-    adminName: adminName?.trim() ?? null,
+    adminName,
     referenceYear: referenceYear ? Number(referenceYear) : null,
     informaRating,
     creditOpinionInforma: toNumber(grab(/OPINIÓN DE CRÉDITO\s+([\d.,]+)\s*€/)),
@@ -125,11 +128,35 @@ export function parseInformaText(text: string, today = new Date()): InformaParse
   };
 
   const required: (keyof Financials)[] = [
-    "cif", "name", "totalRevenue", "netResult", "ebitda", "nonCurrentAssets", "currentAssets",
+    "cif", "name", "address", "fiscalPostalCode", "fiscalCity", "adminName", "totalRevenue", "netResult", "ebitda", "nonCurrentAssets", "currentAssets",
     "equity", "nonCurrentLiabilities", "currentLiabilities", "maturityYears",
   ];
   const missing = required.filter((k) => financials[k] === null || financials[k] === "");
   return { financials, missing };
+}
+
+/**
+ * "DOMICILIO SOCIAL RONDA GENERAL MITRE, 172 - BJ DR 08006 BARCELONA (BARCELONA) TELÉFONOS ..."
+ * -> street / postal code / city / province. The city runs until the province
+ * in brackets or the next upper-case section label.
+ */
+export function parseFiscalAddress(text: string): { street: string | null; postalCode: string | null; city: string | null; province: string | null } {
+  const m = text.match(
+    /DOMICILIO SOCIAL\s+(.+?),?\s+(\d{5})\s+([A-ZÁÉÍÓÚÑÜÀÈÒÇ'][A-ZÁÉÍÓÚÑÜÀÈÒÇ'. -]*?)\s*(?:\(([^)]+)\)|(?=\s+(?:TELÉFONOS?|PÁGINA WEB|EMAIL|FAX|CNAE|ACTIVIDAD|FORMA JURÍDICA|FECHA|OBJETO|CAPITAL)\b)|$)/,
+  );
+  if (!m) return { street: null, postalCode: null, city: null, province: null };
+  return { street: m[1].trim(), postalCode: m[2], city: m[3].trim(), province: m[4]?.trim() ?? null };
+}
+
+const ADMIN_ROLES = "ADMINISTRADOR ÚNICO|ADMINISTRADOR SOLIDARIO|ADMINISTRADOR MANCOMUNADO|CONSEJERO DELEGADO|PRESIDENTE";
+
+/** First administrator listed, "GIL MARSA, DAVID" reordered to "DAVID GIL MARSA". */
+export function parseAdministrator(text: string): string | null {
+  const m = text.match(new RegExp(`(?:${ADMIN_ROLES})\\s+([A-ZÁÉÍÓÚÑÜÀÈÒÇ ,.'-]+?)\\s+(?:Estructura|ACCIONISTA|Cargo|ADMINISTRADOR|CONSEJERO|PRESIDENTE|Fecha|FECHA|Órgano)`));
+  if (!m) return null;
+  const raw = m[1].trim().replace(/\s+/g, " ");
+  const [surnames, names] = raw.split(/\s*,\s*/);
+  return names ? `${names} ${surnames}` : raw;
 }
 
 const clampYears = (headers: number) => Math.max(1, Math.min(5, headers || 3));

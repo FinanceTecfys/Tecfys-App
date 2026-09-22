@@ -4,34 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/supabase/server";
+import { type OperationInput, operationSchema } from "./domain/operation";
 
-const operationSchema = z
-  .object({
-    scoringId: z.uuid(),
-    distributorId: z.uuid().nullable(),
-    assetTypeId: z.uuid({ error: "Selecciona el tipo de activo" }),
-    contractType: z.string().min(1),
-    signingDate: z.iso.date({ error: "Fecha no válida" }),
-    durationMonths: z.number().int().min(1, "Mínimo 1 mes").max(120, "Máximo 120 meses"),
-    installment: z.number().positive("La cuota debe ser positiva"),
-    residualValue: z.number().min(0, "No puede ser negativo").nullable(),
-    purchaseValue: z.number().positive("Indica el coste del equipo"),
-    quantity: z.number().int().min(1).default(1),
-    description: z.string().trim().max(200).optional(),
-    hasGuarantor: z.boolean(),
-    guarantorName: z.string().trim().optional(),
-    guarantorNif: z.string().trim().optional(),
-    notes: z.string().trim().max(2000).optional(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.hasGuarantor && !v.guarantorName) ctx.addIssue({ code: "custom", path: ["guarantorName"], message: "Indica el avalista" });
-    if (v.hasGuarantor && !v.guarantorNif) ctx.addIssue({ code: "custom", path: ["guarantorNif"], message: "Indica el NIF del avalista" });
-  });
-
-export type OperationInput = z.input<typeof operationSchema>;
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-/** Create a draft contract from an approved scoring. */
+/**
+ * Create a DRAFT contract from an approved scoring: the contract with its
+ * frozen identification snapshot, the equipment line and the SEPA mandate.
+ * The company record is refreshed with the corrected identification (not the
+ * CIF, which identifies it). Everything is re-validated here.
+ */
 export async function createContract(input: OperationInput): Promise<CreateContractResult> {
   const parsed = operationSchema.safeParse(input);
   if (!parsed.success) {
@@ -66,22 +48,76 @@ export async function createContract(input: OperationInput): Promise<CreateContr
       purchase_value: v.purchaseValue,
       has_guarantor: v.hasGuarantor,
       guarantor_name: v.hasGuarantor ? v.guarantorName : null,
-      guarantor_nif: v.hasGuarantor ? v.guarantorNif?.toUpperCase() : null,
+      guarantor_nif: v.hasGuarantor ? v.guarantorNif : null,
+      guarantor_address: v.hasGuarantor ? v.guarantorAddress : null,
+      guarantor_representative: v.hasGuarantor ? v.guarantorRepresentative : null,
+      guarantor_representative_nif: v.hasGuarantor && v.guarantorRepresentative ? v.guarantorRepresentativeNif : null,
+      client_name: v.clientName,
+      client_cif: v.clientCif,
+      fiscal_address: v.fiscalAddress,
+      fiscal_postal_code: v.fiscalPostalCode,
+      fiscal_city: v.fiscalCity,
+      fiscal_province: v.fiscalProvince,
+      signatory_name: v.signatoryName,
+      signatory_nif: v.signatoryNif,
+      signatory_address: v.signatoryAddress,
+      contact_name: v.contactName,
+      contact_phone: v.contactPhone,
+      contact_email: v.contactEmail,
+      delivery_same_as_fiscal: v.deliverySameAsFiscal,
+      delivery_address: v.deliveryAddress,
+      product_description: v.productDescription,
       product_type: "New",
       workflow_status: "draft",
       notes: v.notes || null,
     })
-    .select("id")
+    .select("id, contract_number")
     .single();
   if (error) return { ok: false, error: error.message };
 
-  await db().from("contract_assets").insert({
+  // No multi-statement transaction through PostgREST: undo the contract if a child insert fails.
+  const rollback = async (message: string): Promise<CreateContractResult> => {
+    await db().from("contracts").delete().eq("id", contract.id);
+    return { ok: false, error: message };
+  };
+
+  const { error: assetError } = await db().from("contract_assets").insert({
     contract_id: contract.id,
     asset_type_id: v.assetTypeId,
     quantity: v.quantity,
-    description: v.description || null,
+    description: v.productDescription,
     unit_cost: Math.round((v.purchaseValue / v.quantity) * 100) / 100,
   });
+  if (assetError) return rollback(assetError.message);
+
+  const { error: mandateError } = await db().from("sepa_mandates").insert({
+    contract_id: contract.id,
+    mandate_reference: contract.contract_number,
+    debtor_name: v.sepaDebtorName,
+    debtor_address: v.fiscalAddress,
+    debtor_postal_code: v.fiscalPostalCode,
+    debtor_city: v.fiscalCity,
+    debtor_province: v.fiscalProvince,
+    iban: v.sepaIban,
+    bic: v.sepaBic,
+    signed_place: v.fiscalCity,
+    signed_at: new Date().toISOString().slice(0, 10),
+  });
+  if (mandateError) return rollback(mandateError.message);
+
+  await db()
+    .from("companies")
+    .update({
+      address: v.fiscalAddress,
+      fiscal_postal_code: v.fiscalPostalCode,
+      fiscal_city: v.fiscalCity,
+      fiscal_province: v.fiscalProvince,
+      admin_name: v.signatoryName,
+      admin_nif: v.signatoryNif,
+      phone: v.contactPhone,
+      email: v.contactEmail,
+    })
+    .eq("id", scoring.company.id);
 
   revalidatePath("/contracts");
   redirect(`/contracts/${contract.id}`);

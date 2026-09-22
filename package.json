@@ -12,13 +12,16 @@
     "typecheck": "tsc --noEmit",
     "reconcile": "tsx scripts/reconcile-loan-book.ts",
     "import:loan-book": "tsx scripts/import-loan-book.ts",
-    "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts"
+    "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
+    "template:build": "tsx scripts/build-contract-template.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
     "clsx": "^2.1.1",
+    "docxtemplater": "^3.71.0",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
+    "pizzip": "^3.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
@@ -31,6 +34,7 @@
     "@types/node": "^24.13.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@xmldom/xmldom": "^0.9.12",
     "dotenv": "^18.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",

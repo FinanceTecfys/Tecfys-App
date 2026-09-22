@@ -26,8 +26,12 @@ El Excel del Borrowing Base contiene datos de clientes: **no se sube al repo** (
    (ambos se pueden crear en línea), coste del equipo, duración, residual, cuota, avalista.
    Calcula en vivo la **expected IRR**, el calendario principal/interés y el riesgo vivo frente a la opinión de crédito.
    También calcula la cuota necesaria para una IRR objetivo.
-3. **Contrato**: se crea en borrador. La firma vía **Signaturit** está preparada como interfaz
-   (`src/modules/signature`); hasta entonces se marca como firmado manualmente y entra en el loan book.
+3. **Contrato**: el formulario tiene tres secciones: A · datos identificativos (del scoring, editables; domicilio
+   de entrega), B · orden de domiciliación SEPA (IBAN validado, BIC deducido) y C · condiciones económicas con la
+   descripción del producto. "Crear contrato borrador" congela esos datos en el contrato y permite **descargar el
+   contrato en Word** relleno a partir de `templates/contract-template.docx` (ver `templates/README.md`).
+   La firma vía **Signaturit** sigue siendo solo una interfaz (`src/modules/signature`); hasta entonces se marca
+   como firmado manualmente y entra en el loan book.
 4. **Loan book** (`/contracts`) y **Cartera / Waterfall** (`/portfolio`, réplica de la pestaña Summary).
 
 ## Arquitectura
@@ -83,6 +87,7 @@ Detalles que la reconciliación destapó y que el motor respeta:
 | `npm run db:types` | regenera `src/lib/supabase/database.types.ts` desde la BD local |
 | `npm run import:loan-book -- <xlsx>` | carga (idempotente) el Loan book en Supabase |
 | `npm run reconcile -- <xlsx>` | reconcilia el motor contra el Borrowing Base |
+| `npm run template:build` | regenera la plantilla etiquetada del contrato desde `templates/source/` |
 
 ## Flujo de git
 
