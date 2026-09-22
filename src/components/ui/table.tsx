@@ -27,14 +27,17 @@ export function Td({
   children,
   right,
   mono,
+  title,
 }: {
   className?: string;
   children?: React.ReactNode;
   right?: boolean;
   mono?: boolean;
+  /** Tooltip, e.g. the full value behind a truncated cell. */
+  title?: string;
 }) {
   return (
-    <td className={cn("whitespace-nowrap border-b border-ink-800 px-3 py-2 text-slate-200", right && "text-right", mono && "num", className)}>
+    <td title={title} className={cn("whitespace-nowrap border-b border-ink-800 px-3 py-2 text-slate-200", right && "text-right", mono && "num", className)}>
       {children}
     </td>
   );

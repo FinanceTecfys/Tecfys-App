@@ -30,6 +30,7 @@ function source(over: Partial<LoanBookSource["row"]> = {}, input: Partial<Contra
     workflow_status: "signed",
     company: { name: "BLUEGROUND ESPANA", cif: "B12345678" },
     distributor: { name: "Nicton" },
+    asset_type: { name: "Water Dispenser", cluster: "Hospitality Machinery" } as { name: string; cluster: string } | null,
     ...over,
   };
   const schedule = buildSchedule(
@@ -83,6 +84,28 @@ describe("toLoanBookRow", () => {
     expect(r.outstanding).toBeNull();
   });
 
+  it("surfaces the asset type and its cluster", () => {
+    const r = toLoanBookRow(source());
+    expect(r.assetType).toBe("Water Dispenser");
+    expect(r.assetCluster).toBe("Hospitality Machinery");
+    const none = toLoanBookRow(source({ asset_type: null }));
+    expect(none.assetType).toBeNull();
+    expect(none.assetCluster).toBeNull();
+  });
+
+  it("reports a default only where principal is lost, with BD's own (negative) sign", () => {
+    // Runs to term: BD is nil, so there is nothing to report.
+    expect(toLoanBookRow(source()).defaultAmount).toBeNull();
+    // Cancelled halfway with no settlement: the shortfall is the engine's BD.
+    const cancelled = source({ cancel_date: "2024-06-30", additional_status: "Gesico" }, { residualWaived: true });
+    const row = toLoanBookRow(cancelled);
+    expect(row.defaultAmount).toBe(cancelled.schedule.principalResult);
+    expect(row.defaultAmount!).toBeLessThan(0);
+    expect(row.defaultAmount!).toBeCloseTo(-cancelled.schedule.writeOff, 8);
+    // Drafts never report a default.
+    expect(toLoanBookRow(source({ workflow_status: "draft", cancel_date: "2024-06-30" })).defaultAmount).toBeNull();
+  });
+
   it("carries the settlement amount", () => {
     expect(toLoanBookRow(source({ cancel_date: "2025-06-30", additional_status: "CAP", settlement_amount: "1800" })).settlementAmount).toBe(1800);
   });
@@ -99,6 +122,7 @@ describe("filter and sort", () => {
     expect(filterLoanBook(rows, { q: "beta" }).map((r) => r.id)).toEqual(["b"]);
     expect(filterLoanBook(rows, { q: "PT" }).map((r) => r.id)).toEqual(["b"]);
     expect(filterLoanBook(rows, { q: "LB-3" }).map((r) => r.id)).toEqual(["c"]);
+    expect(filterLoanBook(rows, { q: "water dispenser" }).length).toBe(3);
     expect(filterLoanBook(rows, {}).length).toBe(3);
   });
 
@@ -143,14 +167,17 @@ describe("export columns", () => {
   });
 
   it("maps the headers and the values an analyst expects", () => {
-    const row = toLoanBookRow(source({ cancel_date: "2025-06-30", additional_status: "Gesico" }));
+    const row = toLoanBookRow(source({ cancel_date: "2024-06-30", additional_status: "Gesico" }, { residualWaived: true }));
     const cells = Object.fromEntries(EXPORT_COLUMNS.map((c) => [c.header, c.value(row)]));
     expect(cells["Contrato"]).toBe("LB-16535");
     expect(cells["País"]).toBe("ES");
-    expect(cells["Cancelación"]).toBe("2025-06-30");
+    expect(cells["Cancelación"]).toBe("2024-06-30");
     expect(cells["Estado adicional"]).toBe("Gesico");
     expect(cells["Estado"]).toBe("Finished");
     expect(cells["Liquidación"]).toBeNull();
+    expect(cells["Tipo de activo"]).toBe("Water Dispenser");
+    expect(cells["Grupo de activo"]).toBe("Hospitality Machinery");
+    expect(cells["Default (BD)"]).toBeLessThan(0);
   });
 
   it("totals only the money columns", () => {
@@ -162,6 +189,6 @@ describe("export columns", () => {
     expect(totals.cost).toBeCloseTo(14000, 6);
     expect(totals.settlementAmount).toBe(500);
     expect(totals.outstanding).toBeCloseTo((rows[0].outstanding ?? 0) + (rows[1].outstanding ?? 0), 6);
-    expect(Object.keys(totals)).toEqual(["cost", "outstanding", "settlementAmount"]);
+    expect(Object.keys(totals)).toEqual(["cost", "outstanding", "settlementAmount", "defaultAmount"]);
   });
 });

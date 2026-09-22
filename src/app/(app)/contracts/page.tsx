@@ -95,6 +95,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
               <Th>Cliente</Th>
               <Th>País</Th>
               <Th>Distribuidor</Th>
+              <Th>Tipo de activo</Th>
               <Th>Firma</Th>
               <Th right>Meses</Th>
               <Th right>Ext.</Th>
@@ -105,6 +106,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
               <Th>Cancelación</Th>
               <Th>Estado adicional</Th>
               <Th right>Principal pendiente</Th>
+              <Th right>Default</Th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +118,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
                 <Td className="max-w-56 truncate">{r.client}</Td>
                 <Td mono className="text-slate-400">{r.country ?? "—"}</Td>
                 <Td className="text-slate-400">{r.distributor ?? "—"}</Td>
+                <Td className="max-w-40 truncate text-slate-400" title={r.assetCluster ?? undefined}>{r.assetType ?? "—"}</Td>
                 <Td>{fmtDate(r.signingDate)}</Td>
                 <Td right mono>{r.durationMonths}</Td>
                 <Td right mono className={r.extensionMonths ? "text-yellow-300" : "text-slate-600"}>
@@ -134,6 +137,9 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
                   )}
                 </Td>
                 <Td right mono>{r.outstanding === null ? "—" : fmtEur(r.outstanding)}</Td>
+                <Td right mono className={r.defaultAmount === null ? "text-slate-600" : "text-red-300"}>
+                  {r.defaultAmount === null ? "—" : fmtEur(r.defaultAmount, 2)}
+                </Td>
               </tr>
             ))}
           </tbody>

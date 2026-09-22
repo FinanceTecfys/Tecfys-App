@@ -154,3 +154,67 @@ describe("recalculation through the engine", () => {
     expect(b.expectedMonthlyIrr).toBe(a.expectedMonthlyIrr);
   });
 });
+
+/**
+ * Principal outstanding around a cancellation, as the workbook books it:
+ * the write-off lands in the cancellation month, but instalments already
+ * scheduled after it (a Renting F bills one month after signing) are still
+ * outstanding until they are collected. In the 15-Sep-2026 Borrowing Base 45
+ * of the 49 Gesico contracts show exactly that residue in the cancel month and
+ * nil in the next one - which is why the balance is not forced to zero.
+ */
+describe("outstanding around the cancellation", () => {
+  const cancelDate = "2025-06-20";
+  const cancelKey = monthKey(2025, 6);
+  const statuses = ["FC", "Gesico", "CAP", "CAC", "CS"] as const;
+
+  const scheduleFor = (status: string, settlementAmount?: number, over: Partial<ContractInput> = {}) => {
+    const fields = resolveCancellation(parse({ contractId, cancelDate, additionalStatus: status, settlementAmount: settlementAmount ?? "" }));
+    return buildSchedule(
+      { ...base, ...over, cancelDate: fields.cancel_date, residualWaived: fields.residual_waived, settlementAmount: fields.settlement_amount },
+      asOf,
+    );
+  };
+
+  it.each(statuses)("%s: nil from the last booked month, and the write-off is already deducted at the cancel month", (status) => {
+    const s = scheduleFor(status, status === "CAP" || status === "CAC" || status === "CS" ? 500 : undefined);
+    const lastKey = s.rows.at(-1)!.key;
+    expect(principalOutstandingAt(s, lastKey)).toBeCloseTo(0, 6);
+    expect(principalOutstandingAt(s, lastKey + 6)).toBeCloseTo(0, 6);
+
+    // At the cancellation month only what is still to be collected remains.
+    const stillToCome = s.rows.filter((r) => r.key > cancelKey).reduce((a, r) => a + r.principal, 0);
+    expect(principalOutstandingAt(s, cancelKey)).toBeCloseTo(stillToCome, 6);
+  });
+
+  it("a Renting F cancelled mid-month keeps its last instalment outstanding for one month (LB-19426 shape)", () => {
+    // Signed 17-Aug, billed from Sep, cancelled 22-Sep: two instalments, Sep and Oct.
+    const s = buildSchedule(
+      { ...base, signingDate: "2026-08-17", billingLagMonths: 1, durationMonths: 48, installment: 284, residualValue: 284, purchaseValue: 9200, cancelDate: "2026-09-22", residualWaived: true },
+      new Date(Date.UTC(2026, 8, 22)),
+    );
+    expect(s.paymentHorizon).toBe(2);
+    expect(s.rows.map((r) => r.key)).toEqual([monthKey(2026, 9), monthKey(2026, 10)]);
+    const atCancel = principalOutstandingAt(s, monthKey(2026, 9))!;
+    expect(atCancel).toBeCloseTo(s.rows[1].principal, 8);
+    expect(atCancel).toBeGreaterThan(0);
+    expect(principalOutstandingAt(s, monthKey(2026, 10))).toBeCloseTo(0, 6);
+    // The default is booked in full at the cancellation month.
+    expect(s.principalResult).toBeLessThan(0);
+    expect(principalOutstandingAt(s, monthKey(2026, 8))! - atCancel).toBeCloseTo(s.writeOff + s.rows[0].principal, 6);
+  });
+
+  it("the default reported per contract is BD, and it is nil when the contract recovers its cost", () => {
+    const gesico = scheduleFor("Gesico");
+    expect(gesico.principalResult).toBeCloseTo(-gesico.writeOff, 10);
+    expect(gesico.principalResult).toBeLessThan(0);
+
+    // A settlement that leaves a shortfall: BD is the part never repaid.
+    const shortfall = scheduleFor("CAP", 500);
+    expect(shortfall.principalResult).toBeLessThan(0);
+    expect(shortfall.principalResult).toBeGreaterThan(gesico.principalResult);
+
+    // Runs to term: nothing lost.
+    expect(buildSchedule(base, new Date(Date.UTC(2030, 0, 1))).principalResult).toBeCloseTo(0, 6);
+  });
+});

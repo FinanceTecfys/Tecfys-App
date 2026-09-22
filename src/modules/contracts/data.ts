@@ -16,7 +16,7 @@ const CONTRACT_SELECT = `
   guarantor_representative_nif, product_description,
   company:companies ( id, cif, name ),
   distributor:distributors ( id, name ),
-  asset_type:asset_types ( id, name ),
+  asset_type:asset_types ( id, name, cluster ),
   type:contract_types ( billing_lag_months ),
   mandate:sepa_mandates ( mandate_reference, debtor_name, debtor_address, debtor_postal_code, debtor_city, debtor_province, iban, bic, recurrent, signed_place, signed_at )
 `;
