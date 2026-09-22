@@ -20,6 +20,7 @@ const FIELD_LABELS: Partial<Record<keyof Financials, string>> = {
   cif: "CIF", name: "Razón social", maturityYears: "Antigüedad", totalRevenue: "Ventas", netResult: "Resultado neto",
   ebitda: "EBITDA", nonCurrentAssets: "Activo no corriente", currentAssets: "Activo corriente", equity: "Patrimonio neto",
   nonCurrentLiabilities: "Pasivo no corriente", currentLiabilities: "Pasivo corriente",
+  address: "Domicilio fiscal", fiscalPostalCode: "Código postal", fiscalCity: "Ciudad", adminName: "Administrador",
 };
 
 export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
@@ -132,6 +133,18 @@ export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
             <Field label="Antigüedad" name="maturityYears" type="number" suffix="años" value={financials.maturityYears ?? ""} onChange={(e) => setNumber("maturityYears", e.target.value)} />
             <Field label="Empleados" name="employees" type="number" value={financials.employees ?? ""} onChange={(e) => setNumber("employees", e.target.value)} />
             <Field label="Administrador" name="adminName" className="md:col-span-2" value={financials.adminName ?? ""} onChange={(e) => set("adminName", e.target.value || null)} />
+            <Field label="DNI del administrador" name="adminNif" value={financials.adminNif ?? ""} onChange={(e) => set("adminNif", e.target.value || null)} hint="No viene en Informa" />
+          </div>
+        </Card>
+        <Card title="Domicilio fiscal y contacto" subtitle="Se trasladan a la operación y al contrato; todos editables">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Field label="Dirección" name="address" className="md:col-span-4" value={financials.address ?? ""} onChange={(e) => set("address", e.target.value || null)} />
+            <Field label="Código postal" name="fiscalPostalCode" value={financials.fiscalPostalCode ?? ""} onChange={(e) => set("fiscalPostalCode", e.target.value || null)} />
+            <Field label="Ciudad" name="fiscalCity" value={financials.fiscalCity ?? ""} onChange={(e) => set("fiscalCity", e.target.value || null)} />
+            <Field label="Provincia" name="fiscalProvince" value={financials.fiscalProvince ?? ""} onChange={(e) => set("fiscalProvince", e.target.value || null)} />
+            <div />
+            <Field label="Teléfono" name="phone" value={financials.phone ?? ""} onChange={(e) => set("phone", e.target.value || null)} />
+            <Field label="Email" name="email" type="email" className="md:col-span-2" value={financials.email ?? ""} onChange={(e) => set("email", e.target.value || null)} />
           </div>
         </Card>
         {Object.entries(FINANCIAL_FIELDS).map(([group, fields]) => (

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/supabase/server";
+import type { ContractDraftSource } from "./domain/contract-template";
 import { monthKeyOfDate } from "./domain/month-key";
 import { buildSchedule, type ContractInput, type ContractSchedule, principalOutstandingAt } from "./domain/schedule";
 
@@ -8,10 +9,15 @@ const CONTRACT_SELECT = `
   signing_date, duration_months, installment, residual_value, purchase_value, expo_adjustment,
   has_guarantor, guarantor_name, guarantor_nif, cancel_date, additional_status, residual_waived,
   amortize_over_real_life, workflow_status, notes, created_at, scoring_id,
+  client_name, client_cif, fiscal_address, fiscal_postal_code, fiscal_city, fiscal_province,
+  signatory_name, signatory_nif, signatory_address, contact_name, contact_phone, contact_email,
+  delivery_same_as_fiscal, delivery_address, guarantor_address, guarantor_representative,
+  guarantor_representative_nif, product_description,
   company:companies ( id, cif, name ),
   distributor:distributors ( id, name ),
   asset_type:asset_types ( id, name ),
-  type:contract_types ( billing_lag_months )
+  type:contract_types ( billing_lag_months ),
+  mandate:sepa_mandates ( mandate_reference, debtor_name, debtor_address, debtor_postal_code, debtor_city, debtor_province, iban, bic, recurrent, signed_place, signed_at )
 `;
 
 async function fetchContracts(filter?: { companyId?: string }) {
@@ -80,4 +86,55 @@ export async function listPipeline() {
     .limit(10);
   if (error) throw error;
   return data;
+}
+
+type FullContract = NonNullable<Awaited<ReturnType<typeof getContract>>>;
+
+/**
+ * Everything the Word contract needs, from the contract's frozen snapshot and
+ * its SEPA mandate. Null for contracts without them (e.g. imported from the
+ * Borrowing Base), which have no draft to generate.
+ */
+export function draftSourceFromContract(c: FullContract): ContractDraftSource | null {
+  const m = c.mandate;
+  if (!m || !c.client_name || !c.client_cif || !c.fiscal_address || !c.fiscal_postal_code || !c.fiscal_city
+    || !c.signatory_name || !c.signatory_nif || !c.contact_name || !c.contact_email || !c.product_description) {
+    return null;
+  }
+  return {
+    contractNumber: c.contract_number,
+    clientName: c.client_name,
+    clientCif: c.client_cif,
+    fiscalAddress: c.fiscal_address,
+    fiscalPostalCode: c.fiscal_postal_code,
+    fiscalCity: c.fiscal_city,
+    fiscalProvince: c.fiscal_province,
+    signatoryName: c.signatory_name,
+    signatoryNif: c.signatory_nif,
+    signatoryAddress: c.signatory_address,
+    contactName: c.contact_name,
+    contactPhone: c.contact_phone,
+    contactEmail: c.contact_email,
+    deliverySameAsFiscal: c.delivery_same_as_fiscal,
+    deliveryAddress: c.delivery_address,
+    productDescription: c.product_description,
+    durationMonths: c.duration_months,
+    installment: Number(c.installment),
+    hasGuarantor: c.has_guarantor,
+    guarantorName: c.guarantor_name,
+    guarantorNif: c.guarantor_nif,
+    guarantorAddress: c.guarantor_address,
+    guarantorRepresentative: c.guarantor_representative,
+    guarantorRepresentativeNif: c.guarantor_representative_nif,
+    sepa: {
+      debtorName: m.debtor_name,
+      debtorAddress: m.debtor_address ?? c.fiscal_address,
+      debtorPostalCode: m.debtor_postal_code ?? c.fiscal_postal_code,
+      debtorCity: m.debtor_city ?? c.fiscal_city,
+      debtorProvince: m.debtor_province,
+      iban: m.iban,
+      signedPlace: m.signed_place,
+      signedAt: m.signed_at,
+    },
+  };
 }

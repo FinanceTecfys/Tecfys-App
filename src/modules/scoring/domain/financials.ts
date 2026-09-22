@@ -9,7 +9,11 @@ export const financialsSchema = z.object({
   country: z.string().default("ES"),
   sector: z.string().nullable(),
   cnae: z.string().nullable(),
+  /** Fiscal address: street line (Informa "domicilio social") + postal code / city / province. */
   address: z.string().nullable(),
+  fiscalPostalCode: z.string().nullable(),
+  fiscalCity: z.string().nullable(),
+  fiscalProvince: z.string().nullable(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
   web: z.string().nullable(),
@@ -17,6 +21,8 @@ export const financialsSchema = z.object({
   maturityYears: z.number().nullable(),
   employees: z.number().nullable(),
   adminName: z.string().nullable(),
+  /** Not in Informa: typed in by the analyst. */
+  adminNif: z.string().nullable(),
   referenceYear: z.number().nullable(),
   // Informa risk indicators (informational)
   informaRating: z.string().nullable(),
@@ -48,8 +54,9 @@ export const financialsSchema = z.object({
 export type Financials = z.infer<typeof financialsSchema>;
 
 export const EMPTY_FINANCIALS: Financials = {
-  cif: "", name: "", country: "ES", sector: null, cnae: null, address: null, phone: null, email: null, web: null,
-  constitutionDate: null, maturityYears: null, employees: null, adminName: null, referenceYear: null,
+  cif: "", name: "", country: "ES", sector: null, cnae: null, address: null, fiscalPostalCode: null, fiscalCity: null,
+  fiscalProvince: null, phone: null, email: null, web: null,
+  constitutionDate: null, maturityYears: null, employees: null, adminName: null, adminNif: null, referenceYear: null,
   informaRating: null, creditOpinionInforma: null, scoreLiquidez: null, resilience: null,
   totalRevenue: null, grossMargin: null, ebitda: null, ebit: null, netResult: null, financialExpenses: null,
   procurement: null, adjustedEbitda: null,

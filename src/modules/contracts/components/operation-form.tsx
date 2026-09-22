@@ -11,9 +11,12 @@ import { createAssetType, createDistributor } from "@/modules/catalog/actions";
 import { CatalogSelect } from "@/modules/catalog/components/catalog-select";
 import type { AssetType, ContractType, Distributor } from "@/modules/catalog/data";
 import { createContract } from "../actions";
+import type { IdentityPrefill } from "../domain/operation";
 import { installmentForRate, monthlyFromAnnual } from "../domain/pricing";
 import { buildSchedule } from "../domain/schedule";
+import { IdentitySection, type IdentityState } from "./identity-section";
 import { ScheduleTable } from "./schedule-table";
+import { SepaSection, type SepaState } from "./sepa-section";
 
 export interface OperationScoring {
   id: string;
@@ -29,6 +32,7 @@ const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", "."))
 
 export function OperationForm({
   scoring,
+  identity: prefill,
   distributors,
   assetTypes,
   contractTypes,
@@ -36,12 +40,15 @@ export function OperationForm({
   today,
 }: {
   scoring: OperationScoring;
+  identity: IdentityPrefill;
   distributors: Distributor[];
   assetTypes: AssetType[];
   contractTypes: ContractType[];
   clusters: string[];
   today: string;
 }) {
+  const [identity, setIdentity] = useState<IdentityState>({ ...prefill, deliverySameAsFiscal: true, deliveryAddress: "" });
+  const [sepa, setSepa] = useState<SepaState>({ iban: "", debtorName: prefill.clientName, debtorNameEdited: false, bic: "", bicDerived: false });
   const [distributorId, setDistributorId] = useState<string | null>(null);
   const [assetTypeId, setAssetTypeId] = useState<string | null>(null);
   const [newCluster, setNewCluster] = useState(clusters[0] ?? "Other");
@@ -52,10 +59,13 @@ export function OperationForm({
   const [residualValue, setResidualValue] = useState("");
   const [installment, setInstallment] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [description, setDescription] = useState("");
+  const [productDescription, setProductDescription] = useState("");
   const [hasGuarantor, setHasGuarantor] = useState(false);
   const [guarantorName, setGuarantorName] = useState("");
   const [guarantorNif, setGuarantorNif] = useState("");
+  const [guarantorAddress, setGuarantorAddress] = useState("");
+  const [guarantorRepresentative, setGuarantorRepresentative] = useState("");
+  const [guarantorRepresentativeNif, setGuarantorRepresentativeNif] = useState("");
   const [notes, setNotes] = useState("");
   const [targetIrr, setTargetIrr] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +102,12 @@ export function OperationForm({
   const overLimit = cost !== null && exposureAfter > scoring.creditOpinion;
   const noRecovery = schedule !== null && receivable < (cost ?? 0);
 
+  // The SEPA debtor follows the company name until the analyst changes it.
+  function patchIdentity(patch: Partial<IdentityState>) {
+    setIdentity((prev) => ({ ...prev, ...patch }));
+    if (patch.clientName !== undefined && !sepa.debtorNameEdited) setSepa((prev) => ({ ...prev, debtorName: patch.clientName! }));
+  }
+
   function applyTargetIrr() {
     const annual = num(targetIrr);
     if (annual === null || !cost || !n) return;
@@ -106,6 +122,10 @@ export function OperationForm({
     startSaving(async () => {
       const res = await createContract({
         scoringId: scoring.id,
+        ...identity,
+        sepaIban: sepa.iban,
+        sepaDebtorName: sepa.debtorName,
+        sepaBic: sepa.bic,
         distributorId,
         assetTypeId: assetTypeId ?? "",
         contractType,
@@ -115,10 +135,13 @@ export function OperationForm({
         residualValue: residual,
         purchaseValue: cost ?? 0,
         quantity: num(quantity) ?? 1,
-        description,
+        productDescription,
         hasGuarantor,
         guarantorName,
         guarantorNif,
+        guarantorAddress,
+        guarantorRepresentative,
+        guarantorRepresentativeNif,
         notes,
       });
       if (res && !res.ok) {
@@ -131,7 +154,9 @@ export function OperationForm({
   return (
     <form onSubmit={onSubmit} className="grid gap-6 xl:grid-cols-[1fr_400px]">
       <div className="space-y-6">
-        <Card title="Origen y activo">
+        <IdentitySection value={identity} onChange={patchIdentity} errors={fieldErrors} />
+        <SepaSection value={sepa} onChange={(patch) => setSepa((prev) => ({ ...prev, ...patch }))} errors={fieldErrors} />
+        <Card title="C · Producto y origen">
           <div className="grid gap-4 md:grid-cols-2">
             <CatalogSelect
               label="Distribuidor"
@@ -158,12 +183,26 @@ export function OperationForm({
                 </select>
               }
             />
-            <Field label="Descripción del equipo" name="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej. 12 portátiles ASUS ExpertBook" />
+            <div className="md:col-span-2">
+              <Label htmlFor="productDescription">Descripción del producto</Label>
+              <textarea
+                id="productDescription"
+                rows={2}
+                maxLength={500}
+                value={productDescription}
+                onChange={(e) => setProductDescription(e.target.value)}
+                placeholder="Ej. 12 portátiles ASUS ExpertBook B1, 16 GB RAM, con cargador y funda"
+                className={inputClass}
+              />
+              <p className={`mt-1 text-[11px] ${fieldErrors.productDescription ? "text-red-300" : "text-slate-500"}`}>
+                {fieldErrors.productDescription ?? "Aparece literalmente en las Condiciones Particulares del contrato"}
+              </p>
+            </div>
             <Field label="Unidades" name="quantity" type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
         </Card>
 
-        <Card title="Condiciones económicas">
+        <Card title="C · Condiciones económicas">
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="Coste del equipo" name="purchaseValue" type="number" step="0.01" suffix="€" value={purchaseValue} onChange={(e) => setPurchaseValue(e.target.value)} error={fieldErrors.purchaseValue} hint="Valor de compra (sin IVA)" />
             <Field label="Duración" name="durationMonths" type="number" min={1} suffix="meses" value={durationMonths} onChange={(e) => setDurationMonths(e.target.value)} error={fieldErrors.durationMonths} />
@@ -192,7 +231,7 @@ export function OperationForm({
           </div>
         </Card>
 
-        <Card title="Garantías">
+        <Card title="C · Garantías">
           <label className="flex items-center gap-3 text-sm text-slate-200">
             <input type="checkbox" checked={hasGuarantor} onChange={(e) => setHasGuarantor(e.target.checked)} className="h-4 w-4 accent-mint-500" />
             Operación con avalista
@@ -200,7 +239,10 @@ export function OperationForm({
           {hasGuarantor && (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Nombre del avalista" name="guarantorName" value={guarantorName} onChange={(e) => setGuarantorName(e.target.value)} error={fieldErrors.guarantorName} />
-              <Field label="NIF del avalista" name="guarantorNif" value={guarantorNif} onChange={(e) => setGuarantorNif(e.target.value)} error={fieldErrors.guarantorNif} />
+              <Field label="NIF / CIF del avalista" name="guarantorNif" value={guarantorNif} onChange={(e) => setGuarantorNif(e.target.value)} error={fieldErrors.guarantorNif} />
+              <Field label="Domicilio del avalista" name="guarantorAddress" className="md:col-span-2" value={guarantorAddress} onChange={(e) => setGuarantorAddress(e.target.value)} error={fieldErrors.guarantorAddress} />
+              <Field label="Representante (si el avalista es una empresa)" name="guarantorRepresentative" value={guarantorRepresentative} onChange={(e) => setGuarantorRepresentative(e.target.value)} />
+              <Field label="DNI del representante" name="guarantorRepresentativeNif" value={guarantorRepresentativeNif} onChange={(e) => setGuarantorRepresentativeNif(e.target.value)} error={fieldErrors.guarantorRepresentativeNif} />
             </div>
           )}
           <div className="mt-4">
@@ -245,9 +287,13 @@ export function OperationForm({
             </dl>
             {overLimit && <Alert tone="warning" title="Supera la opinión de crédito">El riesgo total con el cliente excede el límite del scoring. Requiere aprobación del comité.</Alert>}
             {noRecovery && <Alert tone="error" title="La operación no recupera el coste">Cuotas + residual por debajo del coste del equipo.</Alert>}
-            {error && <Alert tone="error">{error}</Alert>}
+            {error && (
+              <Alert tone="error" title={error}>
+                {Object.keys(fieldErrors).length > 0 && `${Object.keys(fieldErrors).length} campo(s) con error en las secciones de la izquierda.`}
+              </Alert>
+            )}
             <Button type="submit" disabled={saving || !schedule} className="w-full">
-              {saving ? "Creando contrato…" : "Crear contrato (borrador)"}
+              {saving ? "Creando contrato…" : "Crear contrato borrador"}
             </Button>
           </div>
         </Card>
