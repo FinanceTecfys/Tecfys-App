@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* Tecfys palette (from the scoring mockup): deep green "ink" surfaces, mint accent. */
+@theme {
+  --color-ink-950: #040d08;
+  --color-ink-900: #071a0f;
+  --color-ink-800: #0c2618;
+  --color-ink-700: #123422;
+  --color-ink-600: #1a4530;
+  --color-ink-500: #235a40;
+  --color-mint-400: #33ffb5;
+  --color-mint-500: #00f7a1;
+  --color-mint-600: #00d389;
+  --color-mint-700: #00a56c;
+  --color-paper: #e8f0ea;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--color-ink-950);
+    color: var(--color-paper);
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--color-ink-900); }
+  ::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 4px; }
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
