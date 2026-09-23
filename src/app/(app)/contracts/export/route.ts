@@ -2,10 +2,12 @@ import type { NextRequest } from "next/server";
 import { loadLoanBook } from "@/modules/contracts/data";
 import { loanBookToPdf, loanBookToXlsx } from "@/modules/contracts/document/export-loan-book";
 import {
+  asOfForMonth,
   DEFAULT_SORT,
   filterLoanBook,
-  isLoanBookSort,
   LOAN_BOOK_SORTS,
+  LOAN_SIZE_BUCKETS,
+  parseLoanBookQuery,
   sortLoanBook,
   toLoanBookRow,
 } from "@/modules/contracts/domain/loan-book-view";
@@ -19,17 +21,24 @@ const TYPES = {
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const format = sp.get("format") === "pdf" ? "pdf" : "xlsx";
-  const q = sp.get("q")?.trim() ?? "";
-  const status = sp.get("status") ?? "";
-  const sortParam = sp.get("sort") ?? undefined;
-  const sort = isLoanBookSort(sortParam) ? sortParam : DEFAULT_SORT;
+  const query = parseLoanBookQuery(sp);
+  const sort = query.sort ?? DEFAULT_SORT;
 
-  const book = await loadLoanBook({ includeDrafts: true });
-  const rows = sortLoanBook(filterLoanBook(book.map(toLoanBookRow), { q, status }), sort);
+  const book = await loadLoanBook({ includeDrafts: true, asOf: asOfForMonth(query.asof, new Date()) });
+  const rows = sortLoanBook(filterLoanBook(book.map(toLoanBookRow), query), sort);
 
+  const list = (label: string, values: string[] | undefined) => (values?.length ? `${label} ${values.join(", ")}` : null);
   const filters = [
-    q ? `búsqueda "${q}"` : null,
-    status ? `estado ${status}` : "todos los estados",
+    query.q ? `búsqueda "${query.q}"` : null,
+    query.status ? `estado ${query.status}` : "todos los estados",
+    query.client ? `cliente ${query.client}` : null,
+    list("país", query.country),
+    list("distribuidor", query.distributor),
+    list("grupo de activo", query.cluster),
+    query.size ? `pendiente ${LOAN_SIZE_BUCKETS.find((b) => b.key === query.size)?.label}` : null,
+    query.defaulted ? `default en ${query.defaulted}` : null,
+    query.pending ? "solo con principal pendiente" : null,
+    query.asof ? `cartera a ${query.asof}` : null,
     `orden: ${LOAN_BOOK_SORTS[sort].label}`,
   ].filter(Boolean).join(" · ");
   const ctx = { filters, generatedAt: new Date() };

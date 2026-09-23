@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileDown, FileSpreadsheet } from "lucide-react";
+import { FileDown, FileSpreadsheet, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { inputClass } from "@/components/ui/field";
@@ -10,12 +10,20 @@ import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { loadLoanBook } from "@/modules/contracts/data";
 import {
+  asOfForMonth,
   DEFAULT_SORT,
   filterLoanBook,
-  isLoanBookSort,
+  type GroupFilter,
+  hasLoanBookFilters,
   LOAN_BOOK_SORTS,
+  LOAN_SIZE_BUCKETS,
+  type LoanBookQuery,
+  loanBookFilterOptions,
+  loanBookSearch,
+  parseLoanBookQuery,
   sortLoanBook,
   toLoanBookRow,
+  toSearchParams,
 } from "@/modules/contracts/domain/loan-book-view";
 import type { ContractStatus } from "@/modules/contracts/domain/schedule";
 
@@ -30,17 +38,29 @@ const STATUSES: { value: ContractStatus | "draft"; label: string }[] = [
   { value: "draft", label: "Borradores" },
 ];
 
+const GROUP_SELECTS: { name: GroupFilter; label: string; all: string }[] = [
+  { name: "country", label: "País", all: "Todos los países" },
+  { name: "distributor", label: "Distribuidor", all: "Todos los distribuidores" },
+  { name: "cluster", label: "Grupo de activo", all: "Todos los grupos de activo" },
+];
+
 export default async function ContractsPage({ searchParams }: PageProps<"/contracts">) {
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q.trim() : "";
-  const status = typeof sp.status === "string" ? sp.status : "";
-  const sortParam = typeof sp.sort === "string" ? sp.sort : undefined;
-  const sort = isLoanBookSort(sortParam) ? sortParam : DEFAULT_SORT;
+  const query = parseLoanBookQuery(toSearchParams(sp));
+  const sort = query.sort ?? DEFAULT_SORT;
+  const current: LoanBookQuery = { ...query, sort };
+  const { q = "", status = "" } = query;
   const page = Math.max(1, Number(sp.page) || 1);
+  // Dashboard drill-downs of a past period read the book as of that month.
+  const asOf = asOfForMonth(query.asof, new Date());
 
-  const book = await loadLoanBook({ includeDrafts: true });
+  const book = await loadLoanBook({ includeDrafts: true, asOf });
   const rows = book.map(toLoanBookRow);
-  const filtered = sortLoanBook(filterLoanBook(rows, { q, status }), sort);
+  const options = loanBookFilterOptions(rows);
+  const filtered = sortLoanBook(filterLoanBook(rows, query), sort);
+  const filtering = hasLoanBookFilters(query);
+  const filteredOutstanding = filtered.reduce((s, r) => s + (r.outstanding ?? 0), 0);
+  const filteredDefault = filtered.reduce((s, r) => s + (r.defaultAmount ?? 0), 0);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -48,14 +68,14 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
   const live = signed.filter((r) => r.lifecycleStatus !== "Finished");
   const outstanding = signed.reduce((s, r) => s + (r.outstanding ?? 0), 0);
 
-  const params = (extra: Record<string, string>) =>
-    new URLSearchParams({ ...(q && { q }), ...(status && { status }), sort, ...extra }).toString();
+  const params = (extra: Record<string, string>) => loanBookSearch(current, extra);
+  const hrefWith = (patch: Partial<LoanBookQuery>) => `/contracts?${loanBookSearch({ ...current, ...patch })}`;
 
   return (
     <>
       <PageHeader
         title="Loan book"
-        description="Todos los contratos de renting. Estado, IRR, extensión y principal pendiente calculados a día de hoy."
+        description={`Todos los contratos de renting. Estado, IRR, extensión y principal pendiente calculados ${query.asof ? `a ${fmtDate(asOf.toISOString())}` : "a día de hoy"}.`}
         actions={
           <>
             <a href={`/contracts/export?${params({ format: "xlsx" })}`} className="inline-flex items-center gap-2 rounded-md border border-ink-600 px-3.5 py-2 text-sm text-slate-200 transition hover:border-mint-500/60">
@@ -80,13 +100,68 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
             <option value="">Todos los estados</option>
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          <select name="client" defaultValue={query.client ?? ""} className={`${inputClass} w-64`} aria-label="Cliente">
+            <option value="">Todos los clientes</option>
+            {options.client.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {GROUP_SELECTS.map(({ name, label, all }) => {
+            const values = query[name] ?? [];
+            // Several values only arrive from a drill-down into "Otros": kept as a chip.
+            if (values.length > 1) {
+              return (
+                <span key={name} className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-3 text-sm text-mint-400">
+                  {values.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
+                  {label}: Otros ({values.length})
+                  <Link href={hrefWith({ [name]: [] })} aria-label={`Quitar filtro ${label.toLowerCase()}`} className="text-slate-400 hover:text-white">
+                    <X className="h-3.5 w-3.5" />
+                  </Link>
+                </span>
+              );
+            }
+            return (
+              <select key={name} name={name} defaultValue={values[0] ?? ""} className={`${inputClass} w-52`} aria-label={label}>
+                <option value="">{all}</option>
+                {options[name].map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            );
+          })}
+          <select name="size" defaultValue={query.size ?? ""} className={`${inputClass} w-52`} aria-label="Tamaño por principal pendiente">
+            <option value="">Todos los tamaños</option>
+            {LOAN_SIZE_BUCKETS.map((b) => <option key={b.key} value={b.key}>Pendiente {b.label}</option>)}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            Default en
+            <input type="month" name="defaulted" defaultValue={query.defaulted ?? ""} className={`${inputClass} w-40`} aria-label="Default en el mes" />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" name="pending" value="1" defaultChecked={query.pending} className="h-4 w-4 accent-mint-500" />
+            Solo con principal pendiente
+          </label>
+          {query.asof && (
+            <span className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-3 text-sm text-mint-400">
+              <input type="hidden" name="asof" value={query.asof} />
+              Cartera a {fmtDate(asOf.toISOString())}
+              <Link href={hrefWith({ asof: undefined })} aria-label="Ver a día de hoy" className="text-slate-400 hover:text-white">
+                <X className="h-3.5 w-3.5" />
+              </Link>
+            </span>
+          )}
           <select name="sort" defaultValue={sort} className={`${inputClass} w-64`} aria-label="Ordenar por">
             {Object.entries(LOAN_BOOK_SORTS).map(([value, { label }]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
           <button className="rounded-md border border-ink-600 px-4 text-sm text-slate-200 hover:border-mint-500/60">Aplicar</button>
-          <span className="ml-auto self-center text-xs text-slate-500">{filtered.length.toLocaleString("es-ES")} contratos</span>
+          {filtering && <Link href="/contracts" className="self-center text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
+          <span className="ml-auto self-center text-right text-xs text-slate-500">
+            {filtered.length.toLocaleString("es-ES")} contratos
+            {filtering && (
+              <>
+                {" · "}<span className="num text-slate-300">{fmtEur(filteredOutstanding)}</span> pendiente
+                {query.defaulted && <>{" · "}<span className="num text-red-300">{fmtEur(filteredDefault, 2)}</span> default</>}
+              </>
+            )}
+          </span>
         </form>
         <Table>
           <thead>

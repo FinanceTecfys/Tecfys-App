@@ -166,6 +166,47 @@ export type Database = {
           },
         ]
       }
+      contract_attachments: {
+        Row: {
+          contract_id: string
+          created_at: string
+          file_name: string
+          id: string
+          kind: Database["public"]["Enums"]["contract_attachment_kind"]
+          mime_type: string
+          size_bytes: number
+          storage_path: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          file_name: string
+          id?: string
+          kind: Database["public"]["Enums"]["contract_attachment_kind"]
+          mime_type: string
+          size_bytes: number
+          storage_path: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          file_name?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["contract_attachment_kind"]
+          mime_type?: string
+          size_bytes?: number
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_attachments_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_types: {
         Row: {
           billing_lag_months: number
@@ -670,6 +711,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      contract_attachment_kind: "id_document" | "bank_certificate"
       contract_workflow_status:
         | "draft"
         | "pending_signature"
@@ -809,6 +851,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      contract_attachment_kind: ["id_document", "bank_certificate"],
       contract_workflow_status: [
         "draft",
         "pending_signature",

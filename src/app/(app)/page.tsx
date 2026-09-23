@@ -8,8 +8,8 @@ import { Table, Td, Th } from "@/components/ui/table";
 import { fmtDate, fmtEur, fmtMonthKey, fmtPct } from "@/lib/format";
 import { WorkflowBadge } from "@/modules/contracts/components/badges";
 import { listPipeline, loadLoanBook } from "@/modules/contracts/data";
-import { toLoanBookRow } from "@/modules/contracts/domain/loan-book-view";
-import { yearMonthOf } from "@/modules/contracts/domain/month-key";
+import { asOfForMonth, type LoanBookQuery, loanBookSearch, toLoanBookRow } from "@/modules/contracts/domain/loan-book-view";
+import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { buildPortfolio } from "@/modules/contracts/domain/portfolio";
 import {
   BucketBarChart,
@@ -20,7 +20,11 @@ import {
 } from "@/modules/dashboard/components/charts";
 import { PeriodSelector } from "@/modules/dashboard/components/period-selector";
 import {
+  type AggregateSlice,
+  defaultDrillDownQuery,
   defaultSeries,
+  type DrillDimension,
+  drillDownQuery,
   groupOutstanding,
   irrSeries,
   outstandingByLoanSize,
@@ -39,20 +43,23 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
 
   // Point-in-time figures are read at the end of the selected period, never
   // beyond today: the same as-of convention the loan book and waterfall use.
-  const { year, month } = yearMonthOf(period.toKey);
-  const endOfPeriod = new Date(Date.UTC(year, month, 0));
-  const asOf = endOfPeriod < now ? endOfPeriod : now;
+  const asOf = asOfForMonth(period.toInput, now);
+  // Drill-downs read the loan book as of the same date, so the rows reconcile with the segment.
+  const asof = period.toKey < monthKeyOfDate(now) ? period.toInput : undefined;
+  const loanBookHref = (query: LoanBookQuery) => `/contracts?${loanBookSearch({ ...query, asof })}`;
+  const drill = (dimension: DrillDimension, slices: AggregateSlice[]) =>
+    slices.map((s) => ({ ...s, href: loanBookHref(drillDownQuery(dimension, s)) }));
 
   const [book, scorings, pipeline] = await Promise.all([loadLoanBook({ asOf }), listScorings(6), listPipeline()]);
   const rows = book.map(toLoanBookRow);
   const months = buildPortfolio(book.map((c) => c.schedule));
   const current = months.find((m) => m.key === period.toKey);
 
-  const topClients = topClientsByOutstanding(rows, 20);
-  const buckets = outstandingByLoanSize(rows);
-  const byAsset = groupOutstanding(rows, "assetCluster");
-  const byCountry = groupOutstanding(rows, "country");
-  const byPartner = groupOutstanding(rows, "distributor");
+  const topClients = drill("client", topClientsByOutstanding(rows, 20));
+  const buckets = drill("size", outstandingByLoanSize(rows));
+  const byAsset = drill("assetCluster", groupOutstanding(rows, "assetCluster"));
+  const byCountry = drill("country", groupOutstanding(rows, "country"));
+  const byPartner = drill("distributor", groupOutstanding(rows, "distributor"));
   const irr = irrSeries(months, period);
   const defaults = defaultSeries(months, period);
 
@@ -116,7 +123,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           <MonthlyLineChart data={defaults.map((p) => ({ label: p.label, value: p.cumulativeLossRate }))} format="percent" tone="loss" />
         </Card>
         <Card title="Default mensual" subtitle="Principal no recuperado dado de baja en el mes (Summary fila 22)" className="xl:col-span-2">
-          <MonthlyBarChart data={defaults.map((p) => ({ label: p.label, value: p.defaults }))} />
+          <MonthlyBarChart data={defaults.map((p) => ({ label: p.label, value: p.defaults, href: loanBookHref(defaultDrillDownQuery(p.key)) }))} />
         </Card>
       </div>
 
