@@ -29,3 +29,4 @@ coverage/
 # Legacy source workbooks hold real client data - never commit them
 Legacy/*.xlsx
 ~$*
+Legacy/*.jpg

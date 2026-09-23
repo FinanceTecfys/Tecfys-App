@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { requireUser } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { getActiveCriteria } from "./data";
@@ -19,6 +20,7 @@ export type ParsePdfResult =
 
 /** Parse an Informa PDF, keep the original in storage and the parse in informa_reports. */
 export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResult> {
+  await requireUser();
   const file = formData.get("pdf");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Selecciona un PDF de Informa" };
   if (file.type && file.type !== "application/pdf") return { ok: false, error: "El fichero no es un PDF" };
@@ -59,6 +61,7 @@ export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Reco
 
 /** Score a company (always recomputed server-side) and store the result. */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
+  await requireUser();
   const parsed = financialsSchema.safeParse(input.financials);
   if (!parsed.success) {
     const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
@@ -132,6 +135,7 @@ const reviewSchema = z.object({
 });
 
 export async function reviewScoring(_prev: { error?: string } | null, formData: FormData): Promise<{ error?: string } | null> {
+  await requireUser();
   const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { id, status, note } = parsed.data;

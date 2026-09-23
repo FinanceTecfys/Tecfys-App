@@ -13,9 +13,11 @@
     "reconcile": "tsx scripts/reconcile-loan-book.ts",
     "import:loan-book": "tsx scripts/import-loan-book.ts",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
-    "template:build": "tsx scripts/build-contract-template.ts"
+    "template:build": "tsx scripts/build-contract-template.ts",
+    "verify:auth": "tsx scripts/verify-auth.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "clsx": "^2.1.1",
     "docxtemplater": "^3.71.0",

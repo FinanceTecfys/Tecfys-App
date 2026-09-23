@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { requireUser } from "@/lib/supabase/auth";
 import { draftSourceFromContract, getContract } from "@/modules/contracts/data";
 import { renderContractDocx } from "@/modules/contracts/document/render-contract-docx";
 import { buildContractTemplateData } from "@/modules/contracts/domain/contract-template";
@@ -10,6 +11,7 @@ const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 
 /** Download the contract filled from its stored snapshot (templates/contract-template.docx). */
 export async function GET(_req: NextRequest, ctx: RouteContext<"/contracts/[id]/draft">) {
+  await requireUser();
   const { id } = await ctx.params;
   if (!z.uuid().safeParse(id).success) return new Response("Not found", { status: 404 });
 

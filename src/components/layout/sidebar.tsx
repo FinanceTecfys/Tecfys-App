@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ClipboardCheck, LayoutDashboard, Settings, TrendingUp } from "lucide-react";
+import { BookOpen, ClipboardCheck, LayoutDashboard, LogOut, Settings, TrendingUp } from "lucide-react";
+import { TecfysLogo } from "@/components/brand/tecfys-logo";
 import { cn } from "@/lib/utils";
+import { signOut } from "@/modules/auth/actions";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -13,7 +15,7 @@ const NAV = [
   { href: "/settings", label: "Configuración", icon: Settings },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({ userEmail }: { userEmail: string | null }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -21,7 +23,7 @@ export function Sidebar() {
     <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-ink-700 bg-ink-950">
       <div className="border-b border-ink-700 px-5 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-mint-500 text-sm font-black text-ink-950">T</span>
+          <TecfysLogo size={32} title={null} />
           <span>
             <span className="block text-sm font-bold tracking-wide">TECFYS</span>
             <span className="block text-[10px] uppercase tracking-[0.2em] text-mint-500/70">Renting platform</span>
@@ -49,8 +51,14 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t border-ink-700 px-4 py-4 text-[10px] uppercase tracking-wider text-slate-500">
-        v0.1 · entorno local
+      <div className="space-y-3 border-t border-ink-700 px-4 py-4">
+        {userEmail && <p className="truncate text-xs text-slate-400" title={userEmail}>{userEmail}</p>}
+        <form action={signOut}>
+          <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-ink-800 hover:text-slate-100">
+            <LogOut className="h-3.5 w-3.5" aria-hidden /> Cerrar sesión
+          </button>
+        </form>
+        <p className="text-[10px] uppercase tracking-wider text-slate-500">v0.1 · entorno local</p>
       </div>
     </aside>
   );
