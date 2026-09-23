@@ -208,8 +208,11 @@ export const LOAN_BOOK_SORTS = {
 export type LoanBookSort = keyof typeof LOAN_BOOK_SORTS;
 export const DEFAULT_SORT: LoanBookSort = "signing_desc";
 
+/** Explicit allow-list: `in` would also accept inherited keys such as "toString". */
+export const LOAN_BOOK_SORT_KEYS = Object.keys(LOAN_BOOK_SORTS) as LoanBookSort[];
+
 export const isLoanBookSort = (value: string | undefined): value is LoanBookSort =>
-  value !== undefined && value in LOAN_BOOK_SORTS;
+  value !== undefined && (LOAN_BOOK_SORT_KEYS as string[]).includes(value);
 
 export function sortLoanBook(rows: LoanBookRowView[], sort: LoanBookSort): LoanBookRowView[] {
   // Contract number breaks ties so the order is stable between exports.

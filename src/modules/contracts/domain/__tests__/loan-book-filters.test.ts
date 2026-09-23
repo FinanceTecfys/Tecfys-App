@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   asOfForMonth,
   clientKeyOf,
+  DEFAULT_SORT,
   filterLoanBook,
   groupKeyOf,
   hasLoanBookFilters,
+  isLoanBookSort,
+  LOAN_BOOK_SORT_KEYS,
+  LOAN_BOOK_SORTS,
   LOAN_SIZE_BUCKETS,
   type LoanBookQuery,
   type LoanBookRowView,
@@ -152,6 +156,23 @@ describe("query string", () => {
   it("drops malformed values instead of guessing", () => {
     const bad = parseLoanBookQuery(new URLSearchParams("size=2k&defaulted=2025-13&asof=25-06&sort=nope&pending=yes&country=es&country=es"));
     expect(bad).toMatchObject({ size: undefined, defaulted: undefined, asof: undefined, sort: undefined, pending: false, country: ["es"] });
+  });
+
+  it("accepts only the known sort keys; inherited or unknown ones fall back to the default without crashing", () => {
+    const rows = [row({ id: "a", signingDate: "2025-01-01" }), row({ id: "b", signingDate: "2025-06-01" })];
+    const bad = ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf", "isPrototypeOf", "nope", "", " "];
+    for (const value of bad) {
+      expect(isLoanBookSort(value), value).toBe(false);
+      // The page and the export route: parse, then fall back to the default.
+      const sort = parseLoanBookQuery(new URLSearchParams({ sort: value })).sort ?? DEFAULT_SORT;
+      expect(sort, value).toBe(DEFAULT_SORT);
+      expect(() => sortLoanBook(rows, sort)).not.toThrow();
+      expect(LOAN_BOOK_SORTS[sort].label).toBeTruthy();
+    }
+    expect(ids(sortLoanBook(rows, parseLoanBookQuery(new URLSearchParams("sort=toString")).sort ?? DEFAULT_SORT))).toEqual(["b", "a"]);
+    // Every real key still passes.
+    expect(LOAN_BOOK_SORT_KEYS).toEqual(Object.keys(LOAN_BOOK_SORTS));
+    for (const key of LOAN_BOOK_SORT_KEYS) expect(parseLoanBookQuery(new URLSearchParams({ sort: key })).sort).toBe(key);
   });
 
   it("reads Next's searchParams record, including repeated params", () => {
