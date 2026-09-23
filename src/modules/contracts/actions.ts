@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { requireUser } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import { ATTACHMENT_BUCKET, attachmentStoragePath, readAttachments, toAttachmentRow } from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
@@ -19,6 +20,7 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  * whose type is sniffed from their bytes before anything is written.
  */
 export async function createContract(input: OperationInput, files?: FormData): Promise<CreateContractResult> {
+  await requireUser();
   const parsed = operationSchema.safeParse(input);
   const attached = await readAttachments(files);
   if (!parsed.success || !attached.ok) {
@@ -152,6 +154,7 @@ const signSchema = z.object({ id: z.uuid(), signingDate: z.iso.date() });
  * until the Signaturit webhook drives it.
  */
 export async function markContractSigned(formData: FormData): Promise<void> {
+  await requireUser();
   const { id, signingDate } = signSchema.parse(Object.fromEntries(formData));
   const { error } = await db()
     .from("contracts")
@@ -171,6 +174,7 @@ export type CancellationResult = { ok: true } | { ok: false; error: string; fiel
  * default are recomputed by the schedule engine on the next read.
  */
 export async function updateContractCancellation(input: CancellationInput): Promise<CancellationResult> {
+  await requireUser();
   const parsed = cancellationSchema.safeParse(input);
   if (!parsed.success) {
     const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));

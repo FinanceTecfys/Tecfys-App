@@ -16,6 +16,7 @@
     "template:build": "tsx scripts/build-contract-template.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "clsx": "^2.1.1",
     "docxtemplater": "^3.71.0",

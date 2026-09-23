@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { requireUser } from "@/lib/supabase/auth";
 import { loadLoanBook } from "@/modules/contracts/data";
 import { loanBookToPdf, loanBookToXlsx } from "@/modules/contracts/document/export-loan-book";
 import {
@@ -19,6 +20,7 @@ const TYPES = {
 
 /** Export the loan book honouring the filters and the sort of the listing. */
 export async function GET(request: NextRequest) {
+  await requireUser();
   const sp = request.nextUrl.searchParams;
   const format = sp.get("format") === "pdf" ? "pdf" : "xlsx";
   const query = parseLoanBookQuery(sp);
