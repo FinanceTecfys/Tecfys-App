@@ -12,7 +12,8 @@ import { markContractSigned } from "@/modules/contracts/actions";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { CancellationForm } from "@/modules/contracts/components/cancellation-form";
 import { ScheduleTable } from "@/modules/contracts/components/schedule-table";
-import { draftSourceFromContract, getContract, toContractInput } from "@/modules/contracts/data";
+import { draftSourceFromContract, getContract, listAttachments, toContractInput } from "@/modules/contracts/data";
+import { ATTACHMENT_KIND_ORDER, ATTACHMENT_KINDS } from "@/modules/contracts/domain/attachments";
 import { cityLine } from "@/modules/contracts/domain/contract-template";
 import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { buildSchedule, principalOutstandingAt } from "@/modules/contracts/domain/schedule";
@@ -23,6 +24,9 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const { id } = await params;
   const contract = await getContract(id);
   if (!contract) notFound();
+  const stored = await listAttachments(contract.id);
+  // Fixed order (ID document, then bank certificate); nothing shown when absent.
+  const attachments = ATTACHMENT_KIND_ORDER.flatMap((kind) => stored.filter((a) => a.kind === kind).map((a) => ({ ...a, kind })));
 
   const today = new Date();
   const schedule = buildSchedule(toContractInput(contract), today);
@@ -141,6 +145,17 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               {signed ? "Descargar contrato (.docx)" : "Descargar contrato borrador (.docx)"}
             </a>
           )}
+          {attachments.map((a) => (
+            <a
+              key={a.kind}
+              href={`/contracts/${contract.id}/attachments/${a.kind}`}
+              title={a.file_name}
+              className="flex items-center justify-center gap-2 rounded-md border border-mint-500/50 px-3.5 py-2 text-sm font-semibold text-mint-400 transition hover:bg-mint-500/10"
+            >
+              <FileDown className="h-4 w-4" aria-hidden />
+              {ATTACHMENT_KINDS[a.kind].downloadLabel}
+            </a>
+          ))}
           {signed && (
             <Card title="Gestión del contrato" subtitle="Cancelación, estado y liquidación">
               <CancellationForm

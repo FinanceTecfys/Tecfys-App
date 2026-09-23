@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/supabase/server";
+import { ATTACHMENT_BUCKET, attachmentStoragePath, readAttachments, toAttachmentRow } from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
 import { type OperationInput, operationSchema } from "./domain/operation";
 
@@ -13,12 +14,18 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  * Create a DRAFT contract from an approved scoring: the contract with its
  * frozen identification snapshot, the equipment line and the SEPA mandate.
  * The company record is refreshed with the corrected identification (not the
- * CIF, which identifies it). Everything is re-validated here.
+ * CIF, which identifies it). Everything is re-validated here, including the
+ * optional attachments in `files` (fields "id_document" / "bank_certificate"),
+ * whose type is sniffed from their bytes before anything is written.
  */
-export async function createContract(input: OperationInput): Promise<CreateContractResult> {
+export async function createContract(input: OperationInput, files?: FormData): Promise<CreateContractResult> {
   const parsed = operationSchema.safeParse(input);
-  if (!parsed.success) {
-    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
+  const attached = await readAttachments(files);
+  if (!parsed.success || !attached.ok) {
+    const fieldErrors = {
+      ...(parsed.success ? {} : Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]))),
+      ...(attached.ok ? {} : attached.fieldErrors),
+    };
     return { ok: false, error: "Revisa los datos marcados", fieldErrors };
   }
   const v = parsed.data;
@@ -76,8 +83,11 @@ export async function createContract(input: OperationInput): Promise<CreateContr
     .single();
   if (error) return { ok: false, error: error.message };
 
-  // No multi-statement transaction through PostgREST: undo the contract if a child insert fails.
+  // No multi-statement transaction through PostgREST: undo the contract (its
+  // child rows cascade) and any file already uploaded if a later step fails.
+  const uploaded: string[] = [];
   const rollback = async (message: string): Promise<CreateContractResult> => {
+    if (uploaded.length) await db().storage.from(ATTACHMENT_BUCKET).remove(uploaded);
     await db().from("contracts").delete().eq("id", contract.id);
     return { ok: false, error: message };
   };
@@ -105,6 +115,17 @@ export async function createContract(input: OperationInput): Promise<CreateContr
     signed_at: new Date().toISOString().slice(0, 10),
   });
   if (mandateError) return rollback(mandateError.message);
+
+  for (const attachment of attached.attachments) {
+    const path = attachmentStoragePath(contract.id, attachment.kind, attachment.mimeType, crypto.randomUUID());
+    const { error: uploadError } = await db()
+      .storage.from(ATTACHMENT_BUCKET)
+      .upload(path, attachment.bytes, { contentType: attachment.mimeType, upsert: false });
+    if (uploadError) return rollback(`No se pudo guardar el adjunto: ${uploadError.message}`);
+    uploaded.push(path);
+    const { error: rowError } = await db().from("contract_attachments").insert(toAttachmentRow(contract.id, attachment, path));
+    if (rowError) return rollback(rowError.message);
+  }
 
   await db()
     .from("companies")

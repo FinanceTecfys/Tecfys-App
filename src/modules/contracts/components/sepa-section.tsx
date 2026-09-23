@@ -19,10 +19,13 @@ export function SepaSection({
   value,
   onChange,
   errors,
+  bankCertificateAttachment,
 }: {
   value: SepaState;
   onChange: (patch: Partial<SepaState>) => void;
   errors: Record<string, string>;
+  /** Control to attach the bank certificate, next to the IBAN. */
+  bankCertificateAttachment?: React.ReactNode;
 }) {
   const normalized = normalizeIban(value.iban);
   // Only complain once the IBAN looks complete, not while it is being typed.
@@ -63,7 +66,7 @@ export function SepaSection({
           hint={value.bicDerived ? "Deducido del IBAN" : "Opcional para cuentas españolas"}
           autoComplete="off"
         />
-        <div />
+        <div>{bankCertificateAttachment}</div>
         <Field
           label="Nombre del deudor (titular de la cuenta)"
           name="sepaDebtorName"

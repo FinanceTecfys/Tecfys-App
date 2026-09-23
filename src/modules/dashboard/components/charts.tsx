@@ -9,7 +9,12 @@
  *  - ordinal single-hue ramp for the size tiers, which are ordered
  * Both were checked with the dataviz validator (lightness band, chroma floor,
  * CVD separation, normal-vision floor, contrast).
+ *
+ * Drill-down: a slice or point may carry an `href` (the loan book filtered to
+ * the contracts behind it); clicking its bar / sector / legend row opens it.
  */
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -42,6 +47,24 @@ const TOOLTIP = {
   cursor: { fill: "rgba(0,247,161,0.06)" },
 } as const;
 
+/** A chart segment, optionally linked to the loan book filtered to it. */
+export type DrillSlice = AggregateSlice & { href?: string };
+
+/** Click handler for the i-th mark, and its cursor, when the data carries links. */
+function useDrillDown(data: readonly { href?: string }[]) {
+  const router = useRouter();
+  const linked = data.some((d) => d.href);
+  return {
+    cursor: linked ? "pointer" : undefined,
+    onClick: linked
+      ? (_item: unknown, index: number) => {
+          const href = data[index]?.href;
+          if (href) router.push(href);
+        }
+      : undefined,
+  };
+}
+
 /** Recharts types the tooltip item loosely; every chart here feeds it a slice. */
 const slice = (item: unknown) => (item as { payload: AggregateSlice }).payload;
 
@@ -50,7 +73,8 @@ const compactEur = (v: number) =>
   Math.abs(v) >= 1000 ? `${Math.round(v / 1000).toLocaleString("es-ES")}k` : Math.round(v).toLocaleString("es-ES");
 
 /** Horizontal bars: one nominal dimension ranked by amount (no legend needed). */
-export function RankedBarChart({ data, height = 520 }: { data: AggregateSlice[]; height?: number }) {
+export function RankedBarChart({ data, height = 520 }: { data: DrillSlice[]; height?: number }) {
+  const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -60,14 +84,15 @@ export function RankedBarChart({ data, height = 520 }: { data: AggregateSlice[];
         <YAxis type="category" dataKey="label" width={160} {...AXIS} axisLine={false} interval={0}
           tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 23)}…` : v)} />
         <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtEur(Number(value))} · ${fmtPct(slice(item).share, 1)}`, "Principal pendiente"]} />
-        <Bar dataKey="amount" fill={CATEGORICAL[0]} radius={[0, 4, 4, 0]} maxBarSize={14} />
+        <Bar dataKey="amount" fill={CATEGORICAL[0]} radius={[0, 4, 4, 0]} maxBarSize={14} {...drill} />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
 /** Vertical bars over an ordered dimension: size tiers take the ordinal ramp. */
-export function BucketBarChart({ data, height = 260 }: { data: AggregateSlice[]; height?: number }) {
+export function BucketBarChart({ data, height = 260 }: { data: DrillSlice[]; height?: number }) {
+  const drill = useDrillDown(data);
   if (data.every((d) => d.amount === 0)) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -76,7 +101,7 @@ export function BucketBarChart({ data, height = 260 }: { data: AggregateSlice[];
         <XAxis dataKey="label" {...AXIS} axisLine={false} />
         <YAxis {...AXIS} tickFormatter={compactEur} axisLine={false} width={52} />
         <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtEur(Number(value))} · ${slice(item).count} contratos`, "Principal pendiente"]} />
-        <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56}>
+        <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56} {...drill}>
           {data.map((d, i) => (
             <Cell key={d.key} fill={ORDINAL[i % ORDINAL.length]} />
           ))}
@@ -87,14 +112,15 @@ export function BucketBarChart({ data, height = 260 }: { data: AggregateSlice[];
 }
 
 /** Donut + its own legend, so identity never rests on colour alone. */
-export function DonutChart({ data, total, height = 210 }: { data: AggregateSlice[]; total: number; height?: number }) {
+export function DonutChart({ data, total, height = 210 }: { data: DrillSlice[]; total: number; height?: number }) {
+  const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
       <div className="relative shrink-0" style={{ width: height, height }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="amount" nameKey="label" innerRadius="62%" outerRadius="92%" paddingAngle={2} stroke="#071a0f" strokeWidth={2}>
+            <Pie data={data} dataKey="amount" nameKey="label" innerRadius="62%" outerRadius="92%" paddingAngle={2} stroke="#071a0f" strokeWidth={2} {...drill}>
               {data.map((d, i) => (
                 <Cell key={d.key} fill={sliceColor(d, i)} />
               ))}
@@ -108,14 +134,23 @@ export function DonutChart({ data, total, height = 210 }: { data: AggregateSlice
         </div>
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5 text-xs">
-        {data.map((d, i) => (
-          <li key={d.key} className="flex items-center gap-2">
-            <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: sliceColor(d, i) }} />
-            <span className="min-w-0 flex-1 truncate text-slate-300">{d.label}</span>
-            <span className="num text-slate-400">{fmtPct(d.share, 1)}</span>
-            <span className="num w-20 text-right text-slate-200">{fmtEur(d.amount)}</span>
-          </li>
-        ))}
+        {data.map((d, i) => {
+          const content = (
+            <>
+              <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: sliceColor(d, i) }} />
+              <span className="min-w-0 flex-1 truncate text-slate-300">{d.label}</span>
+              <span className="num text-slate-400">{fmtPct(d.share, 1)}</span>
+              <span className="num w-20 text-right text-slate-200">{fmtEur(d.amount)}</span>
+            </>
+          );
+          return d.href ? (
+            <li key={d.key}>
+              <Link href={d.href} className="flex items-center gap-2 hover:[&>span]:text-mint-400" title={`Ver contratos: ${d.label}`}>{content}</Link>
+            </li>
+          ) : (
+            <li key={d.key} className="flex items-center gap-2">{content}</li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -124,6 +159,7 @@ export function DonutChart({ data, total, height = 210 }: { data: AggregateSlice
 export interface SeriesPoint {
   label: string;
   value: number | null;
+  href?: string;
 }
 
 /** Monthly line for a single measure (one series: the card title names it). */
@@ -156,6 +192,7 @@ export function MonthlyLineChart({
 
 /** Monthly bars, for an amount that is booked in discrete months. */
 export function MonthlyBarChart({ data, height = 240 }: { data: SeriesPoint[]; height?: number }) {
+  const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -164,7 +201,7 @@ export function MonthlyBarChart({ data, height = 240 }: { data: SeriesPoint[]; h
         <XAxis dataKey="label" {...AXIS} axisLine={false} minTickGap={16} />
         <YAxis {...AXIS} axisLine={false} width={58} tickFormatter={compactEur} />
         <Tooltip {...TOOLTIP} formatter={(value) => [fmtEur(Number(value)), "Default del mes"]} />
-        <Bar dataKey="value" fill={LOSS} radius={[4, 4, 0, 0]} maxBarSize={28} />
+        <Bar dataKey="value" fill={LOSS} radius={[4, 4, 0, 0]} maxBarSize={28} {...drill} />
       </BarChart>
     </ResponsiveContainer>
   );

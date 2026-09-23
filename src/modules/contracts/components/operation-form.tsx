@@ -11,6 +11,8 @@ import { createAssetType, createDistributor } from "@/modules/catalog/actions";
 import { CatalogSelect } from "@/modules/catalog/components/catalog-select";
 import type { AssetType, ContractType, Distributor } from "@/modules/catalog/data";
 import { createContract } from "../actions";
+import { ATTACHMENT_KINDS } from "../domain/attachments";
+import { AttachmentInput } from "./attachment-input";
 import type { IdentityPrefill } from "../domain/operation";
 import { installmentForRate, monthlyFromAnnual } from "../domain/pricing";
 import { buildSchedule } from "../domain/schedule";
@@ -68,6 +70,8 @@ export function OperationForm({
   const [guarantorRepresentativeNif, setGuarantorRepresentativeNif] = useState("");
   const [notes, setNotes] = useState("");
   const [targetIrr, setTargetIrr] = useState("");
+  const [idDocument, setIdDocument] = useState<File | null>(null);
+  const [bankCertificate, setBankCertificate] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, startSaving] = useTransition();
@@ -119,6 +123,9 @@ export function OperationForm({
     e.preventDefault();
     setError(null);
     setFieldErrors({});
+    const files = new FormData();
+    if (idDocument) files.set("id_document", idDocument);
+    if (bankCertificate) files.set("bank_certificate", bankCertificate);
     startSaving(async () => {
       const res = await createContract({
         scoringId: scoring.id,
@@ -143,7 +150,7 @@ export function OperationForm({
         guarantorRepresentative,
         guarantorRepresentativeNif,
         notes,
-      });
+      }, files);
       if (res && !res.ok) {
         setError(res.error);
         setFieldErrors(res.fieldErrors ?? {});
@@ -154,8 +161,22 @@ export function OperationForm({
   return (
     <form onSubmit={onSubmit} className="grid gap-6 xl:grid-cols-[1fr_400px]">
       <div className="space-y-6">
-        <IdentitySection value={identity} onChange={patchIdentity} errors={fieldErrors} />
-        <SepaSection value={sepa} onChange={(patch) => setSepa((prev) => ({ ...prev, ...patch }))} errors={fieldErrors} />
+        <IdentitySection
+          value={identity}
+          onChange={patchIdentity}
+          errors={fieldErrors}
+          signatoryIdAttachment={
+            <AttachmentInput id="id_document" label={ATTACHMENT_KINDS.id_document.label} value={idDocument} onChange={setIdDocument} error={fieldErrors.id_document} />
+          }
+        />
+        <SepaSection
+          value={sepa}
+          onChange={(patch) => setSepa((prev) => ({ ...prev, ...patch }))}
+          errors={fieldErrors}
+          bankCertificateAttachment={
+            <AttachmentInput id="bank_certificate" label={ATTACHMENT_KINDS.bank_certificate.label} value={bankCertificate} onChange={setBankCertificate} error={fieldErrors.bank_certificate} />
+          }
+        />
         <Card title="C · Producto y origen">
           <div className="grid gap-4 md:grid-cols-2">
             <CatalogSelect

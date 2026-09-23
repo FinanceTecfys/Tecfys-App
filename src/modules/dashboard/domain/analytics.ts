@@ -14,7 +14,15 @@
  *    write-off (Summary row 22) and the cumulative loss rate over principal
  *    originated (Summary row 45).
  */
-import type { LoanBookRowView } from "@/modules/contracts/domain/loan-book-view";
+import {
+  clientKeyOf,
+  type GroupFilter,
+  groupKeyOf,
+  LOAN_SIZE_BUCKETS,
+  type LoanBookQuery,
+  type LoanBookRowView,
+  loanSizeBucketOf,
+} from "@/modules/contracts/domain/loan-book-view";
 import { type MonthKey, monthKey, monthKeyOfDate, yearMonthOf } from "@/modules/contracts/domain/month-key";
 import type { PortfolioMonth } from "@/modules/contracts/domain/portfolio";
 
@@ -106,6 +114,8 @@ export interface AggregateSlice {
   count: number;
   /** Share of the total outstanding of the aggregation. */
   share: number;
+  /** Group keys folded into the "Otros" slice. */
+  members?: string[];
 }
 
 const positiveOutstanding = (r: LoanBookRowView) => Math.max(0, r.outstanding ?? 0);
@@ -122,7 +132,7 @@ export function topClientsByOutstanding(rows: readonly LoanBookRowView[], limit 
     const amount = positiveOutstanding(r);
     if (amount <= 0) continue;
     // CIF identifies the client; the name is what the chart shows.
-    const key = r.cif ?? r.client;
+    const key = clientKeyOf(r);
     const entry = byClient.get(key) ?? { label: r.client, amount: 0, count: 0 };
     entry.amount += amount;
     entry.count += 1;
@@ -136,24 +146,17 @@ export function topClientsByOutstanding(rows: readonly LoanBookRowView[], limit 
     .map((s) => ({ ...s, share: total > 0 ? s.amount / total : 0 }));
 }
 
-export const LOAN_SIZE_BUCKETS = [
-  { key: "lt1k", label: "<1k", min: 0, max: 1000 },
-  { key: "1k5k", label: "1k–5k", min: 1000, max: 5000 },
-  { key: "5k10k", label: "5k–10k", min: 5000, max: 10000 },
-  { key: "10k20k", label: "10k–20k", min: 10000, max: 20000 },
-  { key: "20k50k", label: "20k–50k", min: 20000, max: 50000 },
-  { key: "gt50k", label: ">50k", min: 50000, max: Number.POSITIVE_INFINITY },
-] as const;
+export { LOAN_SIZE_BUCKETS };
 
 /** Outstanding by size of each contract's own outstanding balance. */
 export function outstandingByLoanSize(rows: readonly LoanBookRowView[]): AggregateSlice[] {
   const totals = LOAN_SIZE_BUCKETS.map((b) => ({ key: b.key, label: b.label, amount: 0, count: 0 }));
   for (const r of rows) {
-    const amount = positiveOutstanding(r);
-    if (amount <= 0) continue;
     // Upper bound excluded, so each contract falls in exactly one bucket.
-    const idx = LOAN_SIZE_BUCKETS.findIndex((b) => amount >= b.min && amount < b.max);
-    if (idx === -1) continue;
+    const bucket = loanSizeBucketOf(r.outstanding);
+    if (!bucket) continue;
+    const idx = LOAN_SIZE_BUCKETS.indexOf(bucket);
+    const amount = positiveOutstanding(r);
     totals[idx].amount += amount;
     totals[idx].count += 1;
   }
@@ -185,7 +188,7 @@ export function groupOutstanding(
     if (amount <= 0) continue;
     const raw = r[dimension];
     const label = raw?.trim() || emptyLabel;
-    const key = label.toLowerCase();
+    const key = groupKeyOf(raw);
     const entry = groups.get(key) ?? { label, amount: 0, count: 0 };
     entry.amount += amount;
     entry.count += 1;
@@ -196,15 +199,47 @@ export function groupOutstanding(
     .sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label, "es"));
 
   if (sorted.length <= limit) return withShares(sorted);
-  const head = sorted.slice(0, limit);
+  const head: Omit<AggregateSlice, "share">[] = sorted.slice(0, limit);
   const tail = sorted.slice(limit);
   head.push({
     key: "__other__",
     label: otherLabel,
     amount: tail.reduce((s, x) => s + x.amount, 0),
     count: tail.reduce((s, x) => s + x.count, 0),
+    members: tail.map((x) => x.key),
   });
   return withShares(head);
+}
+
+// ---------------------------------------------------------------------------
+// Drill-down: the loan-book query behind a chart segment
+// ---------------------------------------------------------------------------
+
+/** Chart dimension -> loan-book group filter. */
+const DRILL_GROUP: Record<Exclude<GroupDimension, "assetType">, GroupFilter> = {
+  assetCluster: "cluster",
+  country: "country",
+  distributor: "distributor",
+};
+
+export type DrillDimension = "client" | "size" | keyof typeof DRILL_GROUP;
+
+/**
+ * Loan-book query that lists exactly the contracts behind a concentration
+ * segment: the same key the aggregation grouped by, restricted to contracts
+ * with principal outstanding as the aggregation is, so the rows add up to the
+ * segment's amount and count. "Otros" expands to the keys it folded.
+ */
+export function drillDownQuery(dimension: DrillDimension, slice: AggregateSlice): LoanBookQuery {
+  const base: LoanBookQuery = { pending: true, sort: "outstanding_desc" };
+  if (dimension === "client") return { ...base, client: slice.key };
+  if (dimension === "size") return { ...base, size: slice.key };
+  return { ...base, [DRILL_GROUP[dimension]]: slice.members ?? [slice.key] };
+}
+
+/** Loan-book query of the contracts written off in a month of the default chart. */
+export function defaultDrillDownQuery(key: MonthKey): LoanBookQuery {
+  return { defaulted: monthKeyToInput(key), sort: "default_desc" };
 }
 
 // ---------------------------------------------------------------------------

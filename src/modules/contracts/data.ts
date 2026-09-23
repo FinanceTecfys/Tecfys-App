@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/supabase/server";
+import { ATTACHMENT_BUCKET, type AttachmentKind, type StoredAttachment } from "./domain/attachments";
 import type { ContractDraftSource } from "./domain/contract-template";
 import { monthKeyOfDate } from "./domain/month-key";
 import { buildSchedule, type ContractInput, type ContractSchedule, principalOutstandingAt } from "./domain/schedule";
@@ -139,4 +140,32 @@ export function draftSourceFromContract(c: FullContract): ContractDraftSource | 
       signedAt: m.signed_at,
     },
   };
+}
+
+/** The attachments stored for a contract (metadata only; the files stay in the private bucket). */
+export async function listAttachments(contractId: string): Promise<StoredAttachment[]> {
+  const { data, error } = await db()
+    .from("contract_attachments")
+    .select("kind, file_name, mime_type, size_bytes, storage_path")
+    .eq("contract_id", contractId);
+  if (error) throw error;
+  return data;
+}
+
+export async function findAttachment(contractId: string, kind: AttachmentKind) {
+  const { data, error } = await db()
+    .from("contract_attachments")
+    .select("kind, file_name, mime_type, size_bytes, storage_path, contract:contracts ( contract_number )")
+    .eq("contract_id", contractId)
+    .eq("kind", kind)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.contract) return null;
+  const { contract, ...attachment } = data;
+  return { contractNumber: contract.contract_number, attachment };
+}
+
+export async function downloadAttachment(storagePath: string): Promise<Blob | null> {
+  const { data, error } = await db().storage.from(ATTACHMENT_BUCKET).download(storagePath);
+  return error ? null : data;
 }

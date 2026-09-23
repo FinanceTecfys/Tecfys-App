@@ -14,10 +14,13 @@ export function IdentitySection({
   value,
   onChange,
   errors,
+  signatoryIdAttachment,
 }: {
   value: IdentityState;
   onChange: (patch: Partial<IdentityState>) => void;
   errors: Record<string, string>;
+  /** Control to attach the signatory's DNI / NIE, next to their DNI. */
+  signatoryIdAttachment?: React.ReactNode;
 }) {
   const field = (key: keyof IdentityPrefill, label: string, extra?: Partial<React.ComponentProps<typeof Field>>) => (
     <Field label={label} name={key} value={value[key]} onChange={(e) => onChange({ [key]: e.target.value })} error={errors[key]} {...extra} />
@@ -35,7 +38,7 @@ export function IdentitySection({
         <div />
         {field("signatoryName", "Administrador / firmante", { className: "md:col-span-2" })}
         {field("signatoryNif", "DNI del firmante", { hint: "No viene en Informa" })}
-        <div />
+        <div>{signatoryIdAttachment}</div>
         {field("signatoryAddress", "Domicilio del firmante", { className: "md:col-span-4", hint: "Opcional: si se deja vacío no aparece en el contrato" })}
         {field("contactName", "Contacto para notificaciones", { className: "md:col-span-2" })}
         {field("contactPhone", "Teléfono")}

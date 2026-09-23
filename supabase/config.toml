@@ -122,6 +122,13 @@ public = false
 file_size_limit = "20MiB"
 allowed_mime_types = ["application/pdf"]
 
+# Contract attachments (signatory ID, bank certificate). Private: served only
+# through /contracts/[id]/attachments/[kind]. Mirrors the migration.
+[storage.buckets.contract-attachments]
+public = false
+file_size_limit = "8MiB"
+allowed_mime_types = ["application/pdf", "image/jpeg", "image/png", "image/webp"]
+
 # Uncomment to configure local storage buckets
 # [storage.buckets.images]
 # public = false
