@@ -444,6 +444,180 @@ export type Database = {
         }
         Relationships: []
       }
+      erp_settings: {
+        Row: {
+          holded_base_url: string
+          id: boolean
+          include_credit_notes: boolean
+          sync_lookback_days: number
+          updated_at: string
+        }
+        Insert: {
+          holded_base_url?: string
+          id?: boolean
+          include_credit_notes?: boolean
+          sync_lookback_days?: number
+          updated_at?: string
+        }
+        Update: {
+          holded_base_url?: string
+          id?: boolean
+          include_credit_notes?: boolean
+          sync_lookback_days?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      holded_sales_invoices: {
+        Row: {
+          account: string | null
+          client: string | null
+          collected: number | null
+          collected_date: string | null
+          created_at: string
+          date: string
+          description: string | null
+          digital_signature: string | null
+          doc_type: string
+          due_date: string | null
+          employees: number | null
+          equivalence_surcharge: number | null
+          holded_id: string | null
+          id: string
+          num: string
+          operation_date: string | null
+          payment_method: string | null
+          pending: number | null
+          project: string | null
+          sii: string | null
+          source: string
+          status: string | null
+          subtotal: number
+          synced_at: string
+          tags: string | null
+          total: number
+          updated_at: string
+          vat: number | null
+          withholding: number | null
+        }
+        Insert: {
+          account?: string | null
+          client?: string | null
+          collected?: number | null
+          collected_date?: string | null
+          created_at?: string
+          date: string
+          description?: string | null
+          digital_signature?: string | null
+          doc_type?: string
+          due_date?: string | null
+          employees?: number | null
+          equivalence_surcharge?: number | null
+          holded_id?: string | null
+          id?: string
+          num: string
+          operation_date?: string | null
+          payment_method?: string | null
+          pending?: number | null
+          project?: string | null
+          sii?: string | null
+          source: string
+          status?: string | null
+          subtotal: number
+          synced_at?: string
+          tags?: string | null
+          total: number
+          updated_at?: string
+          vat?: number | null
+          withholding?: number | null
+        }
+        Update: {
+          account?: string | null
+          client?: string | null
+          collected?: number | null
+          collected_date?: string | null
+          created_at?: string
+          date?: string
+          description?: string | null
+          digital_signature?: string | null
+          doc_type?: string
+          due_date?: string | null
+          employees?: number | null
+          equivalence_surcharge?: number | null
+          holded_id?: string | null
+          id?: string
+          num?: string
+          operation_date?: string | null
+          payment_method?: string | null
+          pending?: number | null
+          project?: string | null
+          sii?: string | null
+          source?: string
+          status?: string | null
+          subtotal?: number
+          synced_at?: string
+          tags?: string | null
+          total?: number
+          updated_at?: string
+          vat?: number | null
+          withholding?: number | null
+        }
+        Relationships: []
+      }
+      holded_sync_runs: {
+        Row: {
+          created: number
+          error: string | null
+          fetched: number
+          finished_at: string | null
+          id: string
+          invalid: number
+          messages: string[]
+          skipped: number
+          source: string
+          started_at: string
+          status: string
+          triggered_by: string | null
+          updated: number
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          created?: number
+          error?: string | null
+          fetched?: number
+          finished_at?: string | null
+          id?: string
+          invalid?: number
+          messages?: string[]
+          skipped?: number
+          source: string
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+          updated?: number
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          created?: number
+          error?: string | null
+          fetched?: number
+          finished_at?: string | null
+          id?: string
+          invalid?: number
+          messages?: string[]
+          skipped?: number
+          source?: string
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+          updated?: number
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       informa_reports: {
         Row: {
           company_id: string | null

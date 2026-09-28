@@ -30,3 +30,6 @@ coverage/
 Legacy/*.xlsx
 ~$*
 Legacy/*.jpg
+
+# Holded sales exports (ERP import) hold client data - never commit them, in any folder
+Holded*.xlsx
