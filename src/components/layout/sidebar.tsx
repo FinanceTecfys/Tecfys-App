@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ClipboardCheck, LayoutDashboard, LogOut, Settings, TrendingUp } from "lucide-react";
+import { BookOpen, ClipboardCheck, LayoutDashboard, LogOut, Receipt, Settings, TrendingUp } from "lucide-react";
 import { TecfysLogo } from "@/components/brand/tecfys-logo";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/modules/auth/actions";
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/scoring", label: "Scoring", icon: ClipboardCheck },
   { href: "/contracts", label: "Loan book", icon: BookOpen },
   { href: "/portfolio", label: "Cartera / Waterfall", icon: TrendingUp },
+  { href: "/erp", label: "ERP", icon: Receipt },
   { href: "/settings", label: "Configuración", icon: Settings },
 ] as const;
 

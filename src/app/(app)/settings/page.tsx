@@ -4,6 +4,9 @@ import { Table, Td, Th } from "@/components/ui/table";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { ActiveToggle, NewAssetTypeForm, NewDistributorForm } from "@/modules/catalog/components/catalog-forms";
 import { listAssetTypes, listContractTypes, listDistributors } from "@/modules/catalog/data";
+import { HoldedSettingsForm } from "@/modules/erp/components/holded-settings-form";
+import { getErpSettings } from "@/modules/erp/data";
+import { isHoldedConfigured } from "@/modules/erp/holded/server";
 import { DECISION_LABELS, type RatioKey } from "@/modules/scoring/domain/criteria";
 import { RatingBadge } from "@/modules/scoring/components/badges";
 import { getActiveCriteria } from "@/modules/scoring/data";
@@ -11,18 +14,19 @@ import { getActiveCriteria } from "@/modules/scoring/data";
 export const metadata = { title: "Configuración" };
 
 export default async function SettingsPage() {
-  const [distributors, assetTypes, contractTypes, criteria] = await Promise.all([
+  const [distributors, assetTypes, contractTypes, criteria, erpSettings] = await Promise.all([
     listDistributors(),
     listAssetTypes(),
     listContractTypes(),
     getActiveCriteria(),
+    getErpSettings(),
   ]);
   const clusters = [...new Set(assetTypes.map((a) => a.cluster))].sort();
   const c = criteria.config;
 
   return (
     <>
-      <PageHeader title="Configuración" description="Catálogos de originación y modelo de scoring vigente." />
+      <PageHeader title="Configuración" description="Catálogos de originación, modelo de scoring vigente y conexión con el ERP." />
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Distribuidores" subtitle={`${distributors.length} registrados`}>
           <NewDistributorForm />
@@ -98,6 +102,10 @@ export default async function SettingsPage() {
               </div>
             ))}
           </div>
+        </Card>
+
+        <Card title="Holded / ERP" subtitle="Conexión con la API v2 de Holded para sincronizar las ventas en ERP">
+          <HoldedSettingsForm settings={erpSettings} configured={isHoldedConfigured()} />
         </Card>
       </div>
     </>
