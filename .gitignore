@@ -33,3 +33,6 @@ Legacy/*.jpg
 
 # Holded sales exports (ERP import) hold client data - never commit them, in any folder
 Holded*.xlsx
+
+# Informa API docs, sample report and credentials - never commit them
+API CONFIGURABLE v2/

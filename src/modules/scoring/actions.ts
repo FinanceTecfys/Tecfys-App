@@ -11,8 +11,73 @@ import { scoreCompany } from "./domain/engine";
 import { type Financials, financialsSchema } from "./domain/financials";
 import { extractInformaText } from "./informa/extract-pdf-text";
 import { parseInformaText } from "./informa/parse-informa-text";
+import { type InformaReportMapping, mapInformaReport, normalizeCif } from "./informa/map-informa-report";
+import { appInformaClient, informaConfigStatus, isInformaConfigured } from "./informa/server";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Which server env entry is missing or wrong - names only, never values. */
+function informaNotConfigured(): string {
+  const s = informaConfigStatus();
+  if (!s.baseUrlAllowed) return "INFORMA_API_URL debe ser https y de un dominio informa.es";
+  const missing = [!s.hasUsername && "INFORMA_USERNAME", !s.hasSession && "INFORMA_SESSION"].filter(Boolean).join(" y ");
+  return `Falta ${missing} en el entorno del servidor (.env.local)`;
+}
+
+export type FetchInformaResult =
+  | ({ ok: true; reportId: string } & Omit<InformaReportMapping, "reportType">)
+  | { ok: false; error: string };
+
+/**
+ * "Buscar en Informa por CIF": fetch the INFORME_MAYOR from the Informa API and
+ * map it to Financials. Only the mapping is kept (informa_reports, source
+ * informa_api): the raw report echoes the request credentials, so it is
+ * neither stored nor sent to the browser.
+ */
+export async function fetchInformaReport(cifInput: string): Promise<FetchInformaResult> {
+  await requireUser();
+  const cif = normalizeCif(String(cifInput ?? ""));
+  if (!cif) return { ok: false, error: "CIF no válido: 9 caracteres, p. ej. B12345678" };
+  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
+
+  let report: unknown;
+  try {
+    report = await appInformaClient().getReport(cif);
+  } catch (e) {
+    return { ok: false, error: errorMessage(e) };
+  }
+  const { reportType, ...mapping } = mapInformaReport(report);
+  if (!mapping.financials.cif) mapping.financials.cif = cif;
+
+  const { data, error } = await db()
+    .from("informa_reports")
+    .insert({
+      source: "informa_api",
+      file_name: `Informa API ${reportType ?? "informe"} ${cif}`,
+      reference_year: mapping.financials.referenceYear,
+      parsed: { ...mapping, reportType, requestedCif: cif } as unknown as Json,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, reportId: data.id, ...mapping };
+}
+
+/** "Probar conexión": the demo company's report (A00000000), authenticated with the server credentials. */
+export async function testInformaConnection(): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
+  await requireUser();
+  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
+  try {
+    const started = Date.now();
+    await appInformaClient().ping();
+    return { ok: true, ms: Date.now() - started };
+  } catch (e) {
+    return { ok: false, error: errorMessage(e) };
+  }
+}
 
 export type ParsePdfResult =
   | { ok: true; reportId: string; financials: Financials; missing: (keyof Financials)[] }

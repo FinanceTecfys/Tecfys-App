@@ -1,20 +1,29 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { FileUp, PencilLine } from "lucide-react";
+import { FileUp, PencilLine, Search } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, SelectField } from "@/components/ui/field";
 import { fmtEur, fmtNum } from "@/lib/format";
-import { createScoring, parseInformaPdf } from "../actions";
+import { createScoring, fetchInformaReport, parseInformaPdf } from "../actions";
 import type { ScoringCriteria } from "../domain/criteria";
 import { scoreCompany } from "../domain/engine";
 import { EMPTY_FINANCIALS, FINANCIAL_FIELDS, type Financials } from "../domain/financials";
+import type { InformaCompanyStatus, InformaRisk } from "../informa/map-informa-report";
 import { DecisionBadge, RatingBadge } from "./badges";
+import { InformaCompanyStatusAlert } from "./informa-company-status";
 import { ScoreBreakdown } from "./score-breakdown";
 
 type Step = "source" | "review";
+type Source = "pdf" | "api" | "manual";
+
+const SOURCE_SUBTITLES: Record<Source, string> = {
+  pdf: "Datos extraídos del informe de Informa (PDF)",
+  api: "Datos obtenidos de la API de Informa",
+  manual: "Alta manual",
+};
 
 const FIELD_LABELS: Partial<Record<keyof Financials, string>> = {
   cif: "CIF", name: "Razón social", maturityYears: "Antigüedad", totalRevenue: "Ventas", netResult: "Resultado neto",
@@ -23,8 +32,11 @@ const FIELD_LABELS: Partial<Record<keyof Financials, string>> = {
   address: "Domicilio fiscal", fiscalPostalCode: "Código postal", fiscalCity: "Ciudad", adminName: "Administrador",
 };
 
-export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
+export function ScoringWizard({ criteria, informaConfigured }: { criteria: ScoringCriteria; informaConfigured: boolean }) {
   const [step, setStep] = useState<Step>("source");
+  const [source, setSource] = useState<Source>("manual");
+  const [informa, setInforma] = useState<{ status: InformaCompanyStatus; risk: InformaRisk; warnings: string[] } | null>(null);
+  const [cifQuery, setCifQuery] = useState("");
   const [financials, setFinancials] = useState<Financials>(EMPTY_FINANCIALS);
   const [reportId, setReportId] = useState<string | null>(null);
   const [missing, setMissing] = useState<(keyof Financials)[]>([]);
@@ -49,6 +61,22 @@ export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
       setFinancials(res.financials);
       setReportId(res.reportId);
       setMissing(res.missing);
+      setSource("pdf");
+      setInforma(null);
+      setStep("review");
+    });
+  }
+
+  function onFetchInforma() {
+    setError(null);
+    startParsing(async () => {
+      const res = await fetchInformaReport(cifQuery);
+      if (!res.ok) return setError(res.error);
+      setFinancials(res.financials);
+      setReportId(res.reportId);
+      setMissing(res.missing);
+      setSource("api");
+      setInforma({ status: res.status, risk: res.risk, warnings: res.warnings });
       setStep("review");
     });
   }
@@ -68,7 +96,30 @@ export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
 
   if (step === "source") {
     return (
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card title="Buscar en Informa por CIF" subtitle="Informe en vivo desde la API de Informa: último balance y estado de la empresa">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onFetchInforma();
+            }}
+            className="flex h-full flex-col justify-between gap-4"
+          >
+            <Field
+              label="CIF"
+              name="informaCif"
+              value={cifQuery}
+              onChange={(e) => setCifQuery(e.target.value)}
+              placeholder="B12345678"
+              autoComplete="off"
+              required
+              hint={informaConfigured ? "Cada consulta puede facturarse en Informa" : "Sin configurar: añade INFORMA_USERNAME e INFORMA_SESSION a .env.local"}
+            />
+            <Button type="submit" disabled={parsing || !informaConfigured || !cifQuery.trim()} className="w-full">
+              <Search className="h-4 w-4" aria-hidden /> {parsing ? "Consultando Informa…" : "Buscar en Informa"}
+            </Button>
+          </form>
+        </Card>
         <Card title="Informe de Informa (PDF)" subtitle="Se extraen los estados financieros del último ejercicio">
           <form action={onUpload} className="space-y-4">
             <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-ink-600 bg-ink-800/40 px-6 py-10 text-center transition hover:border-mint-500/60">
@@ -101,8 +152,8 @@ export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
           </div>
         </Card>
         {error && (
-          <div className="lg:col-span-2">
-            <Alert tone="error" title="No se pudo procesar el informe">{error}</Alert>
+          <div className="lg:col-span-3">
+            <Alert tone="error" title="No se pudo obtener el informe">{error}</Alert>
           </div>
         )}
       </div>
@@ -112,12 +163,20 @@ export function ScoringWizard({ criteria }: { criteria: ScoringCriteria }) {
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
       <div className="space-y-6">
+        {informa && <InformaCompanyStatusAlert status={informa.status} risk={informa.risk} />}
+        {informa && informa.warnings.length > 0 && (
+          <Alert tone="warning" title="Revisa el informe de Informa">
+            <ul className="list-disc space-y-0.5 pl-4">
+              {informa.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          </Alert>
+        )}
         {missing.length > 0 && (
           <Alert tone="warning" title="Datos no encontrados en el informe">
             Revisa y completa: {missing.map((k) => FIELD_LABELS[k] ?? k).join(", ")}. Un ratio sin dato puntúa C.
           </Alert>
         )}
-        <Card title="Empresa" subtitle={reportId ? "Datos extraídos del informe de Informa" : "Alta manual"}>
+        <Card title="Empresa" subtitle={SOURCE_SUBTITLES[source]}>
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="CIF" name="cif" value={financials.cif} onChange={(e) => set("cif", e.target.value)} error={fieldErrors.cif} />
             <Field label="Razón social" name="name" className="md:col-span-2" value={financials.name} onChange={(e) => set("name", e.target.value)} error={fieldErrors.name} />

@@ -7,6 +7,8 @@ import { listAssetTypes, listContractTypes, listDistributors } from "@/modules/c
 import { HoldedSettingsForm } from "@/modules/erp/components/holded-settings-form";
 import { getErpSettings } from "@/modules/erp/data";
 import { isHoldedConfigured } from "@/modules/erp/holded/server";
+import { InformaSettingsPanel } from "@/modules/scoring/components/informa-settings-panel";
+import { informaConfigStatus } from "@/modules/scoring/informa/server";
 import { DECISION_LABELS, type RatioKey } from "@/modules/scoring/domain/criteria";
 import { RatingBadge } from "@/modules/scoring/components/badges";
 import { getActiveCriteria } from "@/modules/scoring/data";
@@ -26,7 +28,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Configuración" description="Catálogos de originación, modelo de scoring vigente y conexión con el ERP." />
+      <PageHeader title="Configuración" description="Catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa." />
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Distribuidores" subtitle={`${distributors.length} registrados`}>
           <NewDistributorForm />
@@ -106,6 +108,10 @@ export default async function SettingsPage() {
 
         <Card title="Holded / ERP" subtitle="Conexión con la API v2 de Holded para sincronizar las ventas en ERP">
           <HoldedSettingsForm settings={erpSettings} configured={isHoldedConfigured()} />
+        </Card>
+
+        <Card title="Informa" subtitle="API v2 de Informa D&B: informe por CIF para el scoring">
+          <InformaSettingsPanel config={informaConfigStatus()} />
         </Card>
       </div>
     </>
