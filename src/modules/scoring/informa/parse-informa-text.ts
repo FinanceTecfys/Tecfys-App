@@ -127,13 +127,17 @@ export function parseInformaText(text: string, today = new Date()): InformaParse
     paymentPeriodDays: toNumber(grab(/Periodo medio de pago a proveedores\s+(\d+)/)),
   };
 
-  const required: (keyof Financials)[] = [
-    "cif", "name", "address", "fiscalPostalCode", "fiscalCity", "adminName", "totalRevenue", "netResult", "ebitda", "nonCurrentAssets", "currentAssets",
-    "equity", "nonCurrentLiabilities", "currentLiabilities", "maturityYears",
-  ];
-  const missing = required.filter((k) => financials[k] === null || financials[k] === "");
-  return { financials, missing };
+  return { financials, missing: missingFinancials(financials) };
 }
+
+/** Fields an Informa report (PDF or API) should supply; the ones absent are shown to the analyst. */
+export const REQUIRED_FINANCIALS: readonly (keyof Financials)[] = [
+  "cif", "name", "address", "fiscalPostalCode", "fiscalCity", "adminName", "totalRevenue", "netResult", "ebitda", "nonCurrentAssets", "currentAssets",
+  "equity", "nonCurrentLiabilities", "currentLiabilities", "maturityYears",
+];
+
+export const missingFinancials = (financials: Financials): (keyof Financials)[] =>
+  REQUIRED_FINANCIALS.filter((k) => financials[k] === null || financials[k] === "");
 
 /**
  * "DOMICILIO SOCIAL RONDA GENERAL MITRE, 172 - BJ DR 08006 BARCELONA (BARCELONA) TELÉFONOS ..."

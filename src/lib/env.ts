@@ -9,6 +9,14 @@ const schema = z.object({
   SIGNATURIT_TOKEN: z.string().optional(),
   // Holded API v2 key (Holded -> Ajustes -> API). Server-only: never sent to the browser or stored in the DB.
   HOLDED_API_KEY: z.string().optional(),
+  // Informa D&B API v2. Server-only: the credentials and the session are never sent to the browser or stored in the DB.
+  // The URL must be https *.informa.es (checked by the Informa client, which refuses any other host).
+  INFORMA_API_URL: z.string().optional(),
+  INFORMA_USERNAME: z.string().optional(),
+  // Portal password: the app logs in (POST /login) and renews the session by itself.
+  INFORMA_PASSWORD: z.string().optional(),
+  // Optional: a session to try first. Not needed; replaced automatically when missing or expired.
+  INFORMA_SESSION: z.string().optional(),
 });
 
 let cached: z.infer<typeof schema> | null = null;

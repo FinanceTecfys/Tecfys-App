@@ -19,7 +19,8 @@ El Excel del Borrowing Base contiene datos de clientes: **no se sube al repo** (
 
 ## Flujo de negocio
 
-1. **Scoring** (`/scoring/new`): se sube el PDF de Informa (o alta manual), se extraen los estados financieros,
+1. **Scoring** (`/scoring/new`): se consulta Informa por CIF (API v2), se sube el PDF de Informa o se da de alta a mano;
+   se extraen los estados financieros,
    se calculan los ratios ponderados → puntuación /10 → rating AAA–C → decisión y opinión de crédito
    (EBITDA ajustado × prudencia). BB queda en revisión manual; CCC o peor, rechazado.
 2. **Operación** (`/contracts/new?scoringId=…`, solo con scoring aprobado): distribuidor, tipo de activo
@@ -42,7 +43,7 @@ src/
   components/ui|layout   UI compartida
   lib/                   env, cliente Supabase (solo servidor), formato
   modules/
-    scoring/             domain/ (modelo, motor, tipos) · informa/ (parser PDF) · data · actions · components
+    scoring/             domain/ (modelo, motor, tipos) · informa/ (parser PDF, cliente y mapper de la API v2) · data · actions · components
     contracts/           domain/ (motor financiero del loan book) · data · actions · components
     catalog/             distribuidores, tipos de activo, tipos de contrato
     signature/           interfaz del proveedor de firma (Signaturit)
