@@ -45,8 +45,8 @@ export function InformaSettingsPanel({ config }: { config: InformaConfigView }) 
       </dl>
       <p className="text-xs text-slate-400">
         Las credenciales se leen del entorno del servidor (.env.local): nunca se guardan en la base de datos ni llegan al
-        navegador. La sesión se obtiene con POST /login de Informa y puede caducar; si la prueba devuelve el código 10001,
-        renuévala. La prueba consulta la empresa de demostración A00000000.
+        navegador. La sesión se obtiene con POST /login de Informa y caduca:
+        renuévala cuando Informa responda el código 10005 (sesión caducada). La prueba consulta la empresa de demostración A00000000.
       </p>
       <Button
         type="button"

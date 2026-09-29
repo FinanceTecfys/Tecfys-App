@@ -2,10 +2,12 @@
  * Typed client for the Informa D&B REST API v2 ("API configurable").
  *
  *   Base URL  https://services.informa.es/api/v2   (INFORMA_API_URL)
- *   Auth      headers `username` + `session` (session id from POST /login).
- *             Sent as headers, not as the documented query params, so the
- *             session never lands in a URL or an access log.
- *   Report    GET /get-product?product=INFORME_MAYOR&cif=<cif>&formato=json&idioma=es
+ *   Auth      query params `username` + `session` (session id from POST /login),
+ *             the mode Informa accepts in practice (a live test rejected the
+ *             header variant). The session therefore travels in the URL: the
+ *             client never logs or returns the URL, and every error message is
+ *             passed through redact() before it leaves this module.
+ *   Report    GET /get-product?product=INFORME_MAYOR&cif=<cif>&formato=json&idioma=es&username=<user>&session=<session>
  *             (idioma is what makes Informa send the decoded `literal` of every
  *             campoCodificado*; without it only the codes come back).
  *   Errors    every body carries campoCodificadoRespuesta { valor, literal }:
@@ -14,14 +16,15 @@
  *             The code is more precise than the status (a 404 can be an
  *             unknown CIF, a product not available, minimum requirements not
  *             met or a temporarily blocked company), so it wins when present.
+ *             10005 (not in the manual's table, seen live) = session expired.
  *   Limits    the docs define no rate limit; a 429 (or 503, network error) is
  *             retried with backoff, honouring Retry-After.
  *
  * Deliberately free of `server-only` and of env access so the tests can build
  * it; the app builds it through informa/server.ts. The session is passed in
  * and never logged or returned: the response echoes `parametrosCliente`
- * (username, and session when sent as a query param), so the raw report must
- * not be forwarded to the browser or stored as-is.
+ * (username and session, since both are query params), so the raw report
+ * must not be forwarded to the browser or stored as-is.
  */
 
 export const INFORMA_DEFAULT_BASE_URL = "https://services.informa.es/api/v2";
@@ -44,9 +47,10 @@ export const isInformaHost = (url: string) => {
 /** Informa response codes (campoCodificadoRespuesta.valor), from the user manual's error table. */
 const RESPONSE_CODE_MESSAGES: Record<number, string> = {
   10000: "Informa no puede validar el usuario ahora mismo (Sistema de Gestión Comercial caído). Inténtalo más tarde",
-  10001: "Informa rechaza el usuario o la sesión (INFORMA_USERNAME / INFORMA_SESSION). Si la sesión ha caducado, obtén una nueva con /login",
+  10001: "Informa rechaza las credenciales: usuario o sesión no válidos. Revisa INFORMA_USERNAME e INFORMA_SESSION",
   10002: "El usuario de Informa no tiene permiso para el producto INFORME_MAYOR",
   10003: "La contraseña del usuario de Informa ha caducado: hay que cambiarla en Informa",
+  10005: "La sesión de Informa ha caducado: renueva INFORMA_SESSION con POST /login (o pídela a soporte de Informa) y reinicia el servidor",
   10006: "Error de comunicación interna en Informa",
   11000: "La fuente de datos de Informa no está disponible. Inténtalo más tarde",
   11001: "Informa no tiene disponible el informe para este CIF",
@@ -131,6 +135,16 @@ async function readJson(res: Response): Promise<unknown | undefined> {
   }
 }
 
+/** Replaces every occurrence of the secret (raw or URL-encoded) in a message. */
+export function redact(text: string, secret: string): string {
+  if (!secret) return text;
+  let out = text;
+  for (const form of new Set([secret, encodeURIComponent(secret), new URLSearchParams({ s: secret }).toString().slice(2)])) {
+    out = out.split(form).join("***");
+  }
+  return out;
+}
+
 export function createInformaClient(options: InformaClientOptions): InformaClient {
   const username = options.username.trim();
   const session = options.session.trim();
@@ -142,14 +156,25 @@ export function createInformaClient(options: InformaClientOptions): InformaClien
   const maxRetries = options.maxRetries ?? 2;
   const maxWait = options.maxRetryWaitSeconds ?? 30;
 
+  /** Any error leaving the client, with the session scrubbed from its message. */
   async function getJson(path: string, params: Record<string, string>): Promise<unknown> {
+    try {
+      return await request(path, params);
+    } catch (e) {
+      if (e instanceof InformaApiError) throw new InformaApiError(redact(e.message, session), e.status, e.code, e.retryAfterSeconds);
+      throw new InformaApiError(redact(`Error inesperado con Informa (${e instanceof Error ? e.message : String(e)})`, session), null);
+    }
+  }
+
+  async function request(path: string, params: Record<string, string>): Promise<unknown> {
+    // The URL carries the session: it must never be logged or put in an error.
     const url = new URL(baseUrl + path);
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    for (const [k, v] of Object.entries({ ...params, username, session })) url.searchParams.set(k, v);
 
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       try {
-        res = await doFetch(url, { headers: { username, session, Accept: "application/json" }, cache: "no-store" });
+        res = await doFetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
       } catch (e) {
         if (attempt < maxRetries) { await sleep(1000 * 2 ** attempt); continue; }
         throw new InformaApiError(`No se pudo conectar con Informa (${e instanceof Error ? e.message : String(e)})`, null);

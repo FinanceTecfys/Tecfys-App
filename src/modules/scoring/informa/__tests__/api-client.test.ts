@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInformaClient, InformaApiError, isInformaHost } from "../api-client";
+import { createInformaClient, InformaApiError, isInformaHost, redact } from "../api-client";
 import sample from "./fixtures/informe-mayor-A00000000.json";
 
 // The Informa API is mocked: these tests never reach services.informa.es.
@@ -41,15 +41,30 @@ describe("createInformaClient", () => {
     }
   });
 
-  it("requests INFORME_MAYOR as JSON in Spanish, with the credentials in headers only", async () => {
+  it("requests INFORME_MAYOR as JSON in Spanish, with the credentials in the query string, not in headers", async () => {
     const { api, calls } = client([{ body: sample }]);
     expect(await api.getReport("B12345678")).toEqual(sample);
     expect(calls).toHaveLength(1);
     const { url, headers } = calls[0];
     expect(url.origin + url.pathname).toBe("https://services.informa.es/api/v2/get-product");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ product: "INFORME_MAYOR", cif: "B12345678", formato: "json", idioma: "es" });
-    expect(headers).toMatchObject({ username: "user-x", session: "sess-secret" });
-    expect(url.toString()).not.toContain("sess-secret");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      product: "INFORME_MAYOR",
+      cif: "B12345678",
+      formato: "json",
+      idioma: "es",
+      username: "user-x",
+      session: "sess-secret",
+    });
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain("session");
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain("username");
+    expect(headers).not.toHaveProperty("Authorization");
+  });
+
+  it("ping() sends the credentials in the query string too", async () => {
+    const { api, calls } = client([{ body: sample }]);
+    await api.ping();
+    expect(calls[0].url.searchParams.get("username")).toBe("user-x");
+    expect(calls[0].url.searchParams.get("session")).toBe("sess-secret");
   });
 
   it("ping() fetches the demo company", async () => {
@@ -63,7 +78,8 @@ describe("createInformaClient", () => {
     const err = await fail(api.getReport("B12345678"));
     expect(err).toBeInstanceOf(InformaApiError);
     expect(err).toMatchObject({ status: 401, code: 10001 });
-    expect(err.message).toContain("rechaza el usuario o la sesión");
+    expect(err.message).toContain("rechaza las credenciales");
+    expect(err.message).not.toContain("caducado");
     expect(err.message).toContain("código 10001: Usuario No Válido");
     expect(err.message).not.toContain("sess-secret");
   });
@@ -91,6 +107,29 @@ describe("createInformaClient", () => {
     const err = await fail(api.getReport("B12345678"));
     expect(err).toMatchObject({ status: 200, code: 11002 });
     expect(err.message).toContain("no cumple los requisitos mínimos");
+  });
+
+  it("reports an expired session (10005 on a 200) distinctly from bad credentials", async () => {
+    const { api } = client([{ status: 200, body: errorBody(10005, "Sesión caducada") }]);
+    const err = await fail(api.getReport("B12345678"));
+    expect(err).toBeInstanceOf(InformaApiError);
+    expect(err).toMatchObject({ status: 200, code: 10005 });
+    expect(err.message).toContain("La sesión de Informa ha caducado");
+    expect(err.message).toContain("POST /login");
+    expect(err.message).not.toContain("rechaza las credenciales");
+  });
+
+  it("never puts the session in an error, even when fetch or Informa echo the URL", async () => {
+    const leakyUrl = "https://services.informa.es/api/v2/get-product?cif=B1&username=user-x&session=sess-secret";
+    const net = client([new Error(`request to ${leakyUrl} failed`)], { maxRetries: 0 });
+    const netErr = await fail(net.api.getReport("B1"));
+    expect(netErr.message).toContain("session=***");
+    expect(netErr.message).not.toContain("sess-secret");
+
+    const echo = client([{ status: 401, body: errorBody(10001, "Sesión sess-secret no válida") }]);
+    const echoErr = await fail(echo.api.getReport("B1"));
+    expect(echoErr).toMatchObject({ status: 401, code: 10001 });
+    expect(echoErr.message).not.toContain("sess-secret");
   });
 
   it("accepts a string response code of 0", async () => {
@@ -144,6 +183,14 @@ describe("createInformaClient", () => {
   it("rejects a 200 without datosProducto", async () => {
     const { api } = client([{ body: { campoCodificadoRespuesta: { valor: 0 } } }]);
     expect((await fail(api.getReport("A00000000"))).message).toContain("datosProducto");
+  });
+});
+
+describe("redact", () => {
+  it("scrubs the raw and URL-encoded forms of the secret", () => {
+    expect(redact("a s/k+y=1 b", "s/k+y=1")).toBe("a *** b");
+    expect(redact("?session=s%2Fk%2By%3D1&x", "s/k+y=1")).toBe("?session=***&x");
+    expect(redact("nothing here", "")).toBe("nothing here");
   });
 });
 
