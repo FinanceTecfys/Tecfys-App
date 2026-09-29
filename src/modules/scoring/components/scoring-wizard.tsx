@@ -113,7 +113,7 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
               placeholder="B12345678"
               autoComplete="off"
               required
-              hint={informaConfigured ? "Cada consulta puede facturarse en Informa" : "Sin configurar: añade INFORMA_USERNAME e INFORMA_SESSION a .env.local"}
+              hint={informaConfigured ? "Cada consulta puede facturarse en Informa" : "Sin configurar: añade INFORMA_USERNAME e INFORMA_PASSWORD a .env.local"}
             />
             <Button type="submit" disabled={parsing || !informaConfigured || !cifQuery.trim()} className="w-full">
               <Search className="h-4 w-4" aria-hidden /> {parsing ? "Consultando Informa…" : "Buscar en Informa"}

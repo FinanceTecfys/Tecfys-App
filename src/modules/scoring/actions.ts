@@ -22,7 +22,7 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e)
 function informaNotConfigured(): string {
   const s = informaConfigStatus();
   if (!s.baseUrlAllowed) return "INFORMA_API_URL debe ser https y de un dominio informa.es";
-  const missing = [!s.hasUsername && "INFORMA_USERNAME", !s.hasSession && "INFORMA_SESSION"].filter(Boolean).join(" y ");
+  const missing = [!s.hasUsername && "INFORMA_USERNAME", !s.hasPassword && "INFORMA_PASSWORD"].filter(Boolean).join(" y ");
   return `Falta ${missing} en el entorno del servidor (.env.local)`;
 }
 
@@ -66,7 +66,7 @@ export async function fetchInformaReport(cifInput: string): Promise<FetchInforma
   return { ok: true, reportId: data.id, ...mapping };
 }
 
-/** "Probar conexión": the demo company's report (A00000000), authenticated with the server credentials. */
+/** "Probar conexión": a fresh POST /login, then the demo company's report (A00000000). Secrets never leave the server. */
 export async function testInformaConnection(): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
   await requireUser();
   if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };

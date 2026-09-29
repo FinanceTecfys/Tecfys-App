@@ -13,7 +13,7 @@ export interface InformaConfigView {
   baseUrl: string;
   baseUrlAllowed: boolean;
   hasUsername: boolean;
-  hasSession: boolean;
+  hasPassword: boolean;
 }
 
 const Flag = ({ ok, okText, koText }: { ok: boolean; okText: string; koText: string }) =>
@@ -22,7 +22,7 @@ const Flag = ({ ok, okText, koText }: { ok: boolean; okText: string; koText: str
 export function InformaSettingsPanel({ config }: { config: InformaConfigView }) {
   const [testing, startTest] = useTransition();
   const [test, setTest] = useState<Feedback>(null);
-  const configured = config.baseUrlAllowed && config.hasUsername && config.hasSession;
+  const configured = config.baseUrlAllowed && config.hasUsername && config.hasPassword;
 
   return (
     <div className="space-y-4">
@@ -39,14 +39,18 @@ export function InformaSettingsPanel({ config }: { config: InformaConfigView }) 
           <dd><Flag ok={config.hasUsername} okText="configurado" koText="sin configurar" /></dd>
         </div>
         <div className="flex justify-between gap-4">
-          <dt className="text-slate-400">Sesión (INFORMA_SESSION)</dt>
-          <dd><Flag ok={config.hasSession} okText="configurada" koText="sin configurar" /></dd>
+          <dt className="text-slate-400">Contraseña (INFORMA_PASSWORD)</dt>
+          <dd><Flag ok={config.hasPassword} okText="configurada" koText="sin configurar" /></dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-slate-400">Sesión</dt>
+          <dd className="text-slate-300">automática (POST /login)</dd>
         </div>
       </dl>
       <p className="text-xs text-slate-400">
-        Las credenciales se leen del entorno del servidor (.env.local): nunca se guardan en la base de datos ni llegan al
-        navegador. La sesión se obtiene con POST /login de Informa y caduca:
-        renuévala cuando Informa responda el código 10005 (sesión caducada). La prueba consulta la empresa de demostración A00000000.
+        Configura el usuario y la contraseña del portal de Informa en el entorno del servidor (.env.local): nunca se
+        guardan en la base de datos ni llegan al navegador. La aplicación obtiene la sesión sola con POST /login y la
+        renueva cuando caduca (código 10005). La prueba inicia sesión y consulta la empresa de demostración A00000000.
       </p>
       <Button
         type="button"
