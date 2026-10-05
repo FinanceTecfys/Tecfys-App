@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { TecfysLogo } from "@/components/brand/tecfys-logo";
-import { safeNextPath } from "@/lib/auth/routes";
+import { Alert } from "@/components/ui/alert";
+import { NO_ACCESS_ERROR, safeNextPath } from "@/lib/auth/routes";
 import { LoginForm } from "@/modules/auth/components/login-form";
 
 export const metadata: Metadata = { title: "Iniciar sesión" };
 
-/** The only public page. Accounts are provisioned in Supabase: there is no sign-up. */
+/** Public page (with /auth/set-password). Accounts are invited from Settings: there is no sign-up. */
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next } = await searchParams;
+  const { next, error } = await searchParams;
   const target = typeof next === "string" ? safeNextPath(next) : "/";
 
   return (
@@ -20,6 +21,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </div>
         <div className="rounded-lg border border-ink-700 bg-ink-900 p-6">
           <h2 className="mb-5 text-sm font-semibold text-slate-200">Iniciar sesión</h2>
+          {error === NO_ACCESS_ERROR && (
+            <div className="mb-5">
+              <Alert tone="warning" title="Usuario sin acceso">
+                Tu usuario no tiene un rol activo en la plataforma. Pide acceso a un administrador de Tecfys.
+              </Alert>
+            </div>
+          )}
           <LoginForm next={target === "/" ? undefined : target} />
         </div>
       </div>

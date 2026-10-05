@@ -1,0 +1,12 @@
+<!--
+  Invitation email (Configuración > Usuarios y roles > Invitar).
+  The link goes to the app's own set-password page with the token HASH, not to
+  Supabase's /verify endpoint: the app verifies it when the user submits the
+  new password (src/modules/auth/actions.ts setPassword).
+  {{ .SiteURL }} is [auth] site_url (local) / Auth > URL Configuration > Site URL (hosted).
+  Hosted projects do not read this file: paste it in Auth > Email Templates > Invite user.
+-->
+<h2>Te han invitado a la plataforma de Tecfys</h2>
+<p>Se ha creado un usuario para <strong>{{ .Email }}</strong>. Para entrar, crea tu contraseña:</p>
+<p><a href="{{ .SiteURL }}/auth/set-password?token_hash={{ .TokenHash }}&type=invite">Crear mi contraseña</a></p>
+<p>El enlace es personal, caduca y solo se puede usar una vez. Si no esperabas este mensaje, ignóralo.</p>

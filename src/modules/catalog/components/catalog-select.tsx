@@ -12,7 +12,8 @@ export interface CatalogOption {
 
 /**
  * Select over a catalog (distributors, asset types) that can create a new
- * entry inline without leaving the form.
+ * entry inline without leaving the form. Without `onCreate` (roles that cannot
+ * edit the catalogs) it is a plain select; `disabled` locks the value.
  */
 export function CatalogSelect({
   label,
@@ -21,6 +22,7 @@ export function CatalogSelect({
   value,
   onChange,
   onCreate,
+  disabled = false,
   placeholder = "— Selecciona —",
   error,
   createExtra,
@@ -30,7 +32,8 @@ export function CatalogSelect({
   options: CatalogOption[];
   value: string | null;
   onChange: (id: string | null) => void;
-  onCreate: (name: string) => Promise<{ ok: true; data: CatalogOption } | { ok: false; error: string }>;
+  onCreate?: (name: string) => Promise<{ ok: true; data: CatalogOption } | { ok: false; error: string }>;
+  disabled?: boolean;
   placeholder?: string;
   error?: string;
   /** Extra input rendered next to the name while creating (e.g. cluster for asset types). */
@@ -44,7 +47,7 @@ export function CatalogSelect({
 
   const submit = () => {
     const nameValue = draft.trim();
-    if (!nameValue) return;
+    if (!nameValue || !onCreate) return;
     startTransition(async () => {
       const res = await onCreate(nameValue);
       if (!res.ok) return setCreateError(res.error);
@@ -88,7 +91,7 @@ export function CatalogSelect({
         </div>
       ) : (
         <div className="flex gap-1">
-          <select id={name} name={name} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} className={inputClass}>
+          <select id={name} name={name} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} disabled={disabled} className={inputClass}>
             <option value="">{placeholder}</option>
             {items.map((o) => (
               <option key={o.id} value={o.id}>
@@ -96,15 +99,17 @@ export function CatalogSelect({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            aria-label={`Crear ${label.toLowerCase()}`}
-            title={`Crear ${label.toLowerCase()}`}
-            className="rounded-md border border-mint-500/50 px-3 text-mint-400 transition hover:border-mint-500 hover:bg-mint-500/10"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          {onCreate && !disabled && (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              aria-label={`Crear ${label.toLowerCase()}`}
+              title={`Crear ${label.toLowerCase()}`}
+              className="rounded-md border border-mint-500/50 px-3 text-mint-400 transition hover:border-mint-500 hover:bg-mint-500/10"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
         </div>
       )}
       {(createError || error) && <p className="mt-1 text-[11px] text-red-300">{createError ?? error}</p>}

@@ -4,14 +4,16 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, Td, Th } from "@/components/ui/table";
+import { dataScopeFor } from "@/lib/auth/scope";
 import { fmtDate, fmtEur, fmtNum } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { DecisionBadge, RatingBadge, ScoringStatusBadge } from "@/modules/scoring/components/badges";
 import { listScorings } from "@/modules/scoring/data";
 
 export const metadata = { title: "Scoring" };
 
 export default async function ScoringListPage() {
-  const scorings = await listScorings();
+  const scorings = await listScorings(dataScopeFor(await requireRole("scoring.view")));
   return (
     <>
       <PageHeader

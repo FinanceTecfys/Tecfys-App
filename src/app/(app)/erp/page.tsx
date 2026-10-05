@@ -5,7 +5,7 @@ import { inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, Td, Th } from "@/components/ui/table";
 import { fmtDate, fmtNum } from "@/lib/format";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireRole } from "@/lib/supabase/auth";
 import { SyncPanel } from "@/modules/erp/components/sync-panel";
 import { ERP_PAGE_SIZE, lastSyncRun, listHoldedInvoices } from "@/modules/erp/data";
 import { erpSearch, HOLDED_STATUSES, parseErpQuery, STATUS_TONES } from "@/modules/erp/domain/erp-view";
@@ -21,7 +21,7 @@ function Money({ value }: { value: number | null }) {
 }
 
 export default async function ErpPage({ searchParams }: PageProps<"/erp">) {
-  await requireUser();
+  await requireRole("erp.view");
   const query = parseErpQuery(await searchParams);
   const [{ rows, count }, run] = await Promise.all([listHoldedInvoices(query), lastSyncRun()]);
   const pages = Math.max(1, Math.ceil(count / ERP_PAGE_SIZE));

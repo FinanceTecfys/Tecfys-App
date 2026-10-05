@@ -241,6 +241,7 @@ export type Database = {
           contract_type: string
           country: string | null
           created_at: string
+          created_by: string | null
           delivery_address: string | null
           delivery_same_as_fiscal: boolean
           distributor_id: string | null
@@ -292,6 +293,7 @@ export type Database = {
           contract_type: string
           country?: string | null
           created_at?: string
+          created_by?: string | null
           delivery_address?: string | null
           delivery_same_as_fiscal?: boolean
           distributor_id?: string | null
@@ -343,6 +345,7 @@ export type Database = {
           contract_type?: string
           country?: string | null
           created_at?: string
+          created_by?: string | null
           delivery_address?: string | null
           delivery_same_as_fiscal?: boolean
           distributor_id?: string | null
@@ -659,6 +662,44 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          partner_distributor_id: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          partner_distributor_id?: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          partner_distributor_id?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_partner_distributor_id_fkey"
+            columns: ["partner_distributor_id"]
+            isOneToOne: false
+            referencedRelation: "distributors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scoring_criteria: {
         Row: {
           config: Json
@@ -692,6 +733,7 @@ export type Database = {
           breakdown: Json
           company_id: string
           created_at: string
+          created_by: string | null
           credit_opinion: number
           criteria_id: string | null
           criteria_snapshot: Json
@@ -713,6 +755,7 @@ export type Database = {
           breakdown: Json
           company_id: string
           created_at?: string
+          created_by?: string | null
           credit_opinion: number
           criteria_id?: string | null
           criteria_snapshot: Json
@@ -734,6 +777,7 @@ export type Database = {
           breakdown?: Json
           company_id?: string
           created_at?: string
+          created_by?: string | null
           credit_opinion?: number
           criteria_id?: string | null
           criteria_snapshot?: Json
@@ -895,6 +939,7 @@ export type Database = {
       scoring_decision: "auto" | "limited" | "manual" | "reject"
       scoring_source: "informa_pdf" | "informa_api" | "manual"
       scoring_status: "approved" | "pending_review" | "rejected"
+      user_role: "owner" | "admin" | "sales" | "partner"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1036,6 +1081,7 @@ export const Constants = {
       scoring_decision: ["auto", "limited", "manual", "reject"],
       scoring_source: ["informa_pdf", "informa_api", "manual"],
       scoring_status: ["approved", "pending_review", "rejected"],
+      user_role: ["owner", "admin", "sales", "partner"],
     },
   },
 } as const

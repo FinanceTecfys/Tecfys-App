@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireUser } from "@/lib/supabase/auth";
+import { dataScopeFor, inScope, operationDistributorId } from "@/lib/auth/scope";
+import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import { ATTACHMENT_BUCKET, attachmentStoragePath, readAttachments, toAttachmentRow } from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
@@ -12,7 +13,8 @@ import { type OperationInput, operationSchema } from "./domain/operation";
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
 /**
- * Create a DRAFT contract from an approved scoring: the contract with its
+ * Create a DRAFT contract from an approved scoring the user can reach (a
+ * partner only its own, and always for its own distributor): the contract with its
  * frozen identification snapshot, the equipment line and the SEPA mandate.
  * The company record is refreshed with the corrected identification (not the
  * CIF, which identifies it). Everything is re-validated here, including the
@@ -20,7 +22,7 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  * whose type is sniffed from their bytes before anything is written.
  */
 export async function createContract(input: OperationInput, files?: FormData): Promise<CreateContractResult> {
-  await requireUser();
+  const user = await requireRole("operation.create");
   const parsed = operationSchema.safeParse(input);
   const attached = await readAttachments(files);
   if (!parsed.success || !attached.ok) {
@@ -34,11 +36,12 @@ export async function createContract(input: OperationInput, files?: FormData): P
 
   const { data: scoring, error: scoringError } = await db()
     .from("scorings")
-    .select("id, status, rating, company:companies ( id, sector )")
+    .select("id, status, rating, created_by, company:companies ( id, sector )")
     .eq("id", v.scoringId)
     .maybeSingle();
   if (scoringError) return { ok: false, error: scoringError.message };
-  if (!scoring || !scoring.company) return { ok: false, error: "Scoring no encontrado" };
+  // A scoring outside the user's scope (another partner's) does not exist for them.
+  if (!scoring || !scoring.company || !inScope(dataScopeFor(user), scoring.created_by)) return { ok: false, error: "Scoring no encontrado" };
   if (scoring.status !== "approved") return { ok: false, error: "El scoring no está aprobado" };
 
   const { data: contract, error } = await db()
@@ -46,7 +49,7 @@ export async function createContract(input: OperationInput, files?: FormData): P
     .insert({
       company_id: scoring.company.id,
       scoring_id: scoring.id,
-      distributor_id: v.distributorId,
+      distributor_id: operationDistributorId(user, v.distributorId),
       asset_type_id: v.assetTypeId,
       contract_type: v.contractType,
       rating: scoring.rating,
@@ -80,6 +83,7 @@ export async function createContract(input: OperationInput, files?: FormData): P
       product_type: "New",
       workflow_status: "draft",
       notes: v.notes || null,
+      created_by: user.id,
     })
     .select("id, contract_number")
     .single();
@@ -154,7 +158,7 @@ const signSchema = z.object({ id: z.uuid(), signingDate: z.iso.date() });
  * until the Signaturit webhook drives it.
  */
 export async function markContractSigned(formData: FormData): Promise<void> {
-  await requireUser();
+  await requireRole("contract.manage");
   const { id, signingDate } = signSchema.parse(Object.fromEntries(formData));
   const { error } = await db()
     .from("contracts")
@@ -174,7 +178,7 @@ export type CancellationResult = { ok: true } | { ok: false; error: string; fiel
  * default are recomputed by the schedule engine on the next read.
  */
 export async function updateContractCancellation(input: CancellationInput): Promise<CancellationResult> {
-  await requireUser();
+  await requireRole("contract.manage");
   const parsed = cancellationSchema.safeParse(input);
   if (!parsed.success) {
     const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));

@@ -7,7 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
+import { can } from "@/lib/auth/permissions";
+import { dataScopeFor } from "@/lib/auth/scope";
 import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { markContractSigned } from "@/modules/contracts/actions";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { CancellationForm } from "@/modules/contracts/components/cancellation-form";
@@ -21,8 +24,10 @@ import { formatIban } from "@/modules/contracts/domain/sepa";
 import { signatureProvider } from "@/modules/signature/provider";
 
 export default async function ContractPage({ params }: PageProps<"/contracts/[id]">) {
+  const user = await requireRole("contract.view");
+  const canManage = can(user.role, "contract.manage");
   const { id } = await params;
-  const contract = await getContract(id);
+  const contract = await getContract(id, dataScopeFor(user));
   if (!contract) notFound();
   const stored = await listAttachments(contract.id);
   // Fixed order (ID document, then bank certificate); nothing shown when absent.
@@ -156,7 +161,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               {ATTACHMENT_KINDS[a.kind].downloadLabel}
             </a>
           ))}
-          {signed && (
+          {signed && canManage && (
             <Card title="Gestión del contrato" subtitle="Cancelación, estado y liquidación">
               <CancellationForm
                 contractId={contract.id}
@@ -175,11 +180,15 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
                     ? "Credenciales de Signaturit configuradas; falta la plantilla del contrato."
                     : "El envío automático a Signaturit llegará en una próxima rama. Mientras tanto, revisa el borrador descargado, fírmalo fuera de la plataforma y márcalo como firmado para que entre en el loan book."}
                 </Alert>
-                <form action={markContractSigned} className="space-y-3">
-                  <input type="hidden" name="id" value={contract.id} />
-                  <Field label="Fecha de firma" name="signingDate" type="date" defaultValue={contract.signing_date} required />
-                  <Button type="submit" className="w-full">Marcar como firmado</Button>
-                </form>
+                {canManage ? (
+                  <form action={markContractSigned} className="space-y-3">
+                    <input type="hidden" name="id" value={contract.id} />
+                    <Field label="Fecha de firma" name="signingDate" type="date" defaultValue={contract.signing_date} required />
+                    <Button type="submit" className="w-full">Marcar como firmado</Button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-slate-400">Tecfys marcará el contrato como firmado cuando reciba la copia firmada.</p>
+                )}
               </div>
             </Card>
           )}

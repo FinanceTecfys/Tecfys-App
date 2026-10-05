@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 
 export type CatalogResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -21,7 +21,7 @@ const assetTypeSchema = z.object({
 const UNIQUE_VIOLATION = "23505";
 
 export async function createDistributor(input: z.input<typeof distributorSchema>): Promise<CatalogResult<{ id: string; name: string }>> {
-  await requireUser();
+  await requireRole("settings.access");
   const parsed = distributorSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { data, error } = await db().from("distributors").insert(parsed.data).select("id, name").single();
@@ -31,7 +31,7 @@ export async function createDistributor(input: z.input<typeof distributorSchema>
 }
 
 export async function createAssetType(input: z.input<typeof assetTypeSchema>): Promise<CatalogResult<{ id: string; name: string }>> {
-  await requireUser();
+  await requireRole("settings.access");
   const parsed = assetTypeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { data, error } = await db().from("asset_types").insert(parsed.data).select("id, name").single();
@@ -41,7 +41,7 @@ export async function createAssetType(input: z.input<typeof assetTypeSchema>): P
 }
 
 export async function setDistributorActive(id: string, active: boolean): Promise<CatalogResult> {
-  await requireUser();
+  await requireRole("settings.access");
   const { error } = await db().from("distributors").update({ active }).eq("id", z.uuid().parse(id));
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
@@ -49,7 +49,7 @@ export async function setDistributorActive(id: string, active: boolean): Promise
 }
 
 export async function setAssetTypeActive(id: string, active: boolean): Promise<CatalogResult> {
-  await requireUser();
+  await requireRole("settings.access");
   const { error } = await db().from("asset_types").update({ active }).eq("id", z.uuid().parse(id));
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");

@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { Table, Td, Th } from "@/components/ui/table";
 import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { loadLoanBook } from "@/modules/contracts/data";
 import {
@@ -45,6 +46,7 @@ const GROUP_SELECTS: { name: GroupFilter; label: string; all: string }[] = [
 ];
 
 export default async function ContractsPage({ searchParams }: PageProps<"/contracts">) {
+  await requireRole("loanBook.view");
   const sp = await searchParams;
   const query = parseLoanBookQuery(toSearchParams(sp));
   const sort = query.sort ?? DEFAULT_SORT;

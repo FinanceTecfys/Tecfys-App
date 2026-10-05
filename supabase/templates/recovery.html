@@ -1,0 +1,10 @@
+<!--
+  Password recovery email (sent from Supabase: Authentication > Users > Send password recovery).
+  Same landing page as the invitation, with type=recovery. The app has no
+  "forgot my password" screen yet; this only makes an admin-triggered recovery work.
+  Hosted projects do not read this file: paste it in Auth > Email Templates > Reset password.
+-->
+<h2>Nueva contraseña para la plataforma de Tecfys</h2>
+<p>Se ha solicitado restablecer la contraseña de <strong>{{ .Email }}</strong>:</p>
+<p><a href="{{ .SiteURL }}/auth/set-password?token_hash={{ .TokenHash }}&type=recovery">Elegir una contraseña nueva</a></p>
+<p>El enlace caduca y solo se puede usar una vez. Si no lo has pedido, ignora este mensaje.</p>

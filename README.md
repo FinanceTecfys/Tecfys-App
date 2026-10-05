@@ -47,6 +47,7 @@ src/
     contracts/           domain/ (motor financiero del loan book) · data · actions · components
     catalog/             distribuidores, tipos de activo, tipos de contrato
     signature/           interfaz del proveedor de firma (Signaturit)
+    users/               gestión de usuarios y roles (reglas del owner, acciones, panel de Configuración)
 scripts/                 importador y reconciliación del Borrowing Base
 supabase/                migraciones y seed
 ```
@@ -55,7 +56,66 @@ supabase/                migraciones y seed
   navegador (cálculo en vivo del formulario) y en los scripts.
 - La base de datos guarda **solo los inputs** de cada contrato (las columnas tecleadas del Loan book). La IRR, el split
   principal/interés, el principal pendiente y el default se calculan siempre con el mismo motor.
-- RLS activado en todas las tablas sin políticas: solo el servidor (secret key) accede. Las políticas llegan con la autenticación.
+- RLS activado en todas las tablas sin políticas: solo el servidor (secret key) accede. El control de acceso por rol
+  se aplica en la capa de aplicación (ver **Roles y usuarios**); las políticas RLS por usuario quedan pendientes.
+
+## Roles y usuarios
+
+Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo puro, `src/lib/auth/permissions.ts`
+(`can(rol, capacidad)` + la lista de rutas permitidas), y **se aplica en el servidor**:
+
+| | owner | admin | sales | partner |
+|---|---|---|---|---|
+| Dashboard, loan book, waterfall | sí | sí | sí | no |
+| ERP, Configuración, modelo de scoring | sí | sí | no | no |
+| Ejecutar scoring, crear operación | sí | sí | sí | sí (solo ve lo que él creó) |
+| Revisión manual de un scoring, marcar firmado, cancelar | sí | sí | no | no |
+| Gestionar usuarios | sí | sí (no owner ni admins) | no | no |
+
+- `src/proxy.ts` redirige al inicio de su rol a quien abre una ruta que no le corresponde (un partner en `/contracts`
+  o `/settings` acaba en `/scoring/new`). Cada página, Server Action y route handler vuelve a comprobarlo con
+  `requireRole("capacidad")` (`src/lib/supabase/auth.ts`); un test recorre el código y falla si alguno no lo hace.
+- **Propiedad de los datos**: `scorings.created_by` y `contracts.created_by` guardan quién creó cada registro. La capa
+  de datos recibe el alcance del usuario (`src/lib/auth/scope.ts`): un partner que pide un scoring o contrato ajeno
+  recibe un "no encontrado", igual que con un id inexistente. Su operación se asigna siempre a su distribuidor
+  (`profiles.partner_distributor_id`).
+- **Owner**: exactamente uno, `finance@tecfys.com`. La migración le da el rol si el usuario ya existe en Supabase Auth
+  y un trigger se lo da en cuanto se crea; la aplicación nunca lo degrada, desactiva ni crea un segundo owner.
+- Un usuario de Supabase Auth **sin perfil o desactivado no entra** en la aplicación.
+- El resto de usuarios se **invitan por email** en **Configuración → Usuarios y roles** (owner / admin): email + rol
+  (+ distribuidor si es partner), sin contraseña. Supabase Auth crea la cuenta y envía un enlace a
+  `/auth/set-password`, donde el usuario elige su contraseña. El perfil (rol + distribuidor) se guarda **en el momento
+  de invitar**, con el id de la cuenta que la invitación acaba de crear: al fijar la contraseña ya entra con su rol, y
+  hasta entonces la cuenta no puede iniciar sesión (figura como "Invitación pendiente").
+- `/auth/set-password` es la segunda ruta pública (junto a `/login`). El token del email se verifica **al enviar el
+  formulario**, no al abrir el enlace, para que un escáner de correo que previsualiza enlaces no lo consuma.
+- **Eliminar usuario** (owner / admin, con confirmación): borra el perfil y la cuenta de Supabase Auth, así que el
+  email se puede volver a invitar. Nunca el owner, nunca uno mismo; un admin no elimina a otro admin. Los scorings y
+  operaciones que creó **no se borran**: quedan con `created_by = null` (visibles para owner / admin / sales, ya no
+  atribuidos a ningún partner).
+- No hay pantalla de "he olvidado mi contraseña" todavía; una recuperación lanzada desde Supabase llega a la misma página.
+- Pendiente (decisión documentada): el acceso a las tablas sigue pasando por el cliente service-role. Este control es
+  de aplicación; las políticas RLS por usuario en Postgres son una rama posterior.
+
+### Probar la invitación en local (Mailpit)
+
+El stack local no envía correo real: lo captura **Mailpit** en <http://127.0.0.1:55424>.
+
+1. `supabase stop` y `supabase start` (solo la primera vez tras traer esta rama: Supabase lee `config.toml` y las
+   plantillas de `supabase/templates/` al arrancar).
+2. Arranca la app en la URL de `[auth] site_url` de `supabase/config.toml`, que es sobre la que se construye el enlace:
+   `npm run dev` → <http://127.0.0.1:3000>. Si usas otro puerto, cambia `site_url` y reinicia Supabase.
+3. Entra como `finance@tecfys.com` (owner) → **Configuración → Usuarios y roles** → email + rol → **Invitar**.
+4. Abre Mailpit (<http://127.0.0.1:55424>), abre el mensaje "Invitacion a la plataforma de Tecfys" y pulsa
+   **Crear mi contraseña**. Hazlo en una ventana privada para no mezclar la sesión del owner.
+5. Escribe la contraseña dos veces (mínimo 10 caracteres) → **Guardar contraseña y entrar**. Entras ya con el rol
+   asignado: un partner aterriza en `/scoring/new`, el resto en el dashboard.
+6. Cierra sesión y vuelve a entrar en `/login` con ese email y contraseña para comprobar el rol.
+
+En **producción** Supabase no entrega correo a terceros con su servidor por defecto: hay que configurar un proveedor
+SMTP (p. ej. Resend) en *Authentication → Emails → SMTP Settings*, poner la URL de la app en *Authentication → URL
+Configuration → Site URL* y pegar `supabase/templates/invite.html` y `recovery.html` en *Authentication → Email
+Templates* (los proyectos alojados no leen esos ficheros). Nada de eso se configura desde este repo.
 
 ## Motor del loan book = Borrowing Base
 

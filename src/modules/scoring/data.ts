@@ -1,5 +1,7 @@
 import "server-only";
+import { createdByFilter, type DataScope, inScope } from "@/lib/auth/scope";
 import { db } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/database.types";
 import { DEFAULT_CRITERIA, type ScoringCriteria } from "./domain/criteria";
 import type { RatioKey } from "./domain/criteria";
 import type { RatioResult } from "./domain/engine";
@@ -12,24 +14,33 @@ export async function getActiveCriteria(): Promise<{ id: string | null; version:
   return { id: data.id, version: data.version, config: data.config as unknown as ScoringCriteria };
 }
 
-export async function listScorings(limit = 100) {
-  const { data, error } = await db()
+/**
+ * Scorings inside the caller's scope, newest first: a partner only gets the
+ * ones it created. The scope is mandatory so no caller can forget it.
+ */
+export async function listScorings(scope: DataScope, { limit = 100, status }: { limit?: number; status?: Database["public"]["Enums"]["scoring_status"] } = {}) {
+  let q = db()
     .from("scorings")
     .select("id, rating, decision, status, total_score, credit_opinion, created_at, company:companies ( id, cif, name )")
     .order("created_at", { ascending: false })
     .limit(limit);
+  const createdBy = createdByFilter(scope);
+  if (createdBy) q = q.eq("created_by", createdBy);
+  if (status) q = q.eq("status", status);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
 
-export async function getScoring(id: string) {
+/** One scoring; null when it does not exist OR is outside the caller's scope (not found either way). */
+export async function getScoring(id: string, scope: DataScope) {
   const { data, error } = await db()
     .from("scorings")
     .select("*, company:companies ( * ), report:informa_reports ( id, file_name, reference_year, source )")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  if (!data) return null;
+  if (!data || !inScope(scope, data.created_by)) return null;
   return {
     ...data,
     financials: data.financials as unknown as Financials,
