@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { requireRole } from "@/lib/supabase/auth";
 import { ScoringWizard } from "@/modules/scoring/components/scoring-wizard";
 import { getActiveCriteria } from "@/modules/scoring/data";
 import { isInformaConfigured } from "@/modules/scoring/informa/server";
@@ -6,6 +7,7 @@ import { isInformaConfigured } from "@/modules/scoring/informa/server";
 export const metadata = { title: "Nuevo scoring" };
 
 export default async function NewScoringPage() {
+  await requireRole("scoring.run");
   const criteria = await getActiveCriteria();
   return (
     <>

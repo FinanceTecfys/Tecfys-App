@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireUser } from "@/lib/supabase/auth";
+import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { getActiveCriteria } from "./data";
@@ -37,7 +37,7 @@ export type FetchInformaResult =
  * neither stored nor sent to the browser.
  */
 export async function fetchInformaReport(cifInput: string): Promise<FetchInformaResult> {
-  await requireUser();
+  await requireRole("scoring.run");
   const cif = normalizeCif(String(cifInput ?? ""));
   if (!cif) return { ok: false, error: "CIF no válido: 9 caracteres, p. ej. B12345678" };
   if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
@@ -68,7 +68,7 @@ export async function fetchInformaReport(cifInput: string): Promise<FetchInforma
 
 /** "Probar conexión": a fresh POST /login, then the demo company's report (A00000000). Secrets never leave the server. */
 export async function testInformaConnection(): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
-  await requireUser();
+  await requireRole("settings.access");
   if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
   try {
     const started = Date.now();
@@ -85,7 +85,7 @@ export type ParsePdfResult =
 
 /** Parse an Informa PDF, keep the original in storage and the parse in informa_reports. */
 export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResult> {
-  await requireUser();
+  await requireRole("scoring.run");
   const file = formData.get("pdf");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Selecciona un PDF de Informa" };
   if (file.type && file.type !== "application/pdf") return { ok: false, error: "El fichero no es un PDF" };
@@ -124,9 +124,9 @@ export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResul
 
 export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-/** Score a company (always recomputed server-side) and store the result. */
+/** Score a company (always recomputed server-side) and store the result, owned by whoever ran it. */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
-  await requireUser();
+  const user = await requireRole("scoring.run");
   const parsed = financialsSchema.safeParse(input.financials);
   if (!parsed.success) {
     const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
@@ -184,6 +184,7 @@ export async function createScoring(input: { financials: Financials; informaRepo
       adjusted_ebitda: result.adjustedEbitda,
       credit_opinion: round(result.creditOpinion, 2),
       status,
+      created_by: user.id,
     })
     .select("id")
     .single();
@@ -199,8 +200,9 @@ const reviewSchema = z.object({
   note: z.string().trim().min(3, "Explica el motivo de la decisión"),
 });
 
+/** Manual committee decision on a scoring pending review (owner / admin). */
 export async function reviewScoring(_prev: { error?: string } | null, formData: FormData): Promise<{ error?: string } | null> {
-  await requireUser();
+  await requireRole("scoring.review");
   const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { id, status, note } = parsed.data;

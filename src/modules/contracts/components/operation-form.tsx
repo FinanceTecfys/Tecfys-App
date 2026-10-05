@@ -40,6 +40,8 @@ export function OperationForm({
   contractTypes,
   clusters,
   today,
+  canEditCatalog,
+  lockedDistributorId,
 }: {
   scoring: OperationScoring;
   identity: IdentityPrefill;
@@ -48,10 +50,14 @@ export function OperationForm({
   contractTypes: ContractType[];
   clusters: string[];
   today: string;
+  /** Inline creation of distributors / asset types (the server action checks the role again). */
+  canEditCatalog: boolean;
+  /** A partner originates for its own distributor: the select is fixed (and the server overrides it anyway). */
+  lockedDistributorId?: string | null;
 }) {
   const [identity, setIdentity] = useState<IdentityState>({ ...prefill, deliverySameAsFiscal: true, deliveryAddress: "" });
   const [sepa, setSepa] = useState<SepaState>({ iban: "", debtorName: prefill.clientName, debtorNameEdited: false, bic: "", bicDerived: false });
-  const [distributorId, setDistributorId] = useState<string | null>(null);
+  const [distributorId, setDistributorId] = useState<string | null>(lockedDistributorId ?? null);
   const [assetTypeId, setAssetTypeId] = useState<string | null>(null);
   const [newCluster, setNewCluster] = useState(clusters[0] ?? "Other");
   const [contractType, setContractType] = useState("Renting");
@@ -185,7 +191,8 @@ export function OperationForm({
               options={distributors.filter((d) => d.active)}
               value={distributorId}
               onChange={setDistributorId}
-              onCreate={(name) => createDistributor({ name })}
+              onCreate={canEditCatalog ? (name) => createDistributor({ name }) : undefined}
+              disabled={lockedDistributorId !== undefined}
               placeholder="— Directo / sin distribuidor —"
             />
             <CatalogSelect
@@ -194,7 +201,7 @@ export function OperationForm({
               options={assetTypes.filter((a) => a.active)}
               value={assetTypeId}
               onChange={setAssetTypeId}
-              onCreate={(name) => createAssetType({ name, cluster: newCluster })}
+              onCreate={canEditCatalog ? (name) => createAssetType({ name, cluster: newCluster }) : undefined}
               error={fieldErrors.assetTypeId}
               createExtra={
                 <select aria-label="Grupo del activo" value={newCluster} onChange={(e) => setNewCluster(e.target.value)} className={inputClass}>

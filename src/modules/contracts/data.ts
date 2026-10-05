@@ -1,4 +1,5 @@
 import "server-only";
+import { createdByFilter, type DataScope, inScope } from "@/lib/auth/scope";
 import { db } from "@/lib/supabase/server";
 import { ATTACHMENT_BUCKET, type AttachmentKind, type StoredAttachment } from "./domain/attachments";
 import type { ContractDraftSource } from "./domain/contract-template";
@@ -10,7 +11,7 @@ const CONTRACT_SELECT = `
   settlement_amount,
   signing_date, duration_months, installment, residual_value, purchase_value, expo_adjustment,
   has_guarantor, guarantor_name, guarantor_nif, cancel_date, additional_status, residual_waived,
-  amortize_over_real_life, workflow_status, notes, created_at, scoring_id,
+  amortize_over_real_life, workflow_status, notes, created_at, created_by, scoring_id,
   client_name, client_cif, fiscal_address, fiscal_postal_code, fiscal_city, fiscal_province,
   signatory_name, signatory_nif, signatory_address, contact_name, contact_phone, contact_email,
   delivery_same_as_fiscal, delivery_address, guarantor_address, guarantor_representative,
@@ -62,6 +63,10 @@ export interface ContractWithSchedule {
 /**
  * Every contract of the loan book with its schedule, computed as of `asOf`.
  * Drafts (not yet signed) are excluded from the portfolio by default.
+ *
+ * The WHOLE book, unscoped: only for callers behind requireRole("loanBook.view"),
+ * "waterfall.view" or "dashboard.view". Anything a partner can reach goes
+ * through getContract / clientExposure instead.
  */
 export async function loadLoanBook({ asOf = new Date(), includeDrafts = false, companyId }: { asOf?: Date; includeDrafts?: boolean; companyId?: string } = {}) {
   const rows = await fetchContracts({ companyId });
@@ -74,19 +79,34 @@ export async function loadLoanBook({ asOf = new Date(), includeDrafts = false, c
     });
 }
 
-export async function getContract(id: string) {
-  const { data, error } = await db().from("contracts").select(CONTRACT_SELECT).eq("id", id).maybeSingle();
-  if (error) throw error;
-  return data;
+/**
+ * Principal outstanding today on a client's signed contracts: the single
+ * figure "Nueva operación" checks against the credit opinion. A total only -
+ * no contract of the book is returned.
+ */
+export async function clientExposure(companyId: string): Promise<number> {
+  const book = await loadLoanBook({ companyId });
+  return book.reduce((sum, c) => sum + Math.max(0, c.outstanding), 0);
 }
 
-export async function listPipeline() {
-  const { data, error } = await db()
+/** One contract; null when it does not exist OR is outside the caller's scope (not found either way). */
+export async function getContract(id: string, scope: DataScope) {
+  const { data, error } = await db().from("contracts").select(CONTRACT_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data && inScope(scope, data.created_by) ? data : null;
+}
+
+/** Operations not yet signed, inside the caller's scope. */
+export async function listPipeline(scope: DataScope) {
+  let q = db()
     .from("contracts")
     .select("id, contract_number, workflow_status, purchase_value, created_at, company:companies ( name )")
     .in("workflow_status", ["draft", "pending_signature"])
     .order("created_at", { ascending: false })
     .limit(10);
+  const createdBy = createdByFilter(scope);
+  if (createdBy) q = q.eq("created_by", createdBy);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
@@ -142,7 +162,10 @@ export function draftSourceFromContract(c: FullContract): ContractDraftSource | 
   };
 }
 
-/** The attachments stored for a contract (metadata only; the files stay in the private bucket). */
+/**
+ * The attachments stored for a contract (metadata only; the files stay in the
+ * private bucket). Call it with the id of a contract getContract returned.
+ */
 export async function listAttachments(contractId: string): Promise<StoredAttachment[]> {
   const { data, error } = await db()
     .from("contract_attachments")
@@ -152,15 +175,16 @@ export async function listAttachments(contractId: string): Promise<StoredAttachm
   return data;
 }
 
-export async function findAttachment(contractId: string, kind: AttachmentKind) {
+/** An attachment of a contract inside the caller's scope; null otherwise. */
+export async function findAttachment(contractId: string, kind: AttachmentKind, scope: DataScope) {
   const { data, error } = await db()
     .from("contract_attachments")
-    .select("kind, file_name, mime_type, size_bytes, storage_path, contract:contracts ( contract_number )")
+    .select("kind, file_name, mime_type, size_bytes, storage_path, contract:contracts ( contract_number, created_by )")
     .eq("contract_id", contractId)
     .eq("kind", kind)
     .maybeSingle();
   if (error) throw error;
-  if (!data?.contract) return null;
+  if (!data?.contract || !inScope(scope, data.contract.created_by)) return null;
   const { contract, ...attachment } = data;
   return { contractNumber: contract.contract_number, attachment };
 }

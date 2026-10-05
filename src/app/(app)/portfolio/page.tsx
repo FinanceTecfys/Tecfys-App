@@ -4,6 +4,7 @@ import { inputClass, Label } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { fmtEur, fmtMonthKey, fmtNum, fmtPct } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { cn } from "@/lib/utils";
 import { loadLoanBook } from "@/modules/contracts/data";
 import { monthKey, monthKeyOfDate } from "@/modules/contracts/domain/month-key";
@@ -43,6 +44,7 @@ function cell(value: number | null, format: Row["format"]) {
 }
 
 export default async function PortfolioPage({ searchParams }: PageProps<"/portfolio">) {
+  await requireRole("waterfall.view");
   const sp = await searchParams;
   const asOfParam = typeof sp.asOf === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : null;
   const asOf = asOfParam ? new Date(`${asOfParam}T00:00:00Z`) : new Date();

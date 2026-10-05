@@ -1,7 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, Td, Th } from "@/components/ui/table";
+import { can } from "@/lib/auth/permissions";
 import { fmtNum, fmtPct } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { ActiveToggle, NewAssetTypeForm, NewDistributorForm } from "@/modules/catalog/components/catalog-forms";
 import { listAssetTypes, listContractTypes, listDistributors } from "@/modules/catalog/data";
 import { HoldedSettingsForm } from "@/modules/erp/components/holded-settings-form";
@@ -12,23 +14,36 @@ import { informaConfigStatus } from "@/modules/scoring/informa/server";
 import { DECISION_LABELS, type RatioKey } from "@/modules/scoring/domain/criteria";
 import { RatingBadge } from "@/modules/scoring/components/badges";
 import { getActiveCriteria } from "@/modules/scoring/data";
+import { UsersPanel } from "@/modules/users/components/users-panel";
+import { listUsers } from "@/modules/users/data";
 
 export const metadata = { title: "Configuración" };
 
 export default async function SettingsPage() {
-  const [distributors, assetTypes, contractTypes, criteria, erpSettings] = await Promise.all([
+  const user = await requireRole("settings.access");
+  const [distributors, assetTypes, contractTypes, criteria, erpSettings, users] = await Promise.all([
     listDistributors(),
     listAssetTypes(),
     listContractTypes(),
     getActiveCriteria(),
     getErpSettings(),
+    can(user.role, "users.manage") ? listUsers() : null,
   ]);
   const clusters = [...new Set(assetTypes.map((a) => a.cluster))].sort();
   const c = criteria.config;
 
   return (
     <>
-      <PageHeader title="Configuración" description="Catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa." />
+      <PageHeader title="Configuración" description="Usuarios y roles, catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa." />
+      {users && (
+        <Card title="Usuarios" subtitle={`${users.length} cuentas · el rol decide qué puede ver y hacer cada usuario`} className="mb-6">
+          <UsersPanel
+            actor={{ id: user.id, role: user.role }}
+            users={users}
+            distributors={distributors.filter((d) => d.active).map((d) => ({ id: d.id, name: d.name }))}
+          />
+        </Card>
+      )}
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Distribuidores" subtitle={`${distributors.length} registrados`}>
           <NewDistributorForm />

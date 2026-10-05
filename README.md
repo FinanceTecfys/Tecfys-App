@@ -47,6 +47,7 @@ src/
     contracts/           domain/ (motor financiero del loan book) · data · actions · components
     catalog/             distribuidores, tipos de activo, tipos de contrato
     signature/           interfaz del proveedor de firma (Signaturit)
+    users/               gestión de usuarios y roles (reglas del owner, acciones, panel de Configuración)
 scripts/                 importador y reconciliación del Borrowing Base
 supabase/                migraciones y seed
 ```
@@ -55,7 +56,36 @@ supabase/                migraciones y seed
   navegador (cálculo en vivo del formulario) y en los scripts.
 - La base de datos guarda **solo los inputs** de cada contrato (las columnas tecleadas del Loan book). La IRR, el split
   principal/interés, el principal pendiente y el default se calculan siempre con el mismo motor.
-- RLS activado en todas las tablas sin políticas: solo el servidor (secret key) accede. Las políticas llegan con la autenticación.
+- RLS activado en todas las tablas sin políticas: solo el servidor (secret key) accede. El control de acceso por rol
+  se aplica en la capa de aplicación (ver **Roles y usuarios**); las políticas RLS por usuario quedan pendientes.
+
+## Roles y usuarios
+
+Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo puro, `src/lib/auth/permissions.ts`
+(`can(rol, capacidad)` + la lista de rutas permitidas), y **se aplica en el servidor**:
+
+| | owner | admin | sales | partner |
+|---|---|---|---|---|
+| Dashboard, loan book, waterfall | sí | sí | sí | no |
+| ERP, Configuración, modelo de scoring | sí | sí | no | no |
+| Ejecutar scoring, crear operación | sí | sí | sí | sí (solo ve lo que él creó) |
+| Revisión manual de un scoring, marcar firmado, cancelar | sí | sí | no | no |
+| Gestionar usuarios | sí | sí (no owner ni admins) | no | no |
+
+- `src/proxy.ts` redirige al inicio de su rol a quien abre una ruta que no le corresponde (un partner en `/contracts`
+  o `/settings` acaba en `/scoring/new`). Cada página, Server Action y route handler vuelve a comprobarlo con
+  `requireRole("capacidad")` (`src/lib/supabase/auth.ts`); un test recorre el código y falla si alguno no lo hace.
+- **Propiedad de los datos**: `scorings.created_by` y `contracts.created_by` guardan quién creó cada registro. La capa
+  de datos recibe el alcance del usuario (`src/lib/auth/scope.ts`): un partner que pide un scoring o contrato ajeno
+  recibe un "no encontrado", igual que con un id inexistente. Su operación se asigna siempre a su distribuidor
+  (`profiles.partner_distributor_id`).
+- **Owner**: exactamente uno, `finance@tecfys.com`. La migración le da el rol si el usuario ya existe en Supabase Auth
+  y un trigger se lo da en cuanto se crea; la aplicación nunca lo degrada, desactiva ni crea un segundo owner.
+- Un usuario de Supabase Auth **sin perfil o desactivado no entra** en la aplicación.
+- El resto de usuarios se crean en **Configuración → Usuarios** (owner / admin) con email, contraseña inicial y rol
+  (y distribuidor si es partner). No hay invitación por email ni recuperación de contraseña todavía.
+- Pendiente (decisión documentada): el acceso a las tablas sigue pasando por el cliente service-role. Este control es
+  de aplicación; las políticas RLS por usuario en Postgres son una rama posterior.
 
 ## Motor del loan book = Borrowing Base
 

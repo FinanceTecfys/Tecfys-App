@@ -6,15 +6,19 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
+import { can } from "@/lib/auth/permissions";
+import { dataScopeFor } from "@/lib/auth/scope";
 import { fmtDate, fmtEur, fmtNum } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { DecisionBadge, RatingBadge, ScoringStatusBadge } from "@/modules/scoring/components/badges";
 import { ReviewForm } from "@/modules/scoring/components/review-form";
 import { ScoreBreakdown } from "@/modules/scoring/components/score-breakdown";
 import { getScoring } from "@/modules/scoring/data";
 
 export default async function ScoringDetailPage({ params }: PageProps<"/scoring/[id]">) {
+  const user = await requireRole("scoring.view");
   const { id } = await params;
-  const scoring = await getScoring(id);
+  const scoring = await getScoring(id, dataScopeFor(user));
   if (!scoring) notFound();
   const f = scoring.financials;
 
@@ -60,11 +64,14 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
           <ScoreBreakdown breakdown={scoring.breakdown} />
         </Card>
         <div className="space-y-6">
-          {scoring.status === "pending_review" && (
-            <Card title="Revisión manual" subtitle="El rating exige decisión del comité">
-              <ReviewForm scoringId={scoring.id} />
-            </Card>
-          )}
+          {scoring.status === "pending_review" &&
+            (can(user.role, "scoring.review") ? (
+              <Card title="Revisión manual" subtitle="El rating exige decisión del comité">
+                <ReviewForm scoringId={scoring.id} />
+              </Card>
+            ) : (
+              <Alert tone="warning" title="Pendiente de revisión">El rating exige una decisión del comité de Tecfys antes de poder originar la operación.</Alert>
+            ))}
           {scoring.status === "rejected" && (
             <Alert tone="error" title="Scoring rechazado">No se puede originar una operación para este cliente con este scoring.</Alert>
           )}

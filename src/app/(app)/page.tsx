@@ -5,7 +5,9 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { Table, Td, Th } from "@/components/ui/table";
+import { dataScopeFor } from "@/lib/auth/scope";
 import { fmtDate, fmtEur, fmtMonthKey, fmtPct } from "@/lib/format";
+import { requireRole } from "@/lib/supabase/auth";
 import { WorkflowBadge } from "@/modules/contracts/components/badges";
 import { listPipeline, loadLoanBook } from "@/modules/contracts/data";
 import { asOfForMonth, type LoanBookQuery, loanBookSearch, toLoanBookRow } from "@/modules/contracts/domain/loan-book-view";
@@ -37,6 +39,7 @@ import { listScorings } from "@/modules/scoring/data";
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
 export default async function DashboardPage({ searchParams }: PageProps<"/">) {
+  const scope = dataScopeFor(await requireRole("dashboard.view"));
   const sp = await searchParams;
   const now = new Date();
   const period = resolvePeriod({ preset: str(sp.preset), from: str(sp.from), to: str(sp.to) }, now);
@@ -50,7 +53,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const drill = (dimension: DrillDimension, slices: AggregateSlice[]) =>
     slices.map((s) => ({ ...s, href: loanBookHref(drillDownQuery(dimension, s)) }));
 
-  const [book, scorings, pipeline] = await Promise.all([loadLoanBook({ asOf }), listScorings(6), listPipeline()]);
+  const [book, scorings, pipeline] = await Promise.all([loadLoanBook({ asOf }), listScorings(scope, { limit: 6 }), listPipeline(scope)]);
   const rows = book.map(toLoanBookRow);
   const months = buildPortfolio(book.map((c) => c.schedule));
   const current = months.find((m) => m.key === period.toKey);

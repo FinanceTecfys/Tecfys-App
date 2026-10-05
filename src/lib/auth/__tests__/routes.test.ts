@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { config } from "@/proxy";
-import { authDecision, HOME_PATH, isPublicPath, LOGIN_PATH, loginRedirectPath, safeNextPath } from "../routes";
+import type { Role } from "../permissions";
+import { authDecision, HOME_PATH, isPublicPath, landingPath, LOGIN_PATH, loginRedirectPath, NO_ACCESS_PATH, safeNextPath } from "../routes";
 
 describe("isPublicPath", () => {
   it("only the login page is public", () => {
@@ -36,7 +37,9 @@ describe("loginRedirectPath", () => {
 });
 
 describe("authDecision", () => {
-  const decide = (pathname: string, authenticated: boolean, search = "") => authDecision({ pathname, search, authenticated });
+  // The pre-RBAC cases run as the owner, who can open every route.
+  const decide = (pathname: string, authenticated: boolean, search = "") =>
+    authDecision({ pathname, search, authenticated, role: authenticated ? "owner" : null });
 
   it("redirects every private route to /login without a session", () => {
     for (const p of ["/", "/contracts", "/contracts/export", "/contracts/x/attachments/id_document", "/portfolio", "/settings", "/scoring/new"]) {
@@ -63,6 +66,50 @@ describe("authDecision", () => {
     if (out.action !== "redirect") throw new Error("expected redirect");
     const search = out.location.slice(out.location.indexOf("?"));
     expect(decide("/login", true, search)).toEqual({ action: "redirect", location: "/contracts?client=B1&country=es&country=pt" });
+  });
+});
+
+describe("authDecision by role", () => {
+  const ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const decide = (pathname: string, role: Role | null, search = "") => authDecision({ pathname, search, authenticated: true, role });
+
+  it("sends a partner to /scoring/new from every route it cannot use, by direct URL", () => {
+    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/erp", "/settings", "/unknown"]) {
+      expect(decide(p, "partner"), p).toEqual({ action: "redirect", location: "/scoring/new" });
+    }
+  });
+
+  it("lets a partner run scoring and create operations", () => {
+    for (const p of ["/scoring", "/scoring/new", `/scoring/${ID}`, "/contracts/new", `/contracts/${ID}`, `/contracts/${ID}/draft`]) {
+      expect(decide(p, "partner"), p).toEqual({ action: "next" });
+    }
+  });
+
+  it("sends sales to the dashboard from settings and ERP, and lets it into the rest", () => {
+    for (const p of ["/settings", "/erp"]) expect(decide(p, "sales"), p).toEqual({ action: "redirect", location: "/" });
+    for (const p of ["/", "/contracts", "/portfolio", "/scoring/new", "/contracts/new"]) expect(decide(p, "sales"), p).toEqual({ action: "next" });
+  });
+
+  it("lets owner and admin through everywhere", () => {
+    for (const role of ["owner", "admin"] as const) {
+      for (const p of ["/", "/contracts", "/portfolio", "/erp", "/settings", "/scoring/new"]) expect(decide(p, role), `${role} ${p}`).toEqual({ action: "next" });
+    }
+  });
+
+  it("a signed-in user with no active role gets no page, and no redirect loop on /login", () => {
+    for (const p of ["/", "/scoring/new", "/contracts", "/settings"]) expect(decide(p, null), p).toEqual({ action: "redirect", location: NO_ACCESS_PATH });
+    expect(decide("/login", null, "?error=no-access")).toEqual({ action: "next" });
+  });
+
+  it("after login a role lands on `next` only if it may open it, else on its home", () => {
+    expect(decide("/login", "partner")).toEqual({ action: "redirect", location: "/scoring/new" });
+    expect(decide("/login", "partner", "?next=%2Fcontracts")).toEqual({ action: "redirect", location: "/scoring/new" });
+    expect(decide("/login", "partner", "?next=%2Fsettings")).toEqual({ action: "redirect", location: "/scoring/new" });
+    expect(decide("/login", "partner", `?next=%2Fscoring%2F${ID}`)).toEqual({ action: "redirect", location: `/scoring/${ID}` });
+    expect(decide("/login", "sales", "?next=%2Fsettings")).toEqual({ action: "redirect", location: "/" });
+    expect(decide("/login", "sales", "?next=%2Fcontracts%3Fq%3Dalfa")).toEqual({ action: "redirect", location: "/contracts?q=alfa" });
+    expect(landingPath("partner", "https://evil.example")).toBe("/scoring/new");
+    expect(landingPath("owner", null)).toBe("/");
   });
 });
 
