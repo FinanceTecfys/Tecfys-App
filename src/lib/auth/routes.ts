@@ -2,7 +2,8 @@
  * The auth gate's decisions, pure so they are unit-tested: which paths are
  * public, where an unauthenticated request goes, and where a login returns to.
  *
- * Everything is private except the login screen, and each private path needs
+ * Everything is private except the login screen and the set-password page an
+ * emailed invitation links to, and each private path needs
  * the role its capability asks for (permissions.ts). Static assets never reach
  * this logic: the proxy matcher excludes them.
  */
@@ -14,14 +15,24 @@ export const HOME_PATH = "/";
 export const NO_ACCESS_ERROR = "no-access";
 export const NO_ACCESS_PATH = `${LOGIN_PATH}?error=${NO_ACCESS_ERROR}`;
 
-/** The only page reachable without a session. */
-export const isPublicPath = (pathname: string): boolean => pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`;
+/** Where an invitation (or recovery) email lands: the user sets a password there, with no session yet. */
+export const SET_PASSWORD_PATH = "/auth/set-password";
+
+const PUBLIC_PATHS: readonly string[] = [LOGIN_PATH, SET_PASSWORD_PATH];
+const withoutTrailingSlash = (pathname: string) => (pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname);
+
+/** The only pages reachable without a session. */
+export const isPublicPath = (pathname: string): boolean => PUBLIC_PATHS.includes(withoutTrailingSlash(pathname));
+
+/** The set-password page opened from an emailed link (it carries the token). */
+const isPasswordLink = (pathname: string, search: string): boolean =>
+  withoutTrailingSlash(pathname) === SET_PASSWORD_PATH && new URLSearchParams(search).has("token_hash");
 
 const ORIGIN = "http://tecfys.invalid";
 
 /**
- * Sanitise the post-login destination: a same-origin path only, never the
- * login page itself. Anything else (absolute or protocol-relative URLs,
+ * Sanitise the post-login destination: a same-origin path only, never a
+ * public page (login, set-password). Anything else (absolute or protocol-relative URLs,
  * backslash tricks, garbage) lands on the dashboard - no open redirect.
  */
 export function safeNextPath(raw: string | null | undefined): string {
@@ -57,7 +68,9 @@ export type AuthDecision = { action: "next" } | { action: "redirect"; location: 
  *  - private path, no session         -> /login?next=<path>
  *  - private path, session, no role   -> /login?error=no-access
  *  - private path the role cannot use -> the role's home page
- *  - /login with a session and a role -> into the app (the sanitised `next`)
+ *  - an emailed set-password link     -> always shown: whoever is signed in on this
+ *                                        browser, the link's owner may use it
+ *  - public page, session and a role  -> into the app (the sanitised `next`)
  *  - otherwise                        -> let it through
  */
 export function authDecision({
@@ -72,7 +85,7 @@ export function authDecision({
   role: Role | null;
 }): AuthDecision {
   if (isPublicPath(pathname)) {
-    if (!authenticated || !role) return { action: "next" };
+    if (!authenticated || !role || isPasswordLink(pathname, search)) return { action: "next" };
     return { action: "redirect", location: landingPath(role, new URLSearchParams(search).get("next")) };
   }
   if (!authenticated) return { action: "redirect", location: loginRedirectPath(pathname, search) };

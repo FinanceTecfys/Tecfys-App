@@ -1,6 +1,7 @@
 import "server-only";
 import { isRole, type Role, ROLES } from "@/lib/auth/permissions";
 import { db } from "@/lib/supabase/server";
+import { isInvitePending } from "./domain/rules";
 
 export interface UserRow {
   id: string;
@@ -8,6 +9,8 @@ export interface UserRow {
   /** null: a Supabase Auth user with no profile, i.e. no access to the app yet. */
   role: Role | null;
   active: boolean;
+  /** Invited by email and the password not set yet. */
+  invitePending: boolean;
   distributor: { id: string; name: string } | null;
   lastSignInAt: string | null;
 }
@@ -43,6 +46,7 @@ export async function listUsers(): Promise<UserRow[]> {
         email: u.email ?? null,
         role: profile && isRole(profile.role) ? profile.role : null,
         active: profile?.active ?? false,
+        invitePending: isInvitePending(u),
         distributor: profile?.distributor ?? null,
         lastSignInAt: u.last_sign_in_at ?? null,
       };
@@ -55,4 +59,11 @@ export async function getUserRole(userId: string): Promise<Role | null> {
   const { data, error } = await db().from("profiles").select("role").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   return data && isRole(data.role) ? data.role : null;
+}
+
+/** The Supabase Auth account behind an id (its email decides the owner protection); null when it does not exist. */
+export async function getAuthUser(userId: string): Promise<{ id: string; email: string | null } | null> {
+  const { data, error } = await db().auth.admin.getUserById(userId);
+  if (error || !data.user) return null;
+  return { id: data.user.id, email: data.user.email ?? null };
 }

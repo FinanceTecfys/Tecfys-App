@@ -6,7 +6,7 @@ import { LoginForm } from "@/modules/auth/components/login-form";
 
 export const metadata: Metadata = { title: "Iniciar sesión" };
 
-/** The only public page. Accounts are provisioned in Supabase: there is no sign-up. */
+/** Public page (with /auth/set-password). Accounts are invited from Settings: there is no sign-up. */
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next, error } = await searchParams;
   const target = typeof next === "string" ? safeNextPath(next) : "/";

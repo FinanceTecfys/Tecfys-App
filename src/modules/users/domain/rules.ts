@@ -1,16 +1,16 @@
 /**
  * User-management rules, pure so the owner invariant is unit-tested:
  *  - there is exactly one owner (OWNER_EMAIL); the app never creates another
- *    one and never demotes, deactivates or otherwise modifies it;
- *  - only the owner creates or modifies an admin;
+ *    one and never demotes, deactivates, deletes or otherwise modifies it;
+ *  - only the owner invites, modifies or deletes an admin;
  *  - an admin manages sales and partners only;
- *  - nobody changes their own role or deactivates themselves;
+ *  - nobody changes their own role, deactivates or deletes themselves;
  *  - a partner is tied to a distributor, the other roles to none.
  * The Server Actions apply these after requireRole("users.manage"); the UI
  * uses the same functions to decide what to offer.
  */
 import { z } from "zod";
-import { can, type Role, ROLES } from "@/lib/auth/permissions";
+import { can, OWNER_EMAIL, type Role, ROLES } from "@/lib/auth/permissions";
 
 export interface Actor {
   id: string;
@@ -30,9 +30,9 @@ const deny = (error: string): RuleResult => ({ ok: false, error });
 
 export const USER_RULE_ERRORS = {
   notAllowed: "No tienes permiso para gestionar usuarios",
-  owner: "El owner no se puede modificar, desactivar ni duplicar",
-  adminsOnlyByOwner: "Solo el owner puede crear o modificar administradores",
-  self: "No puedes cambiar tu propio rol ni desactivar tu usuario",
+  owner: "El owner no se puede modificar, desactivar, eliminar ni duplicar",
+  adminsOnlyByOwner: "Solo el owner puede invitar, modificar o eliminar administradores",
+  self: "No puedes cambiar tu propio rol, ni desactivar o eliminar tu usuario",
   distributorRequired: "Selecciona el distribuidor que representa el partner",
   distributorOnlyForPartners: "Solo un partner se vincula a un distribuidor",
   noProfile: "El usuario todavía no tiene rol asignado",
@@ -68,8 +68,28 @@ export function checkAssignment(actorRole: Role, { role, distributorId }: RoleAs
   return OK;
 }
 
-/** Create a user with a role. */
-export const checkCreateUser = (actor: Actor, assignment: RoleAssignment): RuleResult => checkAssignment(actor.role, assignment);
+const isOwnerEmail = (email: string | null | undefined) => (email ?? "").trim().toLowerCase() === OWNER_EMAIL;
+
+/**
+ * Invite a user by email with a role. The owner's address is never invited:
+ * that account is the seeded root owner (migration + trigger), not an invitee.
+ */
+export function checkInviteUser(actor: Actor, invite: RoleAssignment & { email: string }): RuleResult {
+  const assignment = checkAssignment(actor.role, invite);
+  if (!assignment.ok) return assignment;
+  return isOwnerEmail(invite.email) ? deny(USER_RULE_ERRORS.owner) : OK;
+}
+
+/**
+ * What an invitation does with the profile, given the role the invited
+ * account already holds:
+ *  - none            -> "create": write the profile now, at invite time, so the
+ *                       role is in place the moment the user sets a password;
+ *  - a role already  -> "resend": the email went out again for a pending
+ *                       invitation; the existing profile is NOT touched (a
+ *                       re-invite must never work as a back-door role change).
+ */
+export const inviteProfileStep = (existingRole: Role | null): "create" | "resend" => (existingRole === null ? "create" : "resend");
 
 /** Change (or assign for the first time) the role of an existing user. */
 export function checkRoleChange(actor: Actor, target: Target, assignment: RoleAssignment): RuleResult {
@@ -83,19 +103,31 @@ export function checkSetActive(actor: Actor, target: Target): RuleResult {
   return checkCanManage(actor, target);
 }
 
-export const MIN_PASSWORD_LENGTH = 10;
+/**
+ * Delete a user (profile + Supabase Auth account). The owner is protected by
+ * its role AND by its email, so the root account survives even if its profile
+ * row were missing. A user with no profile can be deleted by owner or admin.
+ */
+export function checkDeleteUser(actor: Actor, target: Target & { email: string | null }): RuleResult {
+  if (!can(actor.role, "users.manage")) return deny(USER_RULE_ERRORS.notAllowed);
+  if (isOwnerEmail(target.email)) return deny(USER_RULE_ERRORS.owner);
+  return checkCanManage(actor, target);
+}
+
+/** An invitation the user has not accepted yet: invited, email never confirmed. */
+export const isInvitePending = (user: { invited_at?: string | null; email_confirmed_at?: string | null }): boolean =>
+  Boolean(user.invited_at) && !user.email_confirmed_at;
 
 const assignmentShape = {
   role: z.enum(ROLES, { error: "Selecciona un rol" }),
   distributorId: z.union([z.uuid(), z.literal(""), z.null()]).optional().transform((v) => v || null),
 };
 
-export const createUserSchema = z.object({
+export const inviteUserSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email("Email no válido")),
-  password: z.string().min(MIN_PASSWORD_LENGTH, `La contraseña inicial necesita al menos ${MIN_PASSWORD_LENGTH} caracteres`).max(72, "Máximo 72 caracteres"),
   ...assignmentShape,
 });
-export type CreateUserInput = z.input<typeof createUserSchema>;
+export type InviteUserInput = z.input<typeof inviteUserSchema>;
 
 export const roleChangeSchema = z.object({ userId: z.uuid(), ...assignmentShape });
 export type RoleChangeInput = z.input<typeof roleChangeSchema>;

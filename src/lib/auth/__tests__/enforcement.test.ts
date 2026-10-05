@@ -36,8 +36,8 @@ describe("server-side enforcement is wired everywhere", () => {
   });
 
   it("every Server Action starts with requireRole", () => {
-    // Login and logout are the only actions that run without a role.
-    const PUBLIC_ACTIONS = new Set(["modules/auth/actions.ts:signIn", "modules/auth/actions.ts:signOut"]);
+    // Login, logout and accepting an invitation (set the first password) are the only actions that run without a role.
+    const PUBLIC_ACTIONS = new Set(["modules/auth/actions.ts:signIn", "modules/auth/actions.ts:signOut", "modules/auth/actions.ts:setPassword"]);
     const actionFiles = files(path.join(SRC, "modules"), (name) => name === "actions.ts");
     expect(actionFiles.map(rel).sort()).toEqual([
       "modules/auth/actions.ts",
@@ -66,7 +66,10 @@ describe("server-side enforcement is wired everywhere", () => {
         checked++;
       });
     }
-    expect(checked).toBeGreaterThanOrEqual(17);
+    expect(checked).toBeGreaterThanOrEqual(18);
+    // The allow-list is exact: every action of the auth module is accounted for.
+    const authActions = [...read(path.join(SRC, "modules", "auth", "actions.ts")).matchAll(/^export async function (\w+)\(/gm)].map((m) => `modules/auth/actions.ts:${m[1]}`);
+    expect(authActions.sort()).toEqual([...PUBLIC_ACTIONS].sort());
   });
 
   it("no Server Action exports anything but async functions and types", () => {
