@@ -36,6 +36,8 @@ const MATRIX = {
   "loanBook.view": TECFYS,
   /** Cartera / Waterfall. */
   "waterfall.view": TECFYS,
+  /** Pipeline: partner activity and the lifecycle of each deal. */
+  "pipeline.view": TECFYS,
   "erp.view": ADMINS,
   "erp.sync": ADMINS,
   /** Scoring list and detail; partners only reach their own (see scope.ts). */
@@ -79,6 +81,7 @@ const ROUTE_RULES: readonly (readonly [RegExp, Capability])[] = [
   [/^\/contracts\/new$/, "operation.create"],
   [/^\/contracts\/[^/]+(?:\/draft|\/attachments\/[^/]+)?$/, "contract.view"],
   [/^\/portfolio$/, "waterfall.view"],
+  [/^\/pipeline$/, "pipeline.view"],
   [/^\/erp$/, "erp.view"],
   [/^\/settings$/, "settings.access"],
 ];

@@ -8,6 +8,7 @@ const EXPECTED: Record<Capability, [boolean, boolean, boolean, boolean]> = {
   "dashboard.view": [true, true, true, false],
   "loanBook.view": [true, true, true, false],
   "waterfall.view": [true, true, true, false],
+  "pipeline.view": [true, true, true, false],
   "erp.view": [true, true, false, false],
   "erp.sync": [true, true, false, false],
   "scoring.view": [true, true, true, true],
@@ -51,6 +52,11 @@ describe("can (role x capability)", () => {
     expect(allowed).toEqual(["contract.view", "operation.create", "scoring.run", "scoring.view"]);
   });
 
+  it("the pipeline is for owner, admin and sales; a partner never sees the other partners' activity", () => {
+    for (const role of ["owner", "admin", "sales"] as const) expect(can(role, "pipeline.view"), role).toBe(true);
+    expect(can("partner", "pipeline.view")).toBe(false);
+  });
+
   it("sales cannot edit the scoring model, reach settings or ERP, or manage users", () => {
     for (const c of ["scoringModel.edit", "settings.access", "users.manage", "erp.view"] as const) expect(can("sales", c), c).toBe(false);
   });
@@ -72,6 +78,9 @@ describe("route allow-list", () => {
     ["/contracts/", [true, true, true, false]],
     ["/contracts/export", [true, true, true, false]],
     ["/portfolio", [true, true, true, false]],
+    ["/pipeline", [true, true, true, false]],
+    ["/pipeline/", [true, true, true, false]],
+    ["/pipeline/anything", [true, true, false, false]],
     ["/erp", [true, true, false, false]],
     ["/settings", [true, true, false, false]],
     ["/scoring", [true, true, true, true]],
@@ -97,7 +106,7 @@ describe("route allow-list", () => {
   }
 
   it("denies a partner the dashboard, loan book, waterfall, ERP and settings", () => {
-    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/erp", "/settings"]) expect(canAccessPath("partner", p), p).toBe(false);
+    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/pipeline", "/erp", "/settings"]) expect(canAccessPath("partner", p), p).toBe(false);
   });
 
   it("maps the specific routes before the generic ones", () => {
@@ -105,6 +114,7 @@ describe("route allow-list", () => {
     expect(routeCapability("/contracts/new")).toBe("operation.create");
     expect(routeCapability("/contracts/export")).toBe("loanBook.view");
     expect(routeCapability("/contracts/abc")).toBe("contract.view");
+    expect(routeCapability("/pipeline")).toBe("pipeline.view");
     expect(routeCapability("/nope")).toBeNull();
   });
 
