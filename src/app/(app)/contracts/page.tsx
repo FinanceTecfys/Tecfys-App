@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { FileDown, FileSpreadsheet, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { FilterBar, filterBoxClass, FilterCell, filterChipClass, filterSubmitClass } from "@/components/ui/filter-bar";
 import { inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageSizeSelect } from "@/components/ui/page-size-select";
+import { Pagination } from "@/components/ui/pagination";
 import { Stat } from "@/components/ui/stat";
-import { Table, Td, Th } from "@/components/ui/table";
-import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
+import { fmtDate, fmtEur } from "@/lib/format";
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, paginate, parsePage, parsePageSize } from "@/lib/pagination";
 import { requireRole } from "@/lib/supabase/auth";
-import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
+import { LoanBookTable } from "@/modules/contracts/components/loan-book-table";
 import { loadLoanBook } from "@/modules/contracts/data";
+import { toLoanBookTableRow } from "@/modules/contracts/domain/loan-book-columns";
 import {
   asOfForMonth,
   DEFAULT_SORT,
@@ -24,14 +26,12 @@ import {
   loanBookSearch,
   parseLoanBookQuery,
   sortLoanBook,
-  toLoanBookRow,
   toSearchParams,
 } from "@/modules/contracts/domain/loan-book-view";
 import type { ContractStatus } from "@/modules/contracts/domain/schedule";
 
 export const metadata = { title: "Loan book" };
 
-const PAGE_SIZE = 50;
 const STATUSES: { value: ContractStatus | "draft"; label: string }[] = [
   { value: "Active", label: "Activos" },
   { value: "On Track", label: "En plazo" },
@@ -47,32 +47,37 @@ const GROUP_SELECTS: { name: GroupFilter; label: string; all: string }[] = [
 ];
 
 export default async function ContractsPage({ searchParams }: PageProps<"/contracts">) {
-  await requireRole("loanBook.view");
+  const user = await requireRole("loanBook.view");
   const sp = await searchParams;
   const query = parseLoanBookQuery(toSearchParams(sp));
   const sort = query.sort ?? DEFAULT_SORT;
   const current: LoanBookQuery = { ...query, sort };
   const { q = "", status = "" } = query;
-  const page = Math.max(1, Number(sp.page) || 1);
+  const pageSize = parsePageSize(sp.pageSize);
   // Dashboard drill-downs of a past period read the book as of that month.
   const asOf = asOfForMonth(query.asof, new Date());
 
   const book = await loadLoanBook({ includeDrafts: true, asOf });
-  const rows = book.map(toLoanBookRow);
+  const rows = book.map(toLoanBookTableRow);
   const options = loanBookFilterOptions(rows);
   const filtered = sortLoanBook(filterLoanBook(rows, query), sort);
   const filtering = hasLoanBookFilters(query);
   const filteredOutstanding = filtered.reduce((s, r) => s + (r.outstanding ?? 0), 0);
   const filteredDefault = filtered.reduce((s, r) => s + (r.defaultAmount ?? 0), 0);
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // A page beyond the last one (a filter or a larger page size shrank the list) is clamped.
+  const paging = paginate(filtered.length, pageSize, parsePage(sp.page));
+  const visible = filtered.slice(paging.start, paging.end);
 
   const signed = rows.filter((r) => r.lifecycleStatus !== null);
   const live = signed.filter((r) => r.lifecycleStatus !== "Finished");
   const outstanding = signed.reduce((s, r) => s + (r.outstanding ?? 0), 0);
 
   const params = (extra: Record<string, string>) => loanBookSearch(current, extra);
-  const hrefWith = (patch: Partial<LoanBookQuery>) => `/contracts?${loanBookSearch({ ...current, ...patch })}`;
+  // The page size travels with every link of the listing; the page does not, so
+  // a new filter, sort or page size starts again at page 1.
+  const sizeParam = (size: number): Record<string, string> => (size === DEFAULT_PAGE_SIZE ? {} : { pageSize: String(size) });
+  const hrefWith = (patch: Partial<LoanBookQuery>) => `/contracts?${loanBookSearch({ ...current, ...patch }, sizeParam(pageSize))}`;
+  const pageHref = (page: number) => `/contracts?${params({ ...sizeParam(pageSize), ...(page > 1 ? { page: String(page) } : {}) })}`;
 
   return (
     <>
@@ -109,6 +114,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
                   </Link>
                 </span>
               )}
+              {pageSize !== DEFAULT_PAGE_SIZE && <input type="hidden" name="pageSize" value={pageSize} />}
               <span>
                 {filtered.length.toLocaleString("es-ES")} contratos
                 {filtering && (
@@ -122,7 +128,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
           }
           actions={
             <>
-              {filtering && <Link href="/contracts" className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
+              {filtering && <Link href={pageSize === DEFAULT_PAGE_SIZE ? "/contracts" : `/contracts?pageSize=${pageSize}`} className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
               <button className={filterSubmitClass}>Aplicar</button>
             </>
           }
@@ -199,69 +205,16 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
             </label>
           </FilterCell>
         </FilterBar>
-        <Table>
-          <thead>
-            <tr>
-              <Th>Contrato</Th>
-              <Th>Cliente</Th>
-              <Th>País</Th>
-              <Th>Distribuidor</Th>
-              <Th>Tipo de activo</Th>
-              <Th>Firma</Th>
-              <Th right>Meses</Th>
-              <Th right>Ext.</Th>
-              <Th right>Cuota</Th>
-              <Th right>Coste</Th>
-              <Th right>Expected IRR</Th>
-              <Th>Estado</Th>
-              <Th>Cancelación</Th>
-              <Th>Estado adicional</Th>
-              <Th right>Principal pendiente</Th>
-              <Th right>Default</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => (
-              <tr key={r.id} className="hover:bg-ink-800/50">
-                <Td>
-                  <Link href={`/contracts/${r.id}`} className="num font-medium text-slate-100 hover:text-mint-400">{r.contractNumber}</Link>
-                </Td>
-                <Td className="max-w-56 truncate">{r.client}</Td>
-                <Td mono className="text-slate-400">{r.country ?? "—"}</Td>
-                <Td className="text-slate-400">{r.distributor ?? "—"}</Td>
-                <Td className="max-w-40 truncate text-slate-400" title={r.assetCluster ?? undefined}>{r.assetType ?? "—"}</Td>
-                <Td>{fmtDate(r.signingDate)}</Td>
-                <Td right mono>{r.durationMonths}</Td>
-                <Td right mono className={r.extensionMonths ? "text-yellow-300" : "text-slate-600"}>
-                  {r.extensionMonths ? `+${r.extensionMonths}` : "—"}
-                </Td>
-                <Td right mono>{fmtEur(r.installment, 2)}</Td>
-                <Td right mono>{fmtEur(r.cost)}</Td>
-                <Td right mono>{r.expectedAnnualIrr === null ? "n/a" : fmtPct(r.expectedAnnualIrr, 1)}</Td>
-                <Td>{r.lifecycleStatus ? <LifecycleBadge status={r.lifecycleStatus} /> : <WorkflowBadge status={r.workflowStatus} />}</Td>
-                <Td>{fmtDate(r.cancelDate)}</Td>
-                <Td>
-                  {r.additionalStatus ? (
-                    <Badge tone={r.additionalStatus.toLowerCase() === "gesico" ? "red" : "slate"}>{r.additionalStatus}</Badge>
-                  ) : (
-                    <span className="text-slate-600">—</span>
-                  )}
-                </Td>
-                <Td right mono>{r.outstanding === null ? "—" : fmtEur(r.outstanding)}</Td>
-                <Td right mono className={r.defaultAmount === null ? "text-slate-600" : "text-red-300"}>
-                  {r.defaultAmount === null ? "—" : fmtEur(r.defaultAmount, 2)}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-        <nav className="flex items-center justify-between p-4 text-sm text-slate-400" aria-label="Paginación">
-          <span>Página {page} de {pages}</span>
-          <div className="flex gap-2">
-            {page > 1 && <Link href={`/contracts?${params({ page: String(page - 1) })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Anterior</Link>}
-            {page < pages && <Link href={`/contracts?${params({ page: String(page + 1) })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Siguiente</Link>}
+        <LoanBookTable rows={visible} userId={user.id} />
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 p-4 text-sm text-slate-400">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <PageSizeSelect value={pageSize} options={PAGE_SIZES.map((size) => ({ size, href: `/contracts?${params(sizeParam(size))}` }))} />
+            <span className="num" aria-live="polite">
+              {paging.from.toLocaleString("es-ES")}–{paging.to.toLocaleString("es-ES")} de {paging.total.toLocaleString("es-ES")}
+            </span>
           </div>
-        </nav>
+          <Pagination items={paging.items} page={paging.page} pages={paging.pages} hrefFor={pageHref} />
+        </div>
       </Card>
     </>
   );

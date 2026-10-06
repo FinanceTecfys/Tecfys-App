@@ -152,7 +152,7 @@ export interface LoanBookFilters {
   pending?: boolean;
 }
 
-export function filterLoanBook(rows: LoanBookRowView[], filters: LoanBookFilters): LoanBookRowView[] {
+export function filterLoanBook<T extends LoanBookRowView>(rows: T[], filters: LoanBookFilters): T[] {
   const { q, status, client, size, defaulted, pending } = filters;
   const needle = q?.trim().toLowerCase();
   const groups = GROUP_FILTER_NAMES
@@ -214,7 +214,7 @@ export const LOAN_BOOK_SORT_KEYS = Object.keys(LOAN_BOOK_SORTS) as LoanBookSort[
 export const isLoanBookSort = (value: string | undefined): value is LoanBookSort =>
   value !== undefined && (LOAN_BOOK_SORT_KEYS as string[]).includes(value);
 
-export function sortLoanBook(rows: LoanBookRowView[], sort: LoanBookSort): LoanBookRowView[] {
+export function sortLoanBook<T extends LoanBookRowView>(rows: T[], sort: LoanBookSort): T[] {
   // Contract number breaks ties so the order is stable between exports.
   const { compare } = LOAN_BOOK_SORTS[sort];
   return [...rows].sort((a, b) => compare(a, b) || a.contractNumber.localeCompare(b.contractNumber));

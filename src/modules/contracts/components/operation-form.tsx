@@ -10,12 +10,13 @@ import { fmtEur, fmtPct } from "@/lib/format";
 import { createAssetType, createDistributor } from "@/modules/catalog/actions";
 import { CatalogSelect } from "@/modules/catalog/components/catalog-select";
 import type { AssetType, ContractType, Distributor } from "@/modules/catalog/data";
-import { createContract } from "../actions";
+import { createContract, updateDraftContract } from "../actions";
 import { ATTACHMENT_KINDS } from "../domain/attachments";
 import { AttachmentInput } from "./attachment-input";
-import type { IdentityPrefill } from "../domain/operation";
+import type { IdentityPrefill, OperationInput } from "../domain/operation";
 import { installmentForRate, monthlyFromAnnual } from "../domain/pricing";
 import { buildSchedule } from "../domain/schedule";
+import { deriveBic } from "../domain/sepa";
 import { IdentitySection, type IdentityState } from "./identity-section";
 import { ScheduleTable } from "./schedule-table";
 import { SepaSection, type SepaState } from "./sepa-section";
@@ -30,7 +31,15 @@ export interface OperationScoring {
   currentExposure: number;
 }
 
+/** Editing a saved draft: the contract and its stored values, which pre-fill every field. */
+export interface OperationEdit {
+  contractId: string;
+  contractNumber: string;
+  initial: OperationInput;
+}
+
 const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
+const str = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
 
 export function OperationForm({
   scoring,
@@ -42,6 +51,7 @@ export function OperationForm({
   today,
   canEditCatalog,
   lockedDistributorId,
+  edit,
 }: {
   scoring: OperationScoring;
   identity: IdentityPrefill;
@@ -54,27 +64,37 @@ export function OperationForm({
   canEditCatalog: boolean;
   /** A partner originates for its own distributor: the select is fixed (and the server overrides it anyway). */
   lockedDistributorId?: string | null;
+  /** Set to edit a draft instead of creating one: same form, same validation, same engine. */
+  edit?: OperationEdit;
 }) {
-  const [identity, setIdentity] = useState<IdentityState>({ ...prefill, deliverySameAsFiscal: true, deliveryAddress: "" });
-  const [sepa, setSepa] = useState<SepaState>({ iban: "", debtorName: prefill.clientName, debtorNameEdited: false, bic: "", bicDerived: false });
-  const [distributorId, setDistributorId] = useState<string | null>(lockedDistributorId ?? null);
-  const [assetTypeId, setAssetTypeId] = useState<string | null>(null);
+  const init = edit?.initial;
+  const [identity, setIdentity] = useState<IdentityState>({ ...prefill, deliverySameAsFiscal: init?.deliverySameAsFiscal ?? true, deliveryAddress: init?.deliveryAddress ?? "" });
+  const [sepa, setSepa] = useState<SepaState>({
+    iban: init?.sepaIban ?? "",
+    debtorName: init?.sepaDebtorName ?? prefill.clientName,
+    // A saved debtor that differs from the company was typed by the analyst: it no longer follows the name.
+    debtorNameEdited: init !== undefined && init.sepaDebtorName !== prefill.clientName,
+    bic: init?.sepaBic ?? "",
+    bicDerived: Boolean(init?.sepaBic) && init?.sepaBic === deriveBic(init?.sepaIban ?? ""),
+  });
+  const [distributorId, setDistributorId] = useState<string | null>(lockedDistributorId ?? init?.distributorId ?? null);
+  const [assetTypeId, setAssetTypeId] = useState<string | null>(init?.assetTypeId || null);
   const [newCluster, setNewCluster] = useState(clusters[0] ?? "Other");
-  const [contractType, setContractType] = useState("Renting");
-  const [signingDate, setSigningDate] = useState(today);
-  const [purchaseValue, setPurchaseValue] = useState("");
-  const [durationMonths, setDurationMonths] = useState("36");
-  const [residualValue, setResidualValue] = useState("");
-  const [installment, setInstallment] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [productDescription, setProductDescription] = useState("");
-  const [hasGuarantor, setHasGuarantor] = useState(false);
-  const [guarantorName, setGuarantorName] = useState("");
-  const [guarantorNif, setGuarantorNif] = useState("");
-  const [guarantorAddress, setGuarantorAddress] = useState("");
-  const [guarantorRepresentative, setGuarantorRepresentative] = useState("");
-  const [guarantorRepresentativeNif, setGuarantorRepresentativeNif] = useState("");
-  const [notes, setNotes] = useState("");
+  const [contractType, setContractType] = useState(init?.contractType ?? "Renting");
+  const [signingDate, setSigningDate] = useState(init?.signingDate ?? today);
+  const [purchaseValue, setPurchaseValue] = useState(str(init?.purchaseValue));
+  const [durationMonths, setDurationMonths] = useState(init ? str(init.durationMonths) : "36");
+  const [residualValue, setResidualValue] = useState(str(init?.residualValue));
+  const [installment, setInstallment] = useState(str(init?.installment));
+  const [quantity, setQuantity] = useState(init ? str(init.quantity ?? 1) : "1");
+  const [productDescription, setProductDescription] = useState(init?.productDescription ?? "");
+  const [hasGuarantor, setHasGuarantor] = useState(init?.hasGuarantor ?? false);
+  const [guarantorName, setGuarantorName] = useState(init?.guarantorName ?? "");
+  const [guarantorNif, setGuarantorNif] = useState(init?.guarantorNif ?? "");
+  const [guarantorAddress, setGuarantorAddress] = useState(init?.guarantorAddress ?? "");
+  const [guarantorRepresentative, setGuarantorRepresentative] = useState(init?.guarantorRepresentative ?? "");
+  const [guarantorRepresentativeNif, setGuarantorRepresentativeNif] = useState(init?.guarantorRepresentativeNif ?? "");
+  const [notes, setNotes] = useState(init?.notes ?? "");
   const [targetIrr, setTargetIrr] = useState("");
   const [idDocument, setIdDocument] = useState<File | null>(null);
   const [bankCertificate, setBankCertificate] = useState<File | null>(null);
@@ -133,7 +153,7 @@ export function OperationForm({
     if (idDocument) files.set("id_document", idDocument);
     if (bankCertificate) files.set("bank_certificate", bankCertificate);
     startSaving(async () => {
-      const res = await createContract({
+      const input: OperationInput = {
         scoringId: scoring.id,
         ...identity,
         sepaIban: sepa.iban,
@@ -156,7 +176,9 @@ export function OperationForm({
         guarantorRepresentative,
         guarantorRepresentativeNif,
         notes,
-      }, files);
+      };
+      // Both go through the same schema and the same field mapping on the server.
+      const res = edit ? await updateDraftContract(edit.contractId, input) : await createContract(input, files);
       if (res && !res.ok) {
         setError(res.error);
         setFieldErrors(res.fieldErrors ?? {});
@@ -172,7 +194,10 @@ export function OperationForm({
           onChange={patchIdentity}
           errors={fieldErrors}
           signatoryIdAttachment={
-            <AttachmentInput id="id_document" label={ATTACHMENT_KINDS.id_document.label} value={idDocument} onChange={setIdDocument} error={fieldErrors.id_document} />
+            // The documents of a saved draft are managed on the contract page, slot by slot.
+            edit ? undefined : (
+              <AttachmentInput id="id_document" label={ATTACHMENT_KINDS.id_document.label} value={idDocument} onChange={setIdDocument} error={fieldErrors.id_document} />
+            )
           }
         />
         <SepaSection
@@ -180,7 +205,9 @@ export function OperationForm({
           onChange={(patch) => setSepa((prev) => ({ ...prev, ...patch }))}
           errors={fieldErrors}
           bankCertificateAttachment={
-            <AttachmentInput id="bank_certificate" label={ATTACHMENT_KINDS.bank_certificate.label} value={bankCertificate} onChange={setBankCertificate} error={fieldErrors.bank_certificate} />
+            edit ? undefined : (
+              <AttachmentInput id="bank_certificate" label={ATTACHMENT_KINDS.bank_certificate.label} value={bankCertificate} onChange={setBankCertificate} error={fieldErrors.bank_certificate} />
+            )
           }
         />
         <Card title="C · Producto y origen">
@@ -188,7 +215,7 @@ export function OperationForm({
             <CatalogSelect
               label="Distribuidor"
               name="distributorId"
-              options={distributors.filter((d) => d.active)}
+              options={distributors.filter((d) => d.active || d.id === init?.distributorId)}
               value={distributorId}
               onChange={setDistributorId}
               onCreate={canEditCatalog ? (name) => createDistributor({ name }) : undefined}
@@ -198,7 +225,7 @@ export function OperationForm({
             <CatalogSelect
               label="Tipo de activo"
               name="assetTypeId"
-              options={assetTypes.filter((a) => a.active)}
+              options={assetTypes.filter((a) => a.active || a.id === init?.assetTypeId)}
               value={assetTypeId}
               onChange={setAssetTypeId}
               onCreate={canEditCatalog ? (name) => createAssetType({ name, cluster: newCluster }) : undefined}
@@ -281,7 +308,7 @@ export function OperationForm({
 
         {schedule && (
           <Card title="Calendario previsto" subtitle={lag ? "Renting F: la facturación empieza el mes siguiente a la firma" : undefined}>
-            <ScheduleTable schedule={schedule} maxRows={13} />
+            <ScheduleTable schedule={schedule} collapsedRows={13} />
           </Card>
         )}
       </div>
@@ -321,8 +348,14 @@ export function OperationForm({
               </Alert>
             )}
             <Button type="submit" disabled={saving || !schedule} className="w-full">
-              {saving ? "Creando contrato…" : "Crear contrato borrador"}
+              {edit ? (saving ? "Guardando cambios…" : "Guardar cambios") : saving ? "Creando contrato…" : "Crear contrato borrador"}
             </Button>
+            {edit && (
+              <p className="text-[11px] text-slate-500">
+                Al guardar, el calendario y la expected IRR del borrador {edit.contractNumber} se recalculan con estas condiciones. Los documentos se
+                gestionan en la ficha del contrato.
+              </p>
+            )}
           </div>
         </Card>
       </aside>

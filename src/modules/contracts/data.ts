@@ -96,6 +96,13 @@ export async function getContract(id: string, scope: DataScope) {
   return data && inScope(scope, data.created_by) ? data : null;
 }
 
+/** Units on a contract's equipment lines (a draft has one line); 1 when it has none. */
+export async function contractAssetQuantity(contractId: string): Promise<number> {
+  const { data, error } = await db().from("contract_assets").select("quantity").eq("contract_id", contractId);
+  if (error) throw error;
+  return data.reduce((sum, line) => sum + line.quantity, 0) || 1;
+}
+
 /** Operations not yet signed, inside the caller's scope. */
 export async function listPipeline(scope: DataScope) {
   let q = db()

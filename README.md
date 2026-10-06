@@ -33,7 +33,23 @@ El Excel del Borrowing Base contiene datos de clientes: **no se sube al repo** (
    contrato en Word** relleno a partir de `templates/contract-template.docx` (ver `templates/README.md`).
    La firma vía **Signaturit** sigue siendo solo una interfaz (`src/modules/signature`); hasta entonces se marca
    como firmado manualmente y entra en el loan book.
+   Mientras el contrato está en **borrador** se puede **editar** (`/contracts/[id]/edit`): reabre el mismo formulario
+   con lo guardado y permite cambiar cualquier dato, condiciones económicas incluidas. Guardar pasa por el mismo
+   esquema y el mismo mapeo de campos que la creación (`domain/operation.ts`) y solo cambia los inputs: el calendario
+   y la expected IRR los recalcula el motor de siempre en la siguiente lectura. Un contrato enviado a firma o firmado
+   no se edita; un partner solo edita sus propios borradores.
 4. **Loan book** (`/contracts`) y **Cartera / Waterfall** (`/portfolio`, réplica de la pestaña Summary).
+   El listado se pagina en la URL (`?page=`, `?pageSize=` 50 / 100 / 200 / 500; cambiar un filtro vuelve a la página 1)
+   y tiene un **selector de columnas**: además de las de siempre se pueden mostrar ref. Loan book, CIF, grupo de
+   activo, tipo de contrato, rating, meses transcurridos y reales, valor de compra, ajuste expo, valor residual,
+   liquidación, tramo / lender y avalista. La elección es una preferencia de interfaz guardada en el navegador
+   (`localStorage`, por usuario), no en la base de datos. Los exports Excel / PDF **no** siguen esa elección:
+   exportan siempre su juego completo de columnas y todas las filas filtradas, no solo la página.
+5. **Documentos del contrato**: cualquier contrato, también los importados del Loan book (`LB-…`), tiene cuatro huecos:
+   DNI / NIE del firmante, certificado bancario, contrato firmado y anexo. En la ficha, cada hueco ofrece la descarga
+   si el documento existe o la subida si falta (no se sustituye un documento ya subido). Los ficheros viven en el
+   bucket **privado** `contract-attachments`; el servidor comprueba tipo (por sus bytes) y tamaño (8 MB) y los sirve
+   solo a través de `/contracts/[id]/attachments/[kind]`, nunca con una URL pública.
 
 ## Arquitectura
 

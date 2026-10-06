@@ -47,9 +47,9 @@ const MATRIX = {
   "scoring.review": ADMINS,
   /** The scoring model / criteria configuration. */
   "scoringModel.edit": ADMINS,
-  /** Create an operation from an approved scoring the user can reach. */
+  /** Create an operation from an approved scoring the user can reach, and edit it while it is a draft. */
   "operation.create": EVERYONE,
-  /** One contract with its draft and attachments; partners only reach their own. */
+  /** One contract with its draft and documents (download, and upload into an empty slot); partners only reach their own. */
   "contract.view": EVERYONE,
   /** Mark as signed, cancel, settle. */
   "contract.manage": ADMINS,
@@ -79,6 +79,7 @@ const ROUTE_RULES: readonly (readonly [RegExp, Capability])[] = [
   [/^\/contracts$/, "loanBook.view"],
   [/^\/contracts\/export$/, "loanBook.view"],
   [/^\/contracts\/new$/, "operation.create"],
+  [/^\/contracts\/[^/]+\/edit$/, "operation.create"],
   [/^\/contracts\/[^/]+(?:\/draft|\/attachments\/[^/]+)?$/, "contract.view"],
   [/^\/portfolio$/, "waterfall.view"],
   [/^\/pipeline$/, "pipeline.view"],

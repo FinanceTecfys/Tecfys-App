@@ -1,16 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ATTACHMENT_ACCEPT,
+  ATTACHMENT_KIND_ORDER,
+  ATTACHMENT_KINDS,
+  attachmentSlots,
   attachmentStoragePath,
   type AttachmentDownloadDeps,
+  type AttachmentUploadDeps,
   downloadFileName,
   isAttachmentKind,
   MAX_ATTACHMENT_BYTES,
+  OPERATION_FORM_KINDS,
   readAttachments,
   sanitizeFileName,
   serveAttachment,
   sniffAttachmentType,
   type StoredAttachment,
+  storeAttachment,
   toAttachmentRow,
   validateAttachment,
 } from "../attachments";
@@ -108,6 +114,16 @@ describe("readAttachments", () => {
     });
   });
 
+  it("only reads the two kinds the operation form attaches", async () => {
+    expect(OPERATION_FORM_KINDS).toEqual(["id_document", "bank_certificate"]);
+    const form = new FormData();
+    form.set("contract", file(PDF, "contrato.pdf"));
+    form.set("extra", file(PDF, "anexo.pdf"));
+    form.set("id_document", file(PDF, "dni.pdf"));
+    const res = await readAttachments(form);
+    expect(res.ok && res.attachments.map((a) => a.kind)).toEqual(["id_document"]);
+  });
+
   it("refuses an oversized file without reading it", async () => {
     const big = new File([new Uint8Array(MAX_ATTACHMENT_BYTES + 1)], "big.pdf");
     const spy = vi.spyOn(big, "arrayBuffer");
@@ -140,11 +156,172 @@ describe("metadata", () => {
     expect(downloadFileName("bank_certificate", "T/2026 01", "application/pdf")).toBe("Certificado_bancario_T_2026_01.pdf");
   });
 
-  it("only knows the two kinds, and the file input accepts the same types", () => {
-    expect(isAttachmentKind("id_document")).toBe(true);
-    expect(isAttachmentKind("bank_certificate")).toBe(true);
-    for (const bad of ["passport", "toString", "__proto__", "", null]) expect(isAttachmentKind(bad)).toBe(false);
+  it("names the signed contract and the annex like the other documents", () => {
+    expect(downloadFileName("contract", "LB-16535", "application/pdf")).toBe("Contrato_firmado_LB-16535.pdf");
+    expect(downloadFileName("extra", "TCF-000042", "image/jpeg")).toBe("Anexo_TCF-000042.jpg");
+    expect(attachmentStoragePath(CONTRACT_ID, "contract", "application/pdf", "abc")).toBe(`${CONTRACT_ID}/contract-abc.pdf`);
+  });
+
+  it("only knows the four kinds, and the file input accepts the same types", () => {
+    expect(ATTACHMENT_KIND_ORDER).toEqual(["id_document", "bank_certificate", "contract", "extra"]);
+    for (const kind of ATTACHMENT_KIND_ORDER) expect(isAttachmentKind(kind), kind).toBe(true);
+    for (const bad of ["passport", "toString", "__proto__", "constructor", "Contract", "contract ", "", null, undefined, 3, ["contract"]]) expect(isAttachmentKind(bad)).toBe(false);
     expect(ATTACHMENT_ACCEPT.split(",")).toEqual(expect.arrayContaining(["application/pdf", "image/jpeg", "image/png", "image/webp"]));
+  });
+});
+
+describe("attachmentSlots (the four document slots of a contract)", () => {
+  const doc = (kind: string, name: string): StoredAttachment => ({ kind, file_name: name, mime_type: "application/pdf", size_bytes: 10, storage_path: `x/${kind}` });
+
+  it("an imported loan-book contract starts with four empty slots", () => {
+    const slots = attachmentSlots([]);
+    expect(slots.map((s) => s.kind)).toEqual(["id_document", "bank_certificate", "contract", "extra"]);
+    expect(slots.map((s) => s.label)).toEqual(["DNI / NIE del firmante", "Certificado bancario", "Contrato firmado", "Anexo / otro documento"]);
+    expect(slots.every((s) => s.attachment === null)).toBe(true);
+  });
+
+  it("fills each slot with its stored document, whatever order the rows come in", () => {
+    const slots = attachmentSlots([doc("extra", "anexo.pdf"), doc("id_document", "dni.pdf")]);
+    expect(slots.map((s) => s.attachment?.file_name ?? null)).toEqual(["dni.pdf", null, null, "anexo.pdf"]);
+  });
+
+  it("is always exactly four slots: an unknown stored kind is not shown", () => {
+    const slots = attachmentSlots([doc("passport", "x.pdf"), doc("contract", "contrato.pdf")]);
+    expect(slots).toHaveLength(4);
+    expect(slots.filter((s) => s.attachment).map((s) => s.kind)).toEqual(["contract"]);
+  });
+
+  it("every kind has a label, a download label and an ASCII file prefix", () => {
+    for (const kind of ATTACHMENT_KIND_ORDER) {
+      const { label, downloadLabel, filePrefix } = ATTACHMENT_KINDS[kind];
+      expect(label.length, kind).toBeGreaterThan(0);
+      expect(downloadLabel, kind).toMatch(/^Descargar /);
+      expect(filePrefix, kind).toMatch(/^[A-Za-z_]+$/);
+    }
+  });
+});
+
+describe("storeAttachment (mocked storage)", () => {
+  const file = (content: Uint8Array, name: string, type = "application/pdf") => new File([content.slice()], name, { type });
+
+  function setup(over: Partial<AttachmentUploadDeps> = {}) {
+    const bucket = new Map<string, Uint8Array>();
+    const rows: Record<string, unknown>[] = [];
+    const deps: AttachmentUploadDeps = {
+      findContract: vi.fn(async (id: string) => ({ id })),
+      hasAttachment: vi.fn(async () => false),
+      upload: vi.fn(async (path, attachment) => {
+        bucket.set(path, attachment.bytes);
+        return null;
+      }),
+      insert: vi.fn(async (row) => {
+        rows.push(row);
+        return null;
+      }),
+      remove: vi.fn(async (path: string) => {
+        bucket.delete(path);
+      }),
+      newId: () => "rand0m",
+      ...over,
+    };
+    return { deps, bucket, rows };
+  }
+
+  it("stores each of the four kinds: the object in the bucket and its metadata row", async () => {
+    for (const kind of ATTACHMENT_KIND_ORDER) {
+      const { deps, bucket, rows } = setup();
+      const res = await storeAttachment({ contractId: CONTRACT_ID, kind, file: file(PDF, "Documento firmado.pdf") }, deps);
+      expect(res).toEqual({ ok: true, contractId: CONTRACT_ID, kind });
+      const path = `${CONTRACT_ID}/${kind}-rand0m.pdf`;
+      expect([...bucket.keys()]).toEqual([path]);
+      expect(rows).toEqual([{ contract_id: CONTRACT_ID, kind, file_name: "Documento firmado.pdf", mime_type: "application/pdf", size_bytes: PDF.length, storage_path: path }]);
+    }
+  });
+
+  it("stores the sniffed type, not the one the browser declared", async () => {
+    const { deps, rows } = setup();
+    await storeAttachment({ contractId: CONTRACT_ID, kind: "contract", file: file(PNG, "contrato.pdf", "application/pdf") }, deps);
+    expect(rows[0]).toMatchObject({ mime_type: "image/png", storage_path: `${CONTRACT_ID}/contract-rand0m.png` });
+  });
+
+  it("refuses a malformed contract id or an unknown kind before any lookup", async () => {
+    for (const params of [
+      { contractId: "not-a-uuid", kind: "contract" },
+      { contractId: `${CONTRACT_ID}/../x`, kind: "contract" },
+      { contractId: null, kind: "contract" },
+      { contractId: CONTRACT_ID, kind: "passport" },
+      { contractId: CONTRACT_ID, kind: "toString" },
+      { contractId: CONTRACT_ID, kind: null },
+    ]) {
+      const { deps } = setup();
+      const res = await storeAttachment({ ...params, file: file(PDF, "c.pdf") }, deps);
+      expect(res).toEqual({ ok: false, error: "Documento no válido" });
+      expect(deps.findContract).not.toHaveBeenCalled();
+      expect(deps.upload).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a contract outside the caller's scope reads as not found, and nothing is uploaded", async () => {
+    const { deps, bucket } = setup({ findContract: vi.fn(async () => null) });
+    const res = await storeAttachment({ contractId: CONTRACT_ID, kind: "contract", file: file(PDF, "c.pdf") }, deps);
+    expect(res).toEqual({ ok: false, error: "Contrato no encontrado" });
+    expect(deps.hasAttachment).not.toHaveBeenCalled();
+    expect(deps.upload).not.toHaveBeenCalled();
+    expect(bucket.size).toBe(0);
+  });
+
+  it("never replaces a document: a filled slot is refused", async () => {
+    const { deps } = setup({ hasAttachment: vi.fn(async () => true) });
+    const res = await storeAttachment({ contractId: CONTRACT_ID, kind: "contract", file: file(PDF, "c.pdf") }, deps);
+    expect(res).toEqual({ ok: false, error: "Contrato firmado: el contrato ya tiene este documento" });
+    expect(deps.hasAttachment).toHaveBeenCalledWith(CONTRACT_ID, "contract");
+    expect(deps.upload).not.toHaveBeenCalled();
+  });
+
+  it("applies the same type and size validation as the operation form", async () => {
+    const big = new File([new Uint8Array(MAX_ATTACHMENT_BYTES + 1)], "big.pdf");
+    const read = vi.spyOn(big, "arrayBuffer");
+    const cases: [FormDataEntryValue | null, string][] = [
+      [file(GIF, "contrato.gif", "image/gif"), "Contrato firmado: solo se admiten PDF, JPG, PNG o WEBP"],
+      [file(HTML, "contrato.pdf"), "Contrato firmado: solo se admiten PDF, JPG, PNG o WEBP"],
+      [big, "Contrato firmado: supera el máximo de 8 MB"],
+      [new File([], "vacio.pdf"), "Contrato firmado: el fichero está vacío"],
+      ["not a file", "Contrato firmado: fichero no válido"],
+      [null, "Contrato firmado: selecciona un fichero"],
+      ["", "Contrato firmado: selecciona un fichero"],
+    ];
+    for (const [entry, error] of cases) {
+      const { deps } = setup();
+      expect(await storeAttachment({ contractId: CONTRACT_ID, kind: "contract", file: entry }, deps), error).toEqual({ ok: false, error });
+      expect(deps.upload).not.toHaveBeenCalled();
+      expect(deps.insert).not.toHaveBeenCalled();
+    }
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("accepts a file of exactly the limit", async () => {
+    const atLimit = new Uint8Array(MAX_ATTACHMENT_BYTES);
+    atLimit.set(PDF);
+    const { deps, rows } = setup();
+    const res = await storeAttachment({ contractId: CONTRACT_ID, kind: "extra", file: file(atLimit, "anexo.pdf") }, deps);
+    expect(res.ok).toBe(true);
+    expect(rows[0]).toMatchObject({ size_bytes: MAX_ATTACHMENT_BYTES });
+  });
+
+  it("reports a storage failure and writes no row", async () => {
+    const { deps } = setup({ upload: vi.fn(async () => "bucket unavailable") });
+    const res = await storeAttachment({ contractId: CONTRACT_ID, kind: "extra", file: file(PDF, "a.pdf") }, deps);
+    expect(res).toEqual({ ok: false, error: "No se pudo guardar el documento: bucket unavailable" });
+    expect(deps.insert).not.toHaveBeenCalled();
+    expect(deps.remove).not.toHaveBeenCalled();
+  });
+
+  it("removes the uploaded object when the metadata row cannot be written (no orphan in the bucket)", async () => {
+    const { deps, bucket } = setup({ insert: vi.fn(async () => "duplicate key value violates unique constraint") });
+    const res = await storeAttachment({ contractId: CONTRACT_ID, kind: "extra", file: file(PDF, "a.pdf") }, deps);
+    expect(res.ok).toBe(false);
+    expect(deps.remove).toHaveBeenCalledWith(`${CONTRACT_ID}/extra-rand0m.pdf`);
+    expect(bucket.size).toBe(0);
   });
 });
 

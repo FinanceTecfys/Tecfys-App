@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileDown } from "lucide-react";
+import { FileDown, Pencil } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
@@ -14,11 +14,13 @@ import { requireRole } from "@/lib/supabase/auth";
 import { markContractSigned } from "@/modules/contracts/actions";
 import { LifecycleBadge, WorkflowBadge } from "@/modules/contracts/components/badges";
 import { CancellationForm } from "@/modules/contracts/components/cancellation-form";
+import { ContractDocuments } from "@/modules/contracts/components/contract-documents";
 import { ScheduleTable } from "@/modules/contracts/components/schedule-table";
 import { draftSourceFromContract, getContract, listAttachments, toContractInput } from "@/modules/contracts/data";
-import { ATTACHMENT_KIND_ORDER, ATTACHMENT_KINDS } from "@/modules/contracts/domain/attachments";
+import { attachmentSlots } from "@/modules/contracts/domain/attachments";
 import { cityLine } from "@/modules/contracts/domain/contract-template";
 import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
+import { isEditableDraft } from "@/modules/contracts/domain/operation";
 import { buildSchedule, principalOutstandingAt } from "@/modules/contracts/domain/schedule";
 import { formatIban } from "@/modules/contracts/domain/sepa";
 import { LifecycleStepper } from "@/modules/pipeline/components/lifecycle-stepper";
@@ -34,8 +36,8 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   if (!contract) notFound();
   const [stored, lifecycleInput] = await Promise.all([listAttachments(contract.id), contractLifecycleInput(contract)]);
   const lifecycle = lifecycleOf(lifecycleInput);
-  // Fixed order (ID document, then bank certificate); nothing shown when absent.
-  const attachments = ATTACHMENT_KIND_ORDER.flatMap((kind) => stored.filter((a) => a.kind === kind).map((a) => ({ ...a, kind })));
+  // Always the four slots, in a fixed order: a download when stored, an upload when missing.
+  const documents = attachmentSlots(stored).map(({ kind, label, attachment }) => ({ kind, label, fileName: attachment?.file_name ?? null }));
 
   const today = new Date();
   const schedule = buildSchedule(toContractInput(contract), today);
@@ -44,6 +46,8 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const collected = schedule.rows.filter((r) => r.key <= todayKey).reduce((a, r) => a + r.installment, 0);
   const signed = contract.workflow_status === "signed";
   const canDownload = draftSourceFromContract(contract) !== null;
+  // The action checks the same again: a draft, with a scoring, inside the user's scope.
+  const canEdit = isEditableDraft(contract.workflow_status) && contract.scoring_id !== null && can(user.role, "operation.create");
   const mandate = contract.mandate;
   const fiscalLine = contract.fiscal_address
     ? `${contract.fiscal_address}, ${cityLine(contract.fiscal_postal_code ?? "", contract.fiscal_city ?? "", contract.fiscal_province)}`
@@ -87,6 +91,13 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
             {signed && <LifecycleBadge status={schedule.status} />}
           </span>
         }
+        actions={
+          canEdit && (
+            <ButtonLink href={`/contracts/${contract.id}/edit`} variant="secondary">
+              <Pencil className="h-4 w-4" aria-hidden /> Editar
+            </ButtonLink>
+          )
+        }
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
@@ -106,7 +117,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <Card title="Calendario de amortización" subtitle={`${schedule.paymentHorizon} cuotas · amortiza en ${schedule.amortizationMonths} meses${schedule.billingStartKey > schedule.signingKey ? " · factura desde el mes siguiente a la firma" : ""}`}>
-          <ScheduleTable schedule={schedule} currentKey={todayKey} />
+          <ScheduleTable schedule={schedule} currentKey={todayKey} collapsedRows={signed ? undefined : 13} />
         </Card>
         <div className="space-y-6">
           <Card title="Condiciones">
@@ -158,17 +169,9 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               {signed ? "Descargar contrato (.docx)" : "Descargar contrato borrador (.docx)"}
             </a>
           )}
-          {attachments.map((a) => (
-            <a
-              key={a.kind}
-              href={`/contracts/${contract.id}/attachments/${a.kind}`}
-              title={a.file_name}
-              className="flex items-center justify-center gap-2 rounded-md border border-mint-500/50 px-3.5 py-2 text-sm font-semibold text-mint-400 transition hover:bg-mint-500/10"
-            >
-              <FileDown className="h-4 w-4" aria-hidden />
-              {ATTACHMENT_KINDS[a.kind].downloadLabel}
-            </a>
-          ))}
+          <Card title="Documentos del contrato" subtitle="Privados: solo se descargan desde esta ficha">
+            <ContractDocuments contractId={contract.id} slots={documents} />
+          </Card>
           {signed && canManage && (
             <Card title="Gestión del contrato" subtitle="Cancelación, estado y liquidación">
               <CancellationForm
