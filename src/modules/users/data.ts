@@ -20,7 +20,8 @@ const PER_PAGE = 200;
 /**
  * Every Supabase Auth user with its app profile. Users with no profile are
  * listed too (they cannot enter the app until a role is assigned). Callers
- * must hold "users.manage".
+ * must hold "users.manage"; the Pipeline ("pipeline.view") reads it only to
+ * resolve who created a record, and keeps email, role and distributor.
  */
 export async function listUsers(): Promise<UserRow[]> {
   const authUsers = [];

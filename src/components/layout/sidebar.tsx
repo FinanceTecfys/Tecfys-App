@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ClipboardCheck, FilePlus2, LayoutDashboard, LogOut, type LucideIcon, Receipt, Settings, TrendingUp } from "lucide-react";
+import { BookOpen, ClipboardCheck, FilePlus2, LayoutDashboard, LogOut, type LucideIcon, Receipt, Settings, TrendingUp, Waypoints } from "lucide-react";
 import { TecfysLogo } from "@/components/brand/tecfys-logo";
 import { can, type Capability, homePathFor, type Role, ROLE_LABELS } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ const NAV: { href: string; label: string; icon: LucideIcon; capability: Capabili
   { href: "/", label: "Dashboard", icon: LayoutDashboard, capability: "dashboard.view" },
   { href: "/scoring", label: "Scoring", icon: ClipboardCheck, capability: "scoring.view" },
   { href: "/contracts/new", label: "Nueva operación", icon: FilePlus2, capability: "operation.create" },
+  { href: "/pipeline", label: "Pipeline", icon: Waypoints, capability: "pipeline.view" },
   { href: "/contracts", label: "Loan book", icon: BookOpen, capability: "loanBook.view" },
   { href: "/portfolio", label: "Cartera / Waterfall", icon: TrendingUp, capability: "waterfall.view" },
   { href: "/erp", label: "ERP", icon: Receipt, capability: "erp.view" },

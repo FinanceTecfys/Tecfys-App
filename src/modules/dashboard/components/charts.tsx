@@ -37,6 +37,8 @@ export const ORDINAL = ["#0b6b4f", "#109070", "#17b083", "#3ccb9e", "#67e0ba", "
 const OTHER = "#6b7280";
 const MINT = "#00f7a1";
 const LOSS = "#e66767";
+/** Bars of a neutral count (not a loss): the first categorical slot, as in the ranked bars. */
+const NEUTRAL = "#3987e5";
 
 const AXIS = { stroke: "#235a40", tick: { fill: "#94a3b8", fontSize: 11 }, tickLine: false } as const;
 const GRID = { stroke: "#123422", strokeDasharray: "3 3", vertical: false } as const;
@@ -47,8 +49,24 @@ const TOOLTIP = {
   cursor: { fill: "rgba(0,247,161,0.06)" },
 } as const;
 
-/** A chart segment, optionally linked to the loan book filtered to it. */
-export type DrillSlice = AggregateSlice & { href?: string };
+/** A chart segment, optionally linked to the loan book filtered to it; `color` overrides its palette slot. */
+export type DrillSlice = AggregateSlice & { href?: string; color?: string };
+
+/**
+ * What the amounts are. Money (the default) is the outstanding principal the
+ * dashboard charts; "count" is a number of items (Pipeline), named by `measure`.
+ */
+export interface Measure {
+  unit?: "money" | "count";
+  /** Name of the measure in tooltips, e.g. "Scorings". */
+  measure?: string;
+}
+
+const fmtCount = (v: number) => Math.round(v).toLocaleString("es-ES");
+const fmtAmount = (v: number, unit: Measure["unit"]) => (unit === "count" ? fmtCount(v) : fmtEur(v));
+
+/** Status colours from the validated categorical palette, for charts whose slices mean good / waiting / bad. */
+export const STATUS_COLORS = { positive: "#199e70", waiting: "#c98500", negative: "#e66767" } as const;
 
 /** Click handler for the i-th mark, and its cursor, when the data carries links. */
 function useDrillDown(data: readonly { href?: string }[]) {
@@ -68,22 +86,22 @@ function useDrillDown(data: readonly { href?: string }[]) {
 /** Recharts types the tooltip item loosely; every chart here feeds it a slice. */
 const slice = (item: unknown) => (item as { payload: AggregateSlice }).payload;
 
-const sliceColor = (s: AggregateSlice, i: number) => (s.key === "__other__" ? OTHER : CATEGORICAL[i % CATEGORICAL.length]);
+const sliceColor = (s: DrillSlice, i: number) => s.color ?? (s.key === "__other__" ? OTHER : CATEGORICAL[i % CATEGORICAL.length]);
 const compactEur = (v: number) =>
   Math.abs(v) >= 1000 ? `${Math.round(v / 1000).toLocaleString("es-ES")}k` : Math.round(v).toLocaleString("es-ES");
 
 /** Horizontal bars: one nominal dimension ranked by amount (no legend needed). */
-export function RankedBarChart({ data, height = 520 }: { data: DrillSlice[]; height?: number }) {
+export function RankedBarChart({ data, height = 520, unit = "money", measure = "Principal pendiente" }: { data: DrillSlice[]; height?: number } & Measure) {
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 8 }} barCategoryGap={4}>
         <CartesianGrid {...GRID} vertical horizontal={false} />
-        <XAxis type="number" {...AXIS} tickFormatter={compactEur} axisLine={false} />
+        <XAxis type="number" {...AXIS} tickFormatter={unit === "count" ? fmtCount : compactEur} allowDecimals={unit !== "count"} axisLine={false} />
         <YAxis type="category" dataKey="label" width={160} {...AXIS} axisLine={false} interval={0}
           tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 23)}…` : v)} />
-        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtEur(Number(value))} · ${fmtPct(slice(item).share, 1)}`, "Principal pendiente"]} />
+        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtAmount(Number(value), unit)} · ${fmtPct(slice(item).share, 1)}`, measure]} />
         <Bar dataKey="amount" fill={CATEGORICAL[0]} radius={[0, 4, 4, 0]} maxBarSize={14} {...drill} />
       </BarChart>
     </ResponsiveContainer>
@@ -112,7 +130,13 @@ export function BucketBarChart({ data, height = 260 }: { data: DrillSlice[]; hei
 }
 
 /** Donut + its own legend, so identity never rests on colour alone. */
-export function DonutChart({ data, total, height = 210 }: { data: DrillSlice[]; total: number; height?: number }) {
+export function DonutChart({
+  data,
+  total,
+  height = 210,
+  unit = "money",
+  centerLabel = "pendiente",
+}: { data: DrillSlice[]; total: number; height?: number; centerLabel?: string } & Pick<Measure, "unit">) {
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
@@ -125,12 +149,12 @@ export function DonutChart({ data, total, height = 210 }: { data: DrillSlice[]; 
                 <Cell key={d.key} fill={sliceColor(d, i)} />
               ))}
             </Pie>
-            <Tooltip {...TOOLTIP} cursor={false} formatter={(value, name, item) => [`${fmtEur(Number(value))} · ${fmtPct(slice(item).share, 1)}`, String(name)]} />
+            <Tooltip {...TOOLTIP} cursor={false} formatter={(value, name, item) => [`${fmtAmount(Number(value), unit)} · ${fmtPct(slice(item).share, 1)}`, String(name)]} />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="num text-sm font-semibold text-slate-100">{fmtEur(total)}</span>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500">pendiente</span>
+          <span className="num text-sm font-semibold text-slate-100">{fmtAmount(total, unit)}</span>
+          <span className="text-[10px] uppercase tracking-wider text-slate-500">{centerLabel}</span>
         </div>
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5 text-xs">
@@ -140,7 +164,7 @@ export function DonutChart({ data, total, height = 210 }: { data: DrillSlice[]; 
               <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: sliceColor(d, i) }} />
               <span className="min-w-0 flex-1 truncate text-slate-300">{d.label}</span>
               <span className="num text-slate-400">{fmtPct(d.share, 1)}</span>
-              <span className="num w-20 text-right text-slate-200">{fmtEur(d.amount)}</span>
+              <span className="num w-20 text-right text-slate-200">{fmtAmount(d.amount, unit)}</span>
             </>
           );
           return d.href ? (
@@ -191,7 +215,13 @@ export function MonthlyLineChart({
 }
 
 /** Monthly bars, for an amount that is booked in discrete months. */
-export function MonthlyBarChart({ data, height = 240 }: { data: SeriesPoint[]; height?: number }) {
+export function MonthlyBarChart({
+  data,
+  height = 240,
+  unit = "money",
+  measure = "Default del mes",
+  tone = "loss",
+}: { data: SeriesPoint[]; height?: number; tone?: "neutral" | "loss" } & Measure) {
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
@@ -199,9 +229,9 @@ export function MonthlyBarChart({ data, height = 240 }: { data: SeriesPoint[]; h
       <BarChart data={data} margin={{ top: 12, right: 12, bottom: 4, left: 8 }}>
         <CartesianGrid {...GRID} />
         <XAxis dataKey="label" {...AXIS} axisLine={false} minTickGap={16} />
-        <YAxis {...AXIS} axisLine={false} width={58} tickFormatter={compactEur} />
-        <Tooltip {...TOOLTIP} formatter={(value) => [fmtEur(Number(value)), "Default del mes"]} />
-        <Bar dataKey="value" fill={LOSS} radius={[4, 4, 0, 0]} maxBarSize={28} {...drill} />
+        <YAxis {...AXIS} axisLine={false} width={58} tickFormatter={unit === "count" ? fmtCount : compactEur} allowDecimals={unit !== "count"} />
+        <Tooltip {...TOOLTIP} formatter={(value) => [fmtAmount(Number(value), unit), measure]} />
+        <Bar dataKey="value" fill={tone === "neutral" ? NEUTRAL : LOSS} radius={[4, 4, 0, 0]} maxBarSize={28} {...drill} />
       </BarChart>
     </ResponsiveContainer>
   );

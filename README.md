@@ -48,6 +48,7 @@ src/
     catalog/             distribuidores, tipos de activo, tipos de contrato
     signature/           interfaz del proveedor de firma (Signaturit)
     users/               gestión de usuarios y roles (reglas del owner, acciones, panel de Configuración)
+    pipeline/            actividad de originación por partner y ciclo de vida de cada operación (solo lectura)
 scripts/                 importador y reconciliación del Borrowing Base
 supabase/                migraciones y seed
 ```
@@ -66,7 +67,7 @@ Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo p
 
 | | owner | admin | sales | partner |
 |---|---|---|---|---|
-| Dashboard, loan book, waterfall | sí | sí | sí | no |
+| Dashboard, loan book, waterfall, pipeline | sí | sí | sí | no |
 | ERP, Configuración, modelo de scoring | sí | sí | no | no |
 | Ejecutar scoring, crear operación | sí | sí | sí | sí (solo ve lo que él creó) |
 | Revisión manual de un scoring, marcar firmado, cancelar | sí | sí | no | no |
@@ -96,6 +97,22 @@ Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo p
 - No hay pantalla de "he olvidado mi contraseña" todavía; una recuperación lanzada desde Supabase llega a la misma página.
 - Pendiente (decisión documentada): el acceso a las tablas sigue pasando por el cliente service-role. Este control es
   de aplicación; las políticas RLS por usuario en Postgres son una rama posterior.
+
+### Pipeline y ciclo de vida
+
+`/pipeline` (capacidad `pipeline.view`: owner, admin y sales; un partner es redirigido a su inicio) muestra la
+actividad de originación de todos los partners: cada scoring, quién lo originó (usuario + distribuidor, resueltos desde
+`scorings.created_by` y `profiles.partner_distributor_id`), su resultado, la operación que generó y en qué punto del
+ciclo está. Filtros por partner, distribuidor y estado y búsqueda por empresa, todo en la URL. Es **solo lectura y no
+guarda nada**: se hace una única carga (`modules/pipeline/data.ts`) y las cifras y gráficos se calculan en memoria en
+`modules/pipeline/domain/pipeline.ts`, sobre los registros filtrados.
+
+El ciclo de vida (`domain/lifecycle.ts`, función pura `lifecycleOf`) se deriva solo de datos existentes: estado del
+scoring y `workflow_status` del contrato. Etapas: **Scoring → Operación (borrador) → Enviado a firma → Firmado · loan
+book**. Crear la operación *es* crear el borrador, por eso son un único paso. "Enviado a firma" aparece como no
+disponible mientras Signaturit no esté integrado: solo se marca si el contrato está en `pending_signature` o existe una
+fila en `signature_requests`; un contrato firmado a mano no lo muestra como hecho. El mismo componente
+(`LifecycleStepper`) se usa compacto en las filas del pipeline y completo en la ficha del contrato.
 
 ### Probar la invitación en local (Mailpit)
 

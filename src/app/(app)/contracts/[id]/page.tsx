@@ -21,6 +21,9 @@ import { cityLine } from "@/modules/contracts/domain/contract-template";
 import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { buildSchedule, principalOutstandingAt } from "@/modules/contracts/domain/schedule";
 import { formatIban } from "@/modules/contracts/domain/sepa";
+import { LifecycleStepper } from "@/modules/pipeline/components/lifecycle-stepper";
+import { contractLifecycleInput } from "@/modules/pipeline/data";
+import { lifecycleOf } from "@/modules/pipeline/domain/lifecycle";
 import { signatureProvider } from "@/modules/signature/provider";
 
 export default async function ContractPage({ params }: PageProps<"/contracts/[id]">) {
@@ -29,7 +32,8 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const { id } = await params;
   const contract = await getContract(id, dataScopeFor(user));
   if (!contract) notFound();
-  const stored = await listAttachments(contract.id);
+  const [stored, lifecycleInput] = await Promise.all([listAttachments(contract.id), contractLifecycleInput(contract)]);
+  const lifecycle = lifecycleOf(lifecycleInput);
   // Fixed order (ID document, then bank certificate); nothing shown when absent.
   const attachments = ATTACHMENT_KIND_ORDER.flatMap((kind) => stored.filter((a) => a.kind === kind).map((a) => ({ ...a, kind })));
 
@@ -95,6 +99,10 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
           hint={schedule.writeOff > 0.005 ? `Default: ${fmtEur(schedule.writeOff)} dado de baja` : "Recupera el coste del activo"}
         />
       </div>
+
+      <Card title="Ciclo de vida" subtitle={lifecycle.label} className="mb-6">
+        <LifecycleStepper lifecycle={lifecycle} className="mx-auto max-w-3xl" />
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <Card title="Calendario de amortización" subtitle={`${schedule.paymentHorizon} cuotas · amortiza en ${schedule.amortizationMonths} meses${schedule.billingStartKey > schedule.signingKey ? " · factura desde el mes siguiente a la firma" : ""}`}>

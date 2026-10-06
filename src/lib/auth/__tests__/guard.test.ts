@@ -73,7 +73,7 @@ describe("requireRole", () => {
   });
 
   it("throws a partner out of the loan book, waterfall, dashboard, ERP, settings and user management", async () => {
-    for (const capability of ["loanBook.view", "waterfall.view", "dashboard.view", "erp.view", "settings.access", "users.manage", "contract.manage", "scoring.review"] as const) {
+    for (const capability of ["loanBook.view", "waterfall.view", "dashboard.view", "pipeline.view", "erp.view", "settings.access", "users.manage", "contract.manage", "scoring.review"] as const) {
       expect(await location(as("partner").requireRole(capability)), capability).toBe("/scoring/new");
     }
   });
