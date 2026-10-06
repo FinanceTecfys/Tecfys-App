@@ -6,9 +6,24 @@ import { z } from "zod";
 import { dataScopeFor, inScope, operationDistributorId } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
-import { ATTACHMENT_BUCKET, attachmentStoragePath, readAttachments, toAttachmentRow } from "./domain/attachments";
+import {
+  ATTACHMENT_BUCKET,
+  attachmentStoragePath,
+  type AttachmentUploadResult,
+  readAttachments,
+  storeAttachment,
+  toAttachmentRow,
+} from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
-import { type OperationInput, operationSchema } from "./domain/operation";
+import {
+  isEditableDraft,
+  operationAssetFields,
+  operationCompanyFields,
+  operationContractFields,
+  type OperationInput,
+  operationMandateFields,
+  operationSchema,
+} from "./domain/operation";
 
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
@@ -50,39 +65,11 @@ export async function createContract(input: OperationInput, files?: FormData): P
       company_id: scoring.company.id,
       scoring_id: scoring.id,
       distributor_id: operationDistributorId(user, v.distributorId),
-      asset_type_id: v.assetTypeId,
-      contract_type: v.contractType,
       rating: scoring.rating,
       sector: scoring.company.sector,
-      signing_date: v.signingDate,
-      duration_months: v.durationMonths,
-      installment: v.installment,
-      residual_value: v.residualValue,
-      purchase_value: v.purchaseValue,
-      has_guarantor: v.hasGuarantor,
-      guarantor_name: v.hasGuarantor ? v.guarantorName : null,
-      guarantor_nif: v.hasGuarantor ? v.guarantorNif : null,
-      guarantor_address: v.hasGuarantor ? v.guarantorAddress : null,
-      guarantor_representative: v.hasGuarantor ? v.guarantorRepresentative : null,
-      guarantor_representative_nif: v.hasGuarantor && v.guarantorRepresentative ? v.guarantorRepresentativeNif : null,
-      client_name: v.clientName,
-      client_cif: v.clientCif,
-      fiscal_address: v.fiscalAddress,
-      fiscal_postal_code: v.fiscalPostalCode,
-      fiscal_city: v.fiscalCity,
-      fiscal_province: v.fiscalProvince,
-      signatory_name: v.signatoryName,
-      signatory_nif: v.signatoryNif,
-      signatory_address: v.signatoryAddress,
-      contact_name: v.contactName,
-      contact_phone: v.contactPhone,
-      contact_email: v.contactEmail,
-      delivery_same_as_fiscal: v.deliverySameAsFiscal,
-      delivery_address: v.deliveryAddress,
-      product_description: v.productDescription,
+      ...operationContractFields(v),
       product_type: "New",
       workflow_status: "draft",
-      notes: v.notes || null,
       created_by: user.id,
     })
     .select("id, contract_number")
@@ -98,26 +85,13 @@ export async function createContract(input: OperationInput, files?: FormData): P
     return { ok: false, error: message };
   };
 
-  const { error: assetError } = await db().from("contract_assets").insert({
-    contract_id: contract.id,
-    asset_type_id: v.assetTypeId,
-    quantity: v.quantity,
-    description: v.productDescription,
-    unit_cost: Math.round((v.purchaseValue / v.quantity) * 100) / 100,
-  });
+  const { error: assetError } = await db().from("contract_assets").insert({ contract_id: contract.id, ...operationAssetFields(v) });
   if (assetError) return rollback(assetError.message);
 
   const { error: mandateError } = await db().from("sepa_mandates").insert({
     contract_id: contract.id,
     mandate_reference: contract.contract_number,
-    debtor_name: v.sepaDebtorName,
-    debtor_address: v.fiscalAddress,
-    debtor_postal_code: v.fiscalPostalCode,
-    debtor_city: v.fiscalCity,
-    debtor_province: v.fiscalProvince,
-    iban: v.sepaIban,
-    bic: v.sepaBic,
-    signed_place: v.fiscalCity,
+    ...operationMandateFields(v),
     signed_at: new Date().toISOString().slice(0, 10),
   });
   if (mandateError) return rollback(mandateError.message);
@@ -133,22 +107,127 @@ export async function createContract(input: OperationInput, files?: FormData): P
     if (rowError) return rollback(rowError.message);
   }
 
-  await db()
-    .from("companies")
-    .update({
-      address: v.fiscalAddress,
-      fiscal_postal_code: v.fiscalPostalCode,
-      fiscal_city: v.fiscalCity,
-      fiscal_province: v.fiscalProvince,
-      admin_name: v.signatoryName,
-      admin_nif: v.signatoryNif,
-      phone: v.contactPhone,
-      email: v.contactEmail,
-    })
-    .eq("id", scoring.company.id);
+  await db().from("companies").update(operationCompanyFields(v)).eq("id", scoring.company.id);
 
   revalidatePath("/contracts");
   redirect(`/contracts/${contract.id}`);
+}
+
+/**
+ * Edit a DRAFT contract: any field of the operation, economic terms included.
+ * Same role, same validation and same field mapping as createContract; only the
+ * stored inputs change, and the schedule and the expected IRR are recomputed
+ * from them by the same engine on the next read. Never a contract that is
+ * pending signature or signed, and never one outside the user's scope (a
+ * partner only its own draft, which stays with its own distributor). The
+ * company, the scoring, the creator and the contract number do not change.
+ */
+export async function updateDraftContract(contractId: string, input: OperationInput): Promise<CreateContractResult> {
+  const user = await requireRole("operation.create");
+  const id = z.uuid().safeParse(contractId);
+  const parsed = operationSchema.safeParse(input);
+  if (!parsed.success) {
+    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
+    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
+  }
+  const v = parsed.data;
+  if (!id.success) return { ok: false, error: "Contrato no encontrado" };
+
+  const { data: contract, error: readError } = await db()
+    .from("contracts")
+    .select("id, contract_number, workflow_status, created_by, scoring_id, company_id")
+    .eq("id", id.data)
+    .maybeSingle();
+  if (readError) return { ok: false, error: readError.message };
+  // A draft outside the user's scope (another partner's) does not exist for them.
+  if (!contract || !inScope(dataScopeFor(user), contract.created_by)) return { ok: false, error: "Contrato no encontrado" };
+  if (!isEditableDraft(contract.workflow_status)) return { ok: false, error: "Solo se puede editar un contrato en borrador" };
+  if (contract.scoring_id !== v.scoringId) return { ok: false, error: "El scoring no corresponde a este contrato" };
+
+  // The status is checked again in the write itself: a draft signed in the meantime is not touched.
+  const { data: updated, error } = await db()
+    .from("contracts")
+    .update({ ...operationContractFields(v), distributor_id: operationDistributorId(user, v.distributorId) })
+    .eq("id", contract.id)
+    .eq("workflow_status", "draft")
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (updated.length === 0) return { ok: false, error: "El contrato ya no está en borrador" };
+
+  // The equipment line: a draft has exactly one; anything else is replaced by it.
+  const { data: lines, error: linesError } = await db().from("contract_assets").select("id").eq("contract_id", contract.id);
+  if (linesError) return { ok: false, error: linesError.message };
+  if (lines.length === 1) {
+    const { error: assetError } = await db().from("contract_assets").update(operationAssetFields(v)).eq("id", lines[0].id);
+    if (assetError) return { ok: false, error: assetError.message };
+  } else {
+    if (lines.length > 1) await db().from("contract_assets").delete().eq("contract_id", contract.id);
+    const { error: assetError } = await db().from("contract_assets").insert({ contract_id: contract.id, ...operationAssetFields(v) });
+    if (assetError) return { ok: false, error: assetError.message };
+  }
+
+  // The mandate keeps its reference and its date; only what the form holds changes.
+  const { data: mandate, error: mandateReadError } = await db().from("sepa_mandates").select("id").eq("contract_id", contract.id).maybeSingle();
+  if (mandateReadError) return { ok: false, error: mandateReadError.message };
+  const { error: mandateError } = mandate
+    ? await db().from("sepa_mandates").update(operationMandateFields(v)).eq("id", mandate.id)
+    : await db().from("sepa_mandates").insert({
+        contract_id: contract.id,
+        mandate_reference: contract.contract_number,
+        ...operationMandateFields(v),
+        signed_at: new Date().toISOString().slice(0, 10),
+      });
+  if (mandateError) return { ok: false, error: mandateError.message };
+
+  await db().from("companies").update(operationCompanyFields(v)).eq("id", contract.company_id);
+
+  revalidatePath(`/contracts/${contract.id}`);
+  revalidatePath("/contracts");
+  revalidatePath("/pipeline");
+  redirect(`/contracts/${contract.id}`);
+}
+
+/**
+ * Upload one document into an empty slot of a contract (ID document, bank
+ * certificate, signed contract, annex) - any contract the user can open,
+ * imported loan-book ones included; a partner only its own. The file goes to
+ * the private bucket after its real type and size are checked (storeAttachment).
+ * Form fields: "contractId", "kind", "file".
+ */
+export async function uploadContractAttachment(formData: FormData): Promise<AttachmentUploadResult> {
+  const user = await requireRole("contract.view");
+  const scope = dataScopeFor(user);
+  const bucket = () => db().storage.from(ATTACHMENT_BUCKET);
+
+  const result = await storeAttachment(
+    { contractId: formData.get("contractId"), kind: formData.get("kind"), file: formData.get("file") },
+    {
+      findContract: async (contractId) => {
+        const { data, error } = await db().from("contracts").select("id, created_by").eq("id", contractId).maybeSingle();
+        if (error) throw new Error(error.message);
+        return data && inScope(scope, data.created_by) ? { id: data.id } : null;
+      },
+      hasAttachment: async (contractId, kind) => {
+        const { data, error } = await db().from("contract_attachments").select("id").eq("contract_id", contractId).eq("kind", kind).maybeSingle();
+        if (error) throw new Error(error.message);
+        return data !== null;
+      },
+      upload: async (path, attachment) => {
+        const { error } = await bucket().upload(path, attachment.bytes, { contentType: attachment.mimeType, upsert: false });
+        return error?.message ?? null;
+      },
+      insert: async (row) => {
+        const { error } = await db().from("contract_attachments").insert(row);
+        return error?.message ?? null;
+      },
+      remove: async (path) => {
+        await bucket().remove([path]);
+      },
+      newId: () => crypto.randomUUID(),
+    },
+  );
+  if (result.ok) revalidatePath(`/contracts/${result.contractId}`);
+  return result;
 }
 
 const signSchema = z.object({ id: z.uuid(), signingDate: z.iso.date() });

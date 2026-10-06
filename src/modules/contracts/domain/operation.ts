@@ -128,3 +128,184 @@ export function identityFromCompany(c: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Operation -> rows. One mapping, shared by the creation of a draft and by its
+// edit, so both store exactly the same inputs and the schedule engine
+// recomputes from them on the next read.
+// ---------------------------------------------------------------------------
+
+/** The contract columns an operation writes (not its company, scoring, creator or distributor). */
+export function operationContractFields(v: Operation) {
+  return {
+    asset_type_id: v.assetTypeId,
+    contract_type: v.contractType,
+    signing_date: v.signingDate,
+    duration_months: v.durationMonths,
+    installment: v.installment,
+    residual_value: v.residualValue,
+    purchase_value: v.purchaseValue,
+    has_guarantor: v.hasGuarantor,
+    guarantor_name: v.hasGuarantor ? v.guarantorName : null,
+    guarantor_nif: v.hasGuarantor ? v.guarantorNif : null,
+    guarantor_address: v.hasGuarantor ? v.guarantorAddress : null,
+    guarantor_representative: v.hasGuarantor ? v.guarantorRepresentative : null,
+    guarantor_representative_nif: v.hasGuarantor && v.guarantorRepresentative ? v.guarantorRepresentativeNif : null,
+    client_name: v.clientName,
+    client_cif: v.clientCif,
+    fiscal_address: v.fiscalAddress,
+    fiscal_postal_code: v.fiscalPostalCode,
+    fiscal_city: v.fiscalCity,
+    fiscal_province: v.fiscalProvince,
+    signatory_name: v.signatoryName,
+    signatory_nif: v.signatoryNif,
+    signatory_address: v.signatoryAddress,
+    contact_name: v.contactName,
+    contact_phone: v.contactPhone,
+    contact_email: v.contactEmail,
+    delivery_same_as_fiscal: v.deliverySameAsFiscal,
+    delivery_address: v.deliveryAddress,
+    product_description: v.productDescription,
+    notes: v.notes || null,
+  };
+}
+
+/** The equipment line of the contract. */
+export function operationAssetFields(v: Operation) {
+  return {
+    asset_type_id: v.assetTypeId,
+    quantity: v.quantity,
+    description: v.productDescription,
+    unit_cost: Math.round((v.purchaseValue / v.quantity) * 100) / 100,
+  };
+}
+
+/** The SEPA mandate fields that follow the operation (its reference and date are set once, at creation). */
+export function operationMandateFields(v: Operation) {
+  return {
+    debtor_name: v.sepaDebtorName,
+    debtor_address: v.fiscalAddress,
+    debtor_postal_code: v.fiscalPostalCode,
+    debtor_city: v.fiscalCity,
+    debtor_province: v.fiscalProvince,
+    iban: v.sepaIban,
+    bic: v.sepaBic,
+    signed_place: v.fiscalCity,
+  };
+}
+
+/** The company record is refreshed with the corrected identification (never its CIF, which identifies it). */
+export function operationCompanyFields(v: Operation) {
+  return {
+    address: v.fiscalAddress,
+    fiscal_postal_code: v.fiscalPostalCode,
+    fiscal_city: v.fiscalCity,
+    fiscal_province: v.fiscalProvince,
+    admin_name: v.signatoryName,
+    admin_nif: v.signatoryNif,
+    phone: v.contactPhone,
+    email: v.contactEmail,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Editing a draft: the saved contract back into the form's input.
+// ---------------------------------------------------------------------------
+
+/** Only a draft is editable: once sent to signature or signed, the terms are the contract. */
+export const isEditableDraft = (workflowStatus: string): boolean => workflowStatus === "draft";
+
+/** What the edit form needs from a stored contract (the columns operationContractFields writes, read back). */
+export interface DraftContractSnapshot {
+  scoring_id: string | null;
+  client_name: string | null;
+  client_cif: string | null;
+  fiscal_address: string | null;
+  fiscal_postal_code: string | null;
+  fiscal_city: string | null;
+  fiscal_province: string | null;
+  signatory_name: string | null;
+  signatory_nif: string | null;
+  signatory_address: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  delivery_same_as_fiscal: boolean;
+  delivery_address: string | null;
+  distributor: { id: string } | null;
+  asset_type: { id: string } | null;
+  product_description: string | null;
+  contract_type: string;
+  signing_date: string;
+  duration_months: number;
+  installment: number | string;
+  residual_value: number | string | null;
+  purchase_value: number | string;
+  has_guarantor: boolean;
+  guarantor_name: string | null;
+  guarantor_nif: string | null;
+  guarantor_address: string | null;
+  guarantor_representative: string | null;
+  guarantor_representative_nif: string | null;
+  notes: string | null;
+  mandate: { iban: string; debtor_name: string; bic: string | null } | null;
+}
+
+/** The saved draft as the operation form's input, so editing starts from exactly what was stored. */
+export function operationInputFromContract(c: DraftContractSnapshot, quantity: number): OperationInput {
+  return {
+    scoringId: c.scoring_id ?? "",
+    clientName: c.client_name ?? "",
+    clientCif: c.client_cif ?? "",
+    fiscalAddress: c.fiscal_address ?? "",
+    fiscalPostalCode: c.fiscal_postal_code ?? "",
+    fiscalCity: c.fiscal_city ?? "",
+    fiscalProvince: c.fiscal_province ?? "",
+    signatoryName: c.signatory_name ?? "",
+    signatoryNif: c.signatory_nif ?? "",
+    signatoryAddress: c.signatory_address ?? "",
+    contactName: c.contact_name ?? "",
+    contactPhone: c.contact_phone ?? "",
+    contactEmail: c.contact_email ?? "",
+    deliverySameAsFiscal: c.delivery_same_as_fiscal,
+    deliveryAddress: c.delivery_address ?? "",
+    sepaIban: c.mandate?.iban ?? "",
+    sepaDebtorName: c.mandate?.debtor_name ?? c.client_name ?? "",
+    sepaBic: c.mandate?.bic ?? "",
+    distributorId: c.distributor?.id ?? null,
+    assetTypeId: c.asset_type?.id ?? "",
+    productDescription: c.product_description ?? "",
+    contractType: c.contract_type,
+    signingDate: c.signing_date,
+    durationMonths: c.duration_months,
+    installment: Number(c.installment),
+    residualValue: c.residual_value === null ? null : Number(c.residual_value),
+    purchaseValue: Number(c.purchase_value),
+    quantity: Number.isInteger(quantity) && quantity >= 1 ? quantity : 1,
+    hasGuarantor: c.has_guarantor,
+    guarantorName: c.guarantor_name ?? "",
+    guarantorNif: c.guarantor_nif ?? "",
+    guarantorAddress: c.guarantor_address ?? "",
+    guarantorRepresentative: c.guarantor_representative ?? "",
+    guarantorRepresentativeNif: c.guarantor_representative_nif ?? "",
+    notes: c.notes ?? "",
+  };
+}
+
+/** Section A of the form, from an operation input (the edit of a draft). */
+export function identityFromOperationInput(input: OperationInput): IdentityPrefill {
+  return {
+    clientName: input.clientName,
+    clientCif: input.clientCif,
+    fiscalAddress: input.fiscalAddress,
+    fiscalPostalCode: input.fiscalPostalCode,
+    fiscalCity: input.fiscalCity,
+    fiscalProvince: input.fiscalProvince ?? "",
+    signatoryName: input.signatoryName,
+    signatoryNif: input.signatoryNif,
+    signatoryAddress: input.signatoryAddress ?? "",
+    contactName: input.contactName,
+    contactPhone: input.contactPhone ?? "",
+    contactEmail: input.contactEmail,
+  };
+}
+

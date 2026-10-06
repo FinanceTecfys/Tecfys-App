@@ -929,7 +929,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      contract_attachment_kind: "id_document" | "bank_certificate"
+      contract_attachment_kind: "id_document" | "bank_certificate" | "contract" | "extra"
       contract_workflow_status:
         | "draft"
         | "pending_signature"
@@ -1070,7 +1070,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      contract_attachment_kind: ["id_document", "bank_certificate"],
+      contract_attachment_kind: ["id_document", "bank_certificate", "contract", "extra"],
       contract_workflow_status: [
         "draft",
         "pending_signature",

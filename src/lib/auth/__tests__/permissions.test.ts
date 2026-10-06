@@ -89,7 +89,10 @@ describe("route allow-list", () => {
     ["/contracts/new", [true, true, true, true]],
     [`/contracts/${ID}`, [true, true, true, true]],
     [`/contracts/${ID}/draft`, [true, true, true, true]],
+    [`/contracts/${ID}/edit`, [true, true, true, true]],
+    [`/contracts/${ID}/edit/x`, [true, true, false, false]],
     [`/contracts/${ID}/attachments/id_document`, [true, true, true, true]],
+    [`/contracts/${ID}/attachments/contract`, [true, true, true, true]],
     // No rule: default deny, only the roles that reach Settings.
     ["/admin", [true, true, false, false]],
     ["/contracts/x/y/z", [true, true, false, false]],
@@ -114,6 +117,7 @@ describe("route allow-list", () => {
     expect(routeCapability("/contracts/new")).toBe("operation.create");
     expect(routeCapability("/contracts/export")).toBe("loanBook.view");
     expect(routeCapability("/contracts/abc")).toBe("contract.view");
+    expect(routeCapability("/contracts/abc/edit")).toBe("operation.create");
     expect(routeCapability("/pipeline")).toBe("pipeline.view");
     expect(routeCapability("/nope")).toBeNull();
   });
