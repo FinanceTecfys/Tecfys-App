@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { FilterBar, FilterCell, filterSubmitClass } from "@/components/ui/filter-bar";
 import { inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
@@ -84,10 +85,10 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Scorings" value={int(totals.scorings)} hint={`${int(totals.pendingReview)} pendientes de revisión manual`} accent />
-        <Stat label="Tasa de aprobación" value={fmtPct(totals.approvalRate, 1)} hint={`${int(totals.approved)} aprobados · ${fmtPct(totals.rejectionRate, 1)} rechazados (${int(totals.rejected)})`} />
-        <Stat label="Operaciones creadas" value={int(totals.operations)} hint={`${int(totals.signed)} firmadas · ${fmtPct(totals.conversionRate, 0)} de los aprobados con operación`} />
-        <Stat label="Partners activos" value={int(activePartners(rows, now, ACTIVE_DAYS))} hint={`con actividad en los últimos ${ACTIVE_DAYS} días`} />
+        <Stat interactive label="Scorings" value={int(totals.scorings)} hint={`${int(totals.pendingReview)} pendientes de revisión manual`} accent />
+        <Stat interactive label="Tasa de aprobación" value={fmtPct(totals.approvalRate, 1)} hint={`${int(totals.approved)} aprobados · ${fmtPct(totals.rejectionRate, 1)} rechazados (${int(totals.rejected)})`} />
+        <Stat interactive label="Operaciones creadas" value={int(totals.operations)} hint={`${int(totals.signed)} firmadas · ${fmtPct(totals.conversionRate, 0)} de los aprobados con operación`} />
+        <Stat interactive label="Partners activos" value={int(activePartners(rows, now, ACTIVE_DAYS))} hint={`con actividad en los últimos ${ACTIVE_DAYS} días`} />
       </div>
 
       <div className="mb-6 grid gap-6 xl:grid-cols-3">
@@ -146,24 +147,37 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
       </Card>
 
       <Card bodyClassName="p-0">
-        <form className="flex flex-wrap gap-3 border-b border-ink-700 p-4" role="search">
-          <input name="q" defaultValue={query.q} placeholder="Buscar por empresa o CIF…" className={`${inputClass} max-w-xs`} aria-label="Buscar empresa" />
-          <select name="partner" defaultValue={query.partner ?? ""} className={`${inputClass} w-72`} aria-label="Partner">
-            <option value="">Todos los partners</option>
-            {options.partner.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select name="distributor" defaultValue={query.distributor ?? ""} className={`${inputClass} w-56`} aria-label="Distribuidor">
-            <option value="">Todos los distribuidores</option>
-            {options.distributor.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select name="status" defaultValue={query.status ?? ""} className={`${inputClass} w-48`} aria-label="Estado del scoring">
-            <option value="">Todos los estados</option>
-            {SCORING_STATUSES.map((s) => <option key={s} value={s}>{SCORING_STATUS_LABELS[s]}</option>)}
-          </select>
-          <button className="rounded-md border border-ink-600 px-4 text-sm text-slate-200 hover:border-mint-500/60">Aplicar</button>
-          {filtering && <Link href="/pipeline" className="self-center text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
-          <span className="ml-auto self-center text-xs text-slate-500">{int(rows.length)} {rows.length === 1 ? "registro" : "registros"}</span>
-        </form>
+        <FilterBar
+          summary={<span>{int(rows.length)} {rows.length === 1 ? "registro" : "registros"}</span>}
+          actions={
+            <>
+              {filtering && <Link href="/pipeline" className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
+              <button className={filterSubmitClass}>Aplicar</button>
+            </>
+          }
+        >
+          <FilterCell wide>
+            <input name="q" defaultValue={query.q} placeholder="Buscar por empresa o CIF…" className={inputClass} aria-label="Buscar empresa" />
+          </FilterCell>
+          <FilterCell wide>
+            <select name="partner" defaultValue={query.partner ?? ""} className={inputClass} aria-label="Partner">
+              <option value="">Todos los partners</option>
+              {options.partner.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </FilterCell>
+          <FilterCell>
+            <select name="distributor" defaultValue={query.distributor ?? ""} className={inputClass} aria-label="Distribuidor">
+              <option value="">Todos los distribuidores</option>
+              {options.distributor.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </FilterCell>
+          <FilterCell>
+            <select name="status" defaultValue={query.status ?? ""} className={inputClass} aria-label="Estado del scoring">
+              <option value="">Todos los estados</option>
+              {SCORING_STATUSES.map((s) => <option key={s} value={s}>{SCORING_STATUS_LABELS[s]}</option>)}
+            </select>
+          </FilterCell>
+        </FilterBar>
         {rows.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-slate-400">{filtering ? "Ningún registro coincide con los filtros." : "Todavía no hay scorings."}</p>
         ) : (

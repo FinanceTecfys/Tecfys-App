@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FileDown, FileSpreadsheet, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { FilterBar, filterBoxClass, FilterCell, filterChipClass, filterSubmitClass } from "@/components/ui/filter-bar";
 import { inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
@@ -90,81 +91,114 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
         }
       />
       <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <Stat label="Contratos firmados" value={signed.length.toLocaleString("es-ES")} hint={`${live.length.toLocaleString("es-ES")} vivos`} />
-        <Stat label="Principal pendiente" value={fmtEur(outstanding)} accent />
-        <Stat label="Borradores / pendientes de firma" value={(rows.length - signed.length).toLocaleString("es-ES")} />
+        <Stat interactive label="Contratos firmados" value={signed.length.toLocaleString("es-ES")} hint={`${live.length.toLocaleString("es-ES")} vivos`} />
+        <Stat interactive label="Principal pendiente" value={fmtEur(outstanding)} accent />
+        <Stat interactive label="Borradores / pendientes de firma" value={(rows.length - signed.length).toLocaleString("es-ES")} />
       </div>
 
       <Card bodyClassName="p-0">
-        <form className="flex flex-wrap gap-3 border-b border-ink-700 p-4" role="search">
-          <input name="q" defaultValue={q} placeholder="Buscar por cliente, CIF, nº contrato, distribuidor, país…" className={`${inputClass} max-w-sm`} aria-label="Buscar" />
-          <select name="status" defaultValue={status} className={`${inputClass} w-44`} aria-label="Estado">
-            <option value="">Todos los estados</option>
-            {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select name="client" defaultValue={query.client ?? ""} className={`${inputClass} w-64`} aria-label="Cliente">
-            <option value="">Todos los clientes</option>
-            {options.client.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        <FilterBar
+          summary={
+            <>
+              {query.asof && (
+                <span className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-2.5 py-1 text-xs text-mint-400">
+                  <input type="hidden" name="asof" value={query.asof} />
+                  Cartera a {fmtDate(asOf.toISOString())}
+                  <Link href={hrefWith({ asof: undefined })} aria-label="Ver a día de hoy" className="text-slate-400 hover:text-white">
+                    <X className="h-3.5 w-3.5" />
+                  </Link>
+                </span>
+              )}
+              <span>
+                {filtered.length.toLocaleString("es-ES")} contratos
+                {filtering && (
+                  <>
+                    {" · "}<span className="num text-slate-300">{fmtEur(filteredOutstanding)}</span> pendiente
+                    {query.defaulted && <>{" · "}<span className="num text-red-300">{fmtEur(filteredDefault, 2)}</span> default</>}
+                  </>
+                )}
+              </span>
+            </>
+          }
+          actions={
+            <>
+              {filtering && <Link href="/contracts" className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
+              <button className={filterSubmitClass}>Aplicar</button>
+            </>
+          }
+        >
+          <FilterCell wide>
+            <input name="q" defaultValue={q} placeholder="Buscar por cliente, CIF, nº contrato, distribuidor, país…" className={inputClass} aria-label="Buscar" />
+          </FilterCell>
+          <FilterCell>
+            <select name="status" defaultValue={status} className={inputClass} aria-label="Estado">
+              <option value="">Todos los estados</option>
+              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </FilterCell>
+          <FilterCell>
+            <select name="client" defaultValue={query.client ?? ""} className={inputClass} aria-label="Cliente">
+              <option value="">Todos los clientes</option>
+              {options.client.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </FilterCell>
           {GROUP_SELECTS.map(({ name, label, all }) => {
             const values = query[name] ?? [];
             // Several values only arrive from a drill-down into "Otros": kept as a chip.
             if (values.length > 1) {
               return (
-                <span key={name} className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-3 text-sm text-mint-400">
-                  {values.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
-                  {label}: Otros ({values.length})
-                  <Link href={hrefWith({ [name]: [] })} aria-label={`Quitar filtro ${label.toLowerCase()}`} className="text-slate-400 hover:text-white">
-                    <X className="h-3.5 w-3.5" />
-                  </Link>
-                </span>
+                <FilterCell key={name}>
+                  <span className={filterChipClass}>
+                    {values.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
+                    <span className="truncate">{label}: Otros ({values.length})</span>
+                    <Link href={hrefWith({ [name]: [] })} aria-label={`Quitar filtro ${label.toLowerCase()}`} className="text-slate-400 hover:text-white">
+                      <X className="h-3.5 w-3.5" />
+                    </Link>
+                  </span>
+                </FilterCell>
               );
             }
             return (
-              <select key={name} name={name} defaultValue={values[0] ?? ""} className={`${inputClass} w-52`} aria-label={label}>
-                <option value="">{all}</option>
-                {options[name].map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <FilterCell key={name}>
+                <select name={name} defaultValue={values[0] ?? ""} className={inputClass} aria-label={label}>
+                  <option value="">{all}</option>
+                  {options[name].map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </FilterCell>
             );
           })}
-          <select name="size" defaultValue={query.size ?? ""} className={`${inputClass} w-52`} aria-label="Tamaño por principal pendiente">
-            <option value="">Todos los tamaños</option>
-            {LOAN_SIZE_BUCKETS.map((b) => <option key={b.key} value={b.key}>Pendiente {b.label}</option>)}
-          </select>
-          <label className="flex items-center gap-2 text-sm text-slate-400">
-            Default en
-            <input type="month" name="defaulted" defaultValue={query.defaulted ?? ""} className={`${inputClass} w-40`} aria-label="Default en el mes" />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
-            <input type="checkbox" name="pending" value="1" defaultChecked={query.pending} className="h-4 w-4 accent-mint-500" />
-            Solo con principal pendiente
-          </label>
-          {query.asof && (
-            <span className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-3 text-sm text-mint-400">
-              <input type="hidden" name="asof" value={query.asof} />
-              Cartera a {fmtDate(asOf.toISOString())}
-              <Link href={hrefWith({ asof: undefined })} aria-label="Ver a día de hoy" className="text-slate-400 hover:text-white">
-                <X className="h-3.5 w-3.5" />
-              </Link>
-            </span>
-          )}
-          <select name="sort" defaultValue={sort} className={`${inputClass} w-64`} aria-label="Ordenar por">
-            {Object.entries(LOAN_BOOK_SORTS).map(([value, { label }]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-          <button className="rounded-md border border-ink-600 px-4 text-sm text-slate-200 hover:border-mint-500/60">Aplicar</button>
-          {filtering && <Link href="/contracts" className="self-center text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
-          <span className="ml-auto self-center text-right text-xs text-slate-500">
-            {filtered.length.toLocaleString("es-ES")} contratos
-            {filtering && (
-              <>
-                {" · "}<span className="num text-slate-300">{fmtEur(filteredOutstanding)}</span> pendiente
-                {query.defaulted && <>{" · "}<span className="num text-red-300">{fmtEur(filteredDefault, 2)}</span> default</>}
-              </>
-            )}
-          </span>
-        </form>
+          <FilterCell>
+            <select name="size" defaultValue={query.size ?? ""} className={inputClass} aria-label="Tamaño por principal pendiente">
+              <option value="">Todos los tamaños</option>
+              {LOAN_SIZE_BUCKETS.map((b) => <option key={b.key} value={b.key}>Pendiente {b.label}</option>)}
+            </select>
+          </FilterCell>
+          <FilterCell wide>
+            <label className={`${filterBoxClass} py-0 pr-1 text-slate-400`}>
+              <span className="shrink-0">Default en</span>
+              <input
+                type="month"
+                name="defaulted"
+                defaultValue={query.defaulted ?? ""}
+                className="min-w-0 flex-1 bg-transparent py-2 text-sm text-slate-100 outline-none"
+                aria-label="Default en el mes"
+              />
+            </label>
+          </FilterCell>
+          <FilterCell>
+            <select name="sort" defaultValue={sort} className={inputClass} aria-label="Ordenar por">
+              {Object.entries(LOAN_BOOK_SORTS).map(([value, { label }]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </FilterCell>
+          <FilterCell>
+            <label className={filterBoxClass}>
+              <input type="checkbox" name="pending" value="1" defaultChecked={query.pending} className="h-4 w-4 shrink-0 accent-mint-500" />
+              <span className="truncate" title="Solo con principal pendiente">Solo con principal pendiente</span>
+            </label>
+          </FilterCell>
+        </FilterBar>
         <Table>
           <thead>
             <tr>
