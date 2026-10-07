@@ -48,4 +48,16 @@ export async function getScoring(id: string, scope: DataScope) {
   };
 }
 
+/**
+ * An Informa report the caller may link to a scoring; null when it does not
+ * exist OR is outside the caller's scope (not found either way). A partner only
+ * reaches the reports it fetched or uploaded; a report with no owner (older
+ * than informa_reports.created_by) is Tecfys's, like every record with no creator.
+ */
+export async function getInformaReport(id: string, scope: DataScope) {
+  const { data, error } = await db().from("informa_reports").select("id, created_by").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data && inScope(scope, data.created_by) ? data : null;
+}
+
 export type ScoringDetail = NonNullable<Awaited<ReturnType<typeof getScoring>>>;

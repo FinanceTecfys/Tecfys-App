@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import {
   ATTACHMENT_BUCKET,
+  type AttachmentRowInsert,
   attachmentStoragePath,
   type AttachmentUploadResult,
   readAttachments,
@@ -15,15 +16,8 @@ import {
   toAttachmentRow,
 } from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
-import {
-  isEditableDraft,
-  operationAssetFields,
-  operationCompanyFields,
-  operationContractFields,
-  type OperationInput,
-  operationMandateFields,
-  operationSchema,
-} from "./domain/operation";
+import { CREATE_DRAFT_RPC, createDraftArgs, createdDraftOf, UPDATE_DRAFT_RPC, updateDraftArgs } from "./domain/contract-write";
+import { isEditableDraft, type OperationInput, operationSchema } from "./domain/operation";
 
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
@@ -35,6 +29,11 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  * CIF, which identifies it). Everything is re-validated here, including the
  * optional attachments in `files` (fields "id_document" / "bank_certificate"),
  * whose type is sniffed from their bytes before anything is written.
+ *
+ * Atomic: every row is written by ONE database function (create_draft_contract),
+ * in one transaction, so a failure leaves no partial contract. The attachment
+ * files cannot be part of that transaction: they are uploaded first, under the
+ * id the contract will have, and removed again if the write fails.
  */
 export async function createContract(input: OperationInput, files?: FormData): Promise<CreateContractResult> {
   const user = await requireRole("operation.create");
@@ -59,55 +58,44 @@ export async function createContract(input: OperationInput, files?: FormData): P
   if (!scoring || !scoring.company || !inScope(dataScopeFor(user), scoring.created_by)) return { ok: false, error: "Scoring no encontrado" };
   if (scoring.status !== "approved") return { ok: false, error: "El scoring no está aprobado" };
 
-  const { data: contract, error } = await db()
-    .from("contracts")
-    .insert({
-      company_id: scoring.company.id,
-      scoring_id: scoring.id,
-      distributor_id: operationDistributorId(user, v.distributorId),
-      rating: scoring.rating,
-      sector: scoring.company.sector,
-      ...operationContractFields(v),
-      product_type: "New",
-      workflow_status: "draft",
-      created_by: user.id,
-    })
-    .select("id, contract_number")
-    .single();
-  if (error) return { ok: false, error: error.message };
-
-  // No multi-statement transaction through PostgREST: undo the contract (its
-  // child rows cascade) and any file already uploaded if a later step fails.
+  // The id is chosen here so the files can be stored under it before the contract exists.
+  const contractId = crypto.randomUUID();
+  const today = new Date().toISOString().slice(0, 10);
   const uploaded: string[] = [];
-  const rollback = async (message: string): Promise<CreateContractResult> => {
+  const rows: AttachmentRowInsert[] = [];
+  const fail = async (message: string): Promise<CreateContractResult> => {
     if (uploaded.length) await db().storage.from(ATTACHMENT_BUCKET).remove(uploaded);
-    await db().from("contracts").delete().eq("id", contract.id);
     return { ok: false, error: message };
   };
 
-  const { error: assetError } = await db().from("contract_assets").insert({ contract_id: contract.id, ...operationAssetFields(v) });
-  if (assetError) return rollback(assetError.message);
-
-  const { error: mandateError } = await db().from("sepa_mandates").insert({
-    contract_id: contract.id,
-    mandate_reference: contract.contract_number,
-    ...operationMandateFields(v),
-    signed_at: new Date().toISOString().slice(0, 10),
-  });
-  if (mandateError) return rollback(mandateError.message);
-
   for (const attachment of attached.attachments) {
-    const path = attachmentStoragePath(contract.id, attachment.kind, attachment.mimeType, crypto.randomUUID());
+    const path = attachmentStoragePath(contractId, attachment.kind, attachment.mimeType, crypto.randomUUID());
     const { error: uploadError } = await db()
       .storage.from(ATTACHMENT_BUCKET)
       .upload(path, attachment.bytes, { contentType: attachment.mimeType, upsert: false });
-    if (uploadError) return rollback(`No se pudo guardar el adjunto: ${uploadError.message}`);
+    if (uploadError) return fail(`No se pudo guardar el adjunto: ${uploadError.message}`);
     uploaded.push(path);
-    const { error: rowError } = await db().from("contract_attachments").insert(toAttachmentRow(contract.id, attachment, path));
-    if (rowError) return rollback(rowError.message);
+    rows.push(toAttachmentRow(contractId, attachment, path));
   }
 
-  await db().from("companies").update(operationCompanyFields(v)).eq("id", scoring.company.id);
+  // Contract, equipment line, SEPA mandate, attachment rows and company: one transaction.
+  const { data, error } = await db().rpc(
+    CREATE_DRAFT_RPC,
+    createDraftArgs(v, {
+      id: contractId,
+      companyId: scoring.company.id,
+      scoringId: scoring.id,
+      distributorId: operationDistributorId(user, v.distributorId),
+      rating: scoring.rating,
+      sector: scoring.company.sector,
+      createdBy: user.id,
+      attachments: rows,
+      today,
+    }),
+  );
+  if (error) return fail(error.message);
+  const contract = createdDraftOf(data);
+  if (!contract) return fail("No se pudo crear el contrato");
 
   revalidatePath("/contracts");
   redirect(`/contracts/${contract.id}`);
@@ -121,6 +109,10 @@ export async function createContract(input: OperationInput, files?: FormData): P
  * pending signature or signed, and never one outside the user's scope (a
  * partner only its own draft, which stays with its own distributor). The
  * company, the scoring, the creator and the contract number do not change.
+ *
+ * Atomic: the contract, its equipment line, its SEPA mandate and the company
+ * are written by ONE database function (update_draft_contract), in one
+ * transaction: a failure anywhere leaves the draft exactly as it was.
  */
 export async function updateDraftContract(contractId: string, input: OperationInput): Promise<CreateContractResult> {
   const user = await requireRole("operation.create");
@@ -135,7 +127,7 @@ export async function updateDraftContract(contractId: string, input: OperationIn
 
   const { data: contract, error: readError } = await db()
     .from("contracts")
-    .select("id, contract_number, workflow_status, created_by, scoring_id, company_id")
+    .select("id, workflow_status, created_by, scoring_id")
     .eq("id", id.data)
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message };
@@ -144,42 +136,17 @@ export async function updateDraftContract(contractId: string, input: OperationIn
   if (!isEditableDraft(contract.workflow_status)) return { ok: false, error: "Solo se puede editar un contrato en borrador" };
   if (contract.scoring_id !== v.scoringId) return { ok: false, error: "El scoring no corresponde a este contrato" };
 
-  // The status is checked again in the write itself: a draft signed in the meantime is not touched.
-  const { data: updated, error } = await db()
-    .from("contracts")
-    .update({ ...operationContractFields(v), distributor_id: operationDistributorId(user, v.distributorId) })
-    .eq("id", contract.id)
-    .eq("workflow_status", "draft")
-    .select("id");
+  // The function checks the status again inside the write: a draft signed in the meantime is not touched.
+  const { data: updated, error } = await db().rpc(
+    UPDATE_DRAFT_RPC,
+    updateDraftArgs(v, {
+      contractId: contract.id,
+      distributorId: operationDistributorId(user, v.distributorId),
+      today: new Date().toISOString().slice(0, 10),
+    }),
+  );
   if (error) return { ok: false, error: error.message };
-  if (updated.length === 0) return { ok: false, error: "El contrato ya no está en borrador" };
-
-  // The equipment line: a draft has exactly one; anything else is replaced by it.
-  const { data: lines, error: linesError } = await db().from("contract_assets").select("id").eq("contract_id", contract.id);
-  if (linesError) return { ok: false, error: linesError.message };
-  if (lines.length === 1) {
-    const { error: assetError } = await db().from("contract_assets").update(operationAssetFields(v)).eq("id", lines[0].id);
-    if (assetError) return { ok: false, error: assetError.message };
-  } else {
-    if (lines.length > 1) await db().from("contract_assets").delete().eq("contract_id", contract.id);
-    const { error: assetError } = await db().from("contract_assets").insert({ contract_id: contract.id, ...operationAssetFields(v) });
-    if (assetError) return { ok: false, error: assetError.message };
-  }
-
-  // The mandate keeps its reference and its date; only what the form holds changes.
-  const { data: mandate, error: mandateReadError } = await db().from("sepa_mandates").select("id").eq("contract_id", contract.id).maybeSingle();
-  if (mandateReadError) return { ok: false, error: mandateReadError.message };
-  const { error: mandateError } = mandate
-    ? await db().from("sepa_mandates").update(operationMandateFields(v)).eq("id", mandate.id)
-    : await db().from("sepa_mandates").insert({
-        contract_id: contract.id,
-        mandate_reference: contract.contract_number,
-        ...operationMandateFields(v),
-        signed_at: new Date().toISOString().slice(0, 10),
-      });
-  if (mandateError) return { ok: false, error: mandateError.message };
-
-  await db().from("companies").update(operationCompanyFields(v)).eq("id", contract.company_id);
+  if (!updated) return { ok: false, error: "El contrato ya no está en borrador" };
 
   revalidatePath(`/contracts/${contract.id}`);
   revalidatePath("/contracts");

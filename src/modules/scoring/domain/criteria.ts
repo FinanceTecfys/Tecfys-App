@@ -5,24 +5,18 @@
  * per-ratio 1-10 score, and the weighted sum is the final score on a 10-point
  * scale. The final score buckets into a rating, which sets the decision rule
  * and the prudence factor applied to adjusted EBITDA (the credit opinion).
+ *
+ * CONFIDENTIAL, server-side only: no client component may import this module
+ * (a test walks the import graph of every "use client" file), and the model is
+ * never passed to one as a prop. The browser gets results (domain/preview.ts).
  */
 
-export const RATINGS = ["AAA", "AA", "A", "BBB", "BB", "CCC", "CC", "C"] as const;
-export type Rating = (typeof RATINGS)[number];
+import type { Decision, Rating, RatioKey } from "./ratings";
 
-export type Decision = "auto" | "limited" | "manual" | "reject";
-
-export type RatioKey =
-  | "guarantee"
-  | "solvency"
-  | "indebtedness"
-  | "netMargin"
-  | "sectorialRisk"
-  | "maturity"
-  | "economicProfit"
-  | "financialProfit"
-  | "paymentPeriod"
-  | "collectionPeriod";
+// The result vocabulary lives in ratings.ts (safe for client components);
+// re-exported here for the server-side code that works with the model.
+export { DECISION_LABELS, RATINGS } from "./ratings";
+export type { Decision, Rating, RatioKey } from "./ratings";
 
 export interface RatioDefinition {
   /** higher / lower is better; "rating" = looked up (sector). */
@@ -127,11 +121,4 @@ export const DEFAULT_CRITERIA: ScoringCriteria = {
     "Agriculture and fishing": "C",
     "Other": "BBB",
   },
-};
-
-export const DECISION_LABELS: Record<Decision, string> = {
-  auto: "Aprobado automático",
-  limited: "Aprobado con límites",
-  manual: "Revisión manual",
-  reject: "Rechazado",
 };

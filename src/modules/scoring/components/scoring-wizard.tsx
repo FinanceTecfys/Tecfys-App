@@ -1,17 +1,16 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { FileUp, PencilLine, Search } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, SelectField } from "@/components/ui/field";
 import { fmtEur, fmtNum } from "@/lib/format";
-import { createScoring, fetchInformaReport, parseInformaPdf } from "../actions";
-import type { ScoringCriteria } from "../domain/criteria";
-import { scoreCompany } from "../domain/engine";
+import { createScoring, fetchInformaReport, parseInformaPdf, previewScoring } from "../actions";
 import { EMPTY_FINANCIALS, FINANCIAL_FIELDS, type Financials } from "../domain/financials";
 import type { InformaCompanyStatus, InformaRisk } from "../informa/map-informa-report";
+import type { ScoringPreview } from "../domain/preview";
 import { DecisionBadge, RatingBadge } from "./badges";
 import { InformaCompanyStatusAlert } from "./informa-company-status";
 import { ScoreBreakdown } from "./score-breakdown";
@@ -32,7 +31,24 @@ const FIELD_LABELS: Partial<Record<keyof Financials, string>> = {
   address: "Domicilio fiscal", fiscalPostalCode: "Código postal", fiscalCity: "Ciudad", adminName: "Administrador",
 };
 
-export function ScoringWizard({ criteria, informaConfigured }: { criteria: ScoringCriteria; informaConfigured: boolean }) {
+/** Pause after the last edit before the preview is asked for: one call per burst of typing, not per keystroke. */
+const PREVIEW_DELAY_MS = 400;
+
+/**
+ * The scoring model never reaches this component: it gets the sector names and
+ * a result computed on the server, and asks the server again (previewScoring)
+ * whenever the financials change.
+ */
+export function ScoringWizard({
+  sectors,
+  initialPreview,
+  informaConfigured,
+}: {
+  sectors: string[];
+  /** The score of the empty form, computed on the server. */
+  initialPreview: ScoringPreview;
+  informaConfigured: boolean;
+}) {
   const [step, setStep] = useState<Step>("source");
   const [source, setSource] = useState<Source>("manual");
   const [informa, setInforma] = useState<{ status: InformaCompanyStatus; risk: InformaRisk; warnings: string[] } | null>(null);
@@ -46,10 +62,39 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
   const [parsing, startParsing] = useTransition();
   const [saving, startSaving] = useTransition();
 
-  const result = useMemo(() => scoreCompany(financials, criteria), [financials, criteria]);
-  const sectors = Object.keys(criteria.sectorRating).sort();
+  const [result, setResult] = useState<ScoringPreview>(initialPreview);
+  /** True from an edit until the server has scored it: the figures shown belong to the previous values. */
+  const [stale, setStale] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewSeq = useRef(0);
 
-  const set = <K extends keyof Financials>(key: K, value: Financials[K]) => setFinancials((f) => ({ ...f, [key]: value }));
+  useEffect(() => () => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+  }, []);
+
+  /** Every change of the financials goes through here: store it and ask the server for its score, debounced. */
+  function applyFinancials(next: Financials, delay = PREVIEW_DELAY_MS) {
+    setFinancials(next);
+    setStale(true);
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    const seq = ++previewSeq.current;
+    previewTimer.current = setTimeout(async () => {
+      let res: Awaited<ReturnType<typeof previewScoring>>;
+      try {
+        res = await previewScoring(next);
+      } catch {
+        res = { ok: false, error: "No se pudo calcular la vista previa" };
+      }
+      // A newer edit is already on its way: its answer is the one that counts.
+      if (seq !== previewSeq.current) return;
+      setStale(false);
+      if (res.ok) setResult(res.preview);
+      setPreviewError(res.ok ? null : res.error);
+    }, delay);
+  }
+
+  const set = <K extends keyof Financials>(key: K, value: Financials[K]) => applyFinancials({ ...financials, [key]: value });
   const setNumber = (key: keyof Financials, raw: string) =>
     set(key, (raw === "" ? null : Number(raw)) as Financials[typeof key]);
 
@@ -58,7 +103,7 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
     startParsing(async () => {
       const res = await parseInformaPdf(formData);
       if (!res.ok) return setError(res.error);
-      setFinancials(res.financials);
+      applyFinancials(res.financials, 0);
       setReportId(res.reportId);
       setMissing(res.missing);
       setSource("pdf");
@@ -72,7 +117,7 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
     startParsing(async () => {
       const res = await fetchInformaReport(cifQuery);
       if (!res.ok) return setError(res.error);
-      setFinancials(res.financials);
+      applyFinancials(res.financials, 0);
       setReportId(res.reportId);
       setMissing(res.missing);
       setSource("api");
@@ -185,7 +230,7 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
               name="sector"
               value={financials.sector ?? ""}
               onChange={(e) => set("sector", e.target.value || null)}
-              options={sectors.map((s) => ({ value: s, label: `${s} (${criteria.sectorRating[s]})` }))}
+              options={sectors.map((s) => ({ value: s, label: s }))}
               placeholder="— Selecciona —"
             />
             <Field label="CNAE" name="cnae" value={financials.cnae ?? ""} onChange={(e) => set("cnae", e.target.value || null)} />
@@ -224,15 +269,17 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
             </div>
           </Card>
         ))}
-        <Card title="Desglose del scoring">
-          <ScoreBreakdown breakdown={result.breakdown} />
+        <Card title="Desglose del scoring" subtitle={stale ? "Actualizando…" : undefined}>
+          <div className={stale ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={stale}>
+            <ScoreBreakdown rows={result.rows} />
+          </div>
         </Card>
       </div>
 
       <aside className="xl:sticky xl:top-8 xl:self-start">
-        <Card title="Resultado">
+        <Card title="Resultado" subtitle={stale ? "Actualizando…" : undefined}>
           <div className="space-y-5">
-            <div className="flex items-center justify-between">
+            <div className={`flex items-center justify-between transition-opacity ${stale ? "opacity-60" : ""}`} aria-live="polite" aria-busy={stale}>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Puntuación</div>
                 <div className="num text-4xl font-semibold text-slate-50">{fmtNum(result.totalScore, 2)}</div>
@@ -246,6 +293,7 @@ export function ScoringWizard({ criteria, informaConfigured }: { criteria: Scori
               <div className="flex justify-between"><dt className="text-slate-400">Prudencia</dt><dd className="num">{fmtNum(result.prudence * 100, 0)} %</dd></div>
               <div className="flex justify-between font-semibold"><dt className="text-slate-300">Opinión de crédito</dt><dd className="num text-mint-400">{fmtEur(result.creditOpinion)}</dd></div>
             </dl>
+            {previewError && <Alert tone="warning">{previewError}. El scoring se recalcula al guardar.</Alert>}
             {error && <Alert tone="error">{error}</Alert>}
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setStep("source")} disabled={saving}>Volver</Button>

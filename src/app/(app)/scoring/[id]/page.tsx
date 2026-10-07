@@ -14,6 +14,7 @@ import { DecisionBadge, RatingBadge, ScoringStatusBadge } from "@/modules/scorin
 import { ReviewForm } from "@/modules/scoring/components/review-form";
 import { ScoreBreakdown } from "@/modules/scoring/components/score-breakdown";
 import { getScoring } from "@/modules/scoring/data";
+import { breakdownRows } from "@/modules/scoring/domain/preview";
 
 export default async function ScoringDetailPage({ params }: PageProps<"/scoring/[id]">) {
   const user = await requireRole("scoring.view");
@@ -21,6 +22,8 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
   const scoring = await getScoring(id, dataScopeFor(user));
   if (!scoring) notFound();
   const f = scoring.financials;
+  // The weight and the per-rating score are the model: only for the roles that may see it (Settings -> Modelo de scoring).
+  const rows = breakdownRows(scoring.breakdown, { withModel: can(user.role, "scoringModel.edit") });
 
   return (
     <>
@@ -61,7 +64,7 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <Card title="Desglose del scoring">
-          <ScoreBreakdown breakdown={scoring.breakdown} />
+          <ScoreBreakdown rows={rows} />
         </Card>
         <div className="space-y-6">
           {scoring.status === "pending_review" &&

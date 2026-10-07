@@ -53,6 +53,12 @@ export const financialsSchema = z.object({
 
 export type Financials = z.infer<typeof financialsSchema>;
 
+/**
+ * The same shape for the live preview: the score does not depend on the CIF or
+ * the name, which are still empty while the analyst starts typing.
+ */
+export const previewFinancialsSchema = financialsSchema.extend({ cif: z.string(), name: z.string() });
+
 export const EMPTY_FINANCIALS: Financials = {
   cif: "", name: "", country: "ES", sector: null, cnae: null, address: null, fiscalPostalCode: null, fiscalCity: null,
   fiscalProvince: null, phone: null, email: null, web: null,

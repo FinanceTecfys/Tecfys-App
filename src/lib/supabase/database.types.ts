@@ -625,6 +625,7 @@ export type Database = {
         Row: {
           company_id: string | null
           created_at: string
+          created_by: string | null
           file_name: string | null
           id: string
           parsed: Json
@@ -635,6 +636,7 @@ export type Database = {
         Insert: {
           company_id?: string | null
           created_at?: string
+          created_by?: string | null
           file_name?: string | null
           id?: string
           parsed: Json
@@ -645,6 +647,7 @@ export type Database = {
         Update: {
           company_id?: string | null
           created_at?: string
+          created_by?: string | null
           file_name?: string | null
           id?: string
           parsed?: Json
@@ -926,10 +929,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_draft_contract: {
+        Args: {
+          p_asset: Json
+          p_attachments?: Json
+          p_company: Json
+          p_contract: Json
+          p_mandate: Json
+        }
+        Returns: Json
+      }
+      update_draft_contract: {
+        Args: {
+          p_asset: Json
+          p_company: Json
+          p_contract: Json
+          p_contract_id: string
+          p_mandate: Json
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      contract_attachment_kind: "id_document" | "bank_certificate" | "contract" | "extra"
+      contract_attachment_kind:
+        | "id_document"
+        | "bank_certificate"
+        | "contract"
+        | "extra"
       contract_workflow_status:
         | "draft"
         | "pending_signature"
@@ -1070,7 +1096,12 @@ export const Constants = {
   },
   public: {
     Enums: {
-      contract_attachment_kind: ["id_document", "bank_certificate", "contract", "extra"],
+      contract_attachment_kind: [
+        "id_document",
+        "bank_certificate",
+        "contract",
+        "extra",
+      ],
       contract_workflow_status: [
         "draft",
         "pending_signature",
