@@ -1,5 +1,5 @@
 import { Badge, type Tone } from "@/components/ui/badge";
-import { DECISION_LABELS, type Decision, type Rating } from "../domain/criteria";
+import { DECISION_LABELS, type Decision, type Rating } from "../domain/ratings";
 
 const RATING_TONE: Record<Rating, Tone> = {
   AAA: "mint", AA: "mint", A: "emerald", BBB: "yellow", BB: "orange", CCC: "red", CC: "red", C: "red",

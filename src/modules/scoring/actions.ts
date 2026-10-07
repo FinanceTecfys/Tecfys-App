@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { dataScopeFor } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
-import { getActiveCriteria } from "./data";
+import { getActiveCriteria, getInformaReport } from "./data";
 import { scoreCompany } from "./domain/engine";
-import { type Financials, financialsSchema } from "./domain/financials";
+import { type Financials, financialsSchema, previewFinancialsSchema } from "./domain/financials";
+import { previewScore, type ScoringPreview } from "./domain/preview";
 import { extractInformaText } from "./informa/extract-pdf-text";
 import { parseInformaText } from "./informa/parse-informa-text";
 import { type InformaReportMapping, mapInformaReport, normalizeCif } from "./informa/map-informa-report";
@@ -34,10 +36,10 @@ export type FetchInformaResult =
  * "Buscar en Informa por CIF": fetch the INFORME_MAYOR from the Informa API and
  * map it to Financials. Only the mapping is kept (informa_reports, source
  * informa_api): the raw report echoes the request credentials, so it is
- * neither stored nor sent to the browser.
+ * neither stored nor sent to the browser. The report belongs to whoever fetched it.
  */
 export async function fetchInformaReport(cifInput: string): Promise<FetchInformaResult> {
-  await requireRole("scoring.run");
+  const user = await requireRole("scoring.run");
   const cif = normalizeCif(String(cifInput ?? ""));
   if (!cif) return { ok: false, error: "CIF no válido: 9 caracteres, p. ej. B12345678" };
   if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
@@ -58,6 +60,7 @@ export async function fetchInformaReport(cifInput: string): Promise<FetchInforma
       file_name: `Informa API ${reportType ?? "informe"} ${cif}`,
       reference_year: mapping.financials.referenceYear,
       parsed: { ...mapping, reportType, requestedCif: cif } as unknown as Json,
+      created_by: user.id,
     })
     .select("id")
     .single();
@@ -83,9 +86,9 @@ export type ParsePdfResult =
   | { ok: true; reportId: string; financials: Financials; missing: (keyof Financials)[] }
   | { ok: false; error: string };
 
-/** Parse an Informa PDF, keep the original in storage and the parse in informa_reports. */
+/** Parse an Informa PDF, keep the original in storage and the parse in informa_reports, owned by whoever uploaded it. */
 export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResult> {
-  await requireRole("scoring.run");
+  const user = await requireRole("scoring.run");
   const file = formData.get("pdf");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Selecciona un PDF de Informa" };
   if (file.type && file.type !== "application/pdf") return { ok: false, error: "El fichero no es un PDF" };
@@ -114,6 +117,7 @@ export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResul
       storage_path: upload.error ? null : storagePath,
       reference_year: financials.referenceYear,
       parsed: { financials, missing } as unknown as Json,
+      created_by: user.id,
     })
     .select("id")
     .single();
@@ -122,9 +126,31 @@ export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResul
   return { ok: true, reportId: data.id, financials, missing };
 }
 
+export type PreviewScoringResult = { ok: true; preview: ScoringPreview } | { ok: false; error: string };
+
+/**
+ * Live preview of the scoring wizard: score the financials typed so far with
+ * the active model and return ONLY the outcome (domain/preview.ts) - the value,
+ * rating and contribution of each ratio and the totals. The model itself
+ * (weights, tiers, score tables, rules, prudence table) never leaves the
+ * server. Nothing is stored; createScoring recomputes when the analyst saves.
+ */
+export async function previewScoring(financials: Financials): Promise<PreviewScoringResult> {
+  await requireRole("scoring.run");
+  const parsed = previewFinancialsSchema.safeParse(financials);
+  if (!parsed.success) return { ok: false, error: "Hay datos financieros no válidos" };
+  const criteria = await getActiveCriteria();
+  return { ok: true, preview: previewScore(parsed.data, criteria.config) };
+}
+
 export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-/** Score a company (always recomputed server-side) and store the result, owned by whoever ran it. */
+/**
+ * Score a company (always recomputed server-side) and store the result, owned
+ * by whoever ran it. The Informa report it links must be inside the user's
+ * scope: a partner only links a report it fetched or uploaded itself, and one
+ * outside its scope reads as not found - checked before anything is written.
+ */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
   const user = await requireRole("scoring.run");
   const parsed = financialsSchema.safeParse(input.financials);
@@ -133,6 +159,15 @@ export async function createScoring(input: { financials: Financials; informaRepo
     return { ok: false, error: "Revisa los datos marcados", fieldErrors };
   }
   const f = { ...parsed.data, cif: parsed.data.cif.replace(/[\s.-]/g, "").toUpperCase() };
+
+  let reportId: string | null = null;
+  if (input.informaReportId) {
+    const id = z.uuid().safeParse(input.informaReportId);
+    const report = id.success ? await getInformaReport(id.data, dataScopeFor(user)) : null;
+    if (!report) return { ok: false, error: "Informe de Informa no encontrado" };
+    reportId = report.id;
+  }
+
   const criteria = await getActiveCriteria();
   const result = scoreCompany(f, criteria.config);
 
@@ -163,7 +198,6 @@ export async function createScoring(input: { financials: Financials; informaRepo
     .single();
   if (companyError) return { ok: false, error: companyError.message };
 
-  const reportId = input.informaReportId ? z.uuid().parse(input.informaReportId) : null;
   if (reportId) await db().from("informa_reports").update({ company_id: company.id }).eq("id", reportId);
 
   const status = result.decision === "reject" ? "rejected" : result.decision === "manual" ? "pending_review" : "approved";

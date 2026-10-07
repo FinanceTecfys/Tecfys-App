@@ -86,6 +86,7 @@ Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo p
 | Dashboard, loan book, waterfall, pipeline | sí | sí | sí | no |
 | ERP, Configuración, modelo de scoring | sí | sí | no | no |
 | Ejecutar scoring, crear operación | sí | sí | sí | sí (solo ve lo que él creó) |
+| Ver nota y peso de cada ratio en el desglose de un scoring | sí | sí | sí | no |
 | Revisión manual de un scoring, marcar firmado, cancelar | sí | sí | no | no |
 | Gestionar usuarios | sí | sí (no owner ni admins) | no | no |
 

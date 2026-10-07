@@ -15,6 +15,7 @@ const EXPECTED: Record<Capability, [boolean, boolean, boolean, boolean]> = {
   "scoring.run": [true, true, true, true],
   "scoring.review": [true, true, false, false],
   "scoringModel.edit": [true, true, false, false],
+  "scoringModel.viewBreakdown": [true, true, true, false],
   "operation.create": [true, true, true, true],
   "contract.view": [true, true, true, true],
   "contract.manage": [true, true, false, false],
@@ -55,6 +56,13 @@ describe("can (role x capability)", () => {
   it("the pipeline is for owner, admin and sales; a partner never sees the other partners' activity", () => {
     for (const role of ["owner", "admin", "sales"] as const) expect(can(role, "pipeline.view"), role).toBe(true);
     expect(can("partner", "pipeline.view")).toBe(false);
+  });
+
+  it("the weights and scores of a scoring breakdown are for Tecfys staff - sales included - and never for a partner", () => {
+    for (const role of ["owner", "admin", "sales"] as const) expect(can(role, "scoringModel.viewBreakdown"), role).toBe(true);
+    expect(can("partner", "scoringModel.viewBreakdown")).toBe(false);
+    // Seeing the breakdown is not editing the model.
+    expect(can("sales", "scoringModel.edit")).toBe(false);
   });
 
   it("sales cannot edit the scoring model, reach settings or ERP, or manage users", () => {
