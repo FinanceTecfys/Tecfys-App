@@ -22,8 +22,8 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
   const scoring = await getScoring(id, dataScopeFor(user));
   if (!scoring) notFound();
   const f = scoring.financials;
-  // The weight and the per-rating score are the model: only for the roles that may see it (Settings -> Modelo de scoring).
-  const rows = breakdownRows(scoring.breakdown, { withModel: can(user.role, "scoringModel.edit") });
+  // The weight and the per-rating score are the model: Tecfys staff see them, a partner never does.
+  const rows = breakdownRows(scoring.breakdown, { withModel: can(user.role, "scoringModel.viewBreakdown") });
 
   return (
     <>

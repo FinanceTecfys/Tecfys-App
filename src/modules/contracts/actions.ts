@@ -95,7 +95,8 @@ export async function createContract(input: OperationInput, files?: FormData): P
   );
   if (error) return fail(error.message);
   const contract = createdDraftOf(data);
-  if (!contract) return fail("No se pudo crear el contrato");
+  // The write succeeded: the files belong to a stored contract now, so they are not removed.
+  if (!contract) return { ok: false, error: "El contrato se creó pero no se pudo leer su número; búscalo en el loan book" };
 
   revalidatePath("/contracts");
   redirect(`/contracts/${contract.id}`);

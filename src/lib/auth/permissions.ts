@@ -47,6 +47,8 @@ const MATRIX = {
   "scoring.review": ADMINS,
   /** The scoring model / criteria configuration. */
   "scoringModel.edit": ADMINS,
+  /** See the per-ratio score ("Nota") and weight ("Peso") in a stored scoring's breakdown: Tecfys staff, never a partner. */
+  "scoringModel.viewBreakdown": TECFYS,
   /** Create an operation from an approved scoring the user can reach, and edit it while it is a draft. */
   "operation.create": EVERYONE,
   /** One contract with its draft and documents (download, and upload into an empty slot); partners only reach their own. */

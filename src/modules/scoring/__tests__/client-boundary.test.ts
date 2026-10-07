@@ -112,6 +112,14 @@ describe("the scoring model stays on the server", () => {
     expect(page).toMatch(/sectors=\{sectorNames\(criteria\.config\)\}/);
   });
 
+  it("the stored breakdown shows the weight and the score only through the scoringModel.viewBreakdown capability", () => {
+    const detail = read(path.join(SRC, "app/(app)/scoring/[id]/page.tsx"));
+    expect(detail).toContain('breakdownRows(scoring.breakdown, { withModel: can(user.role, "scoringModel.viewBreakdown") })');
+    // The page renders the gated rows, never the raw stored breakdown.
+    expect(detail).toContain("<ScoreBreakdown rows={rows} />");
+    expect(detail).not.toMatch(/criteria_snapshot|breakdown={/);
+  });
+
   it("the result vocabulary shared with the browser holds no model values", () => {
     const ratings = read(path.join(SRC, "modules/scoring/domain/ratings.ts"));
     const code = ratings.replace(/\/\*[\s\S]*?\*\//g, "");
