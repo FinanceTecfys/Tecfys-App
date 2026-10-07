@@ -7,6 +7,8 @@
  * denied page, Server Action or route handler never runs past it.
  */
 import { can, type Capability, homePathFor, type Role } from "./permissions";
+import type { Locale } from "@/i18n/config";
+import { resolvePreferences, type ThemeMode } from "@/lib/theme";
 import { LOGIN_PATH, NO_ACCESS_PATH } from "./routes";
 
 export interface AuthIdentity {
@@ -18,11 +20,18 @@ export interface UserProfile {
   role: Role;
   partnerDistributorId: string | null;
   active: boolean;
+  /** Stored preferences (profiles.language / profiles.theme); validated when the user is built. */
+  language?: string | null;
+  theme?: string | null;
 }
 
 export interface SessionUser extends AuthIdentity {
   role: Role;
   partnerDistributorId: string | null;
+  /** The user's interface language; Spanish unless the profile stores another known one. */
+  language: Locale;
+  /** The user's theme mode; green unless the profile stores another known one. */
+  theme: ThemeMode;
 }
 
 export interface GuardDeps {
@@ -41,7 +50,7 @@ export function createGuards(deps: GuardDeps) {
     if (!identity) return deps.redirect(LOGIN_PATH);
     const profile = await deps.profile(identity.id);
     if (!profile?.active) return deps.redirect(NO_ACCESS_PATH);
-    return { ...identity, role: profile.role, partnerDistributorId: profile.partnerDistributorId };
+    return { ...identity, role: profile.role, partnerDistributorId: profile.partnerDistributorId, ...resolvePreferences(profile) };
   }
 
   /** requireUser + the capability; a role without it is sent to its home page. */

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ArrowRight, Plus } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +42,8 @@ const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : u
 export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const scope = dataScopeFor(await requireRole("dashboard.view"));
   const sp = await searchParams;
+  const t = await getTranslations("dashboard");
+  const tCommon = await getTranslations("common");
   const now = new Date();
   const period = resolvePeriod({ preset: str(sp.preset), from: str(sp.from), to: str(sp.to) }, now);
 
@@ -60,9 +63,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
 
   const topClients = drill("client", topClientsByOutstanding(rows, 20));
   const buckets = drill("size", outstandingByLoanSize(rows));
-  const byAsset = drill("assetCluster", groupOutstanding(rows, "assetCluster"));
-  const byCountry = drill("country", groupOutstanding(rows, "country"));
-  const byPartner = drill("distributor", groupOutstanding(rows, "distributor"));
+  // The placeholder slices ("not reported", "others") are named in the user's language.
+  const groupText = { emptyLabel: tCommon("noValue"), otherLabel: tCommon("others") };
+  const byAsset = drill("assetCluster", groupOutstanding(rows, "assetCluster", groupText));
+  const byCountry = drill("country", groupOutstanding(rows, "country", groupText));
+  const byPartner = drill("distributor", groupOutstanding(rows, "distributor", groupText));
   const irr = irrSeries(months, period);
   const defaults = defaultSeries(months, period);
 
@@ -75,10 +80,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
     <>
       <PageHeader
         title="Dashboard"
-        description={`Cartera a ${fmtDate(asOf.toISOString())} · ${period.label.toLowerCase()} (${fmtMonthKey(period.fromKey)} – ${fmtMonthKey(period.toKey)})`}
+        description={t("description", { date: fmtDate(asOf.toISOString()), period: t(`period.${period.preset}`).toLowerCase(), from: fmtMonthKey(period.fromKey), to: fmtMonthKey(period.toKey) })}
         actions={
           <ButtonLink href="/scoring/new">
-            <Plus className="h-4 w-4" aria-hidden /> Nuevo scoring
+            <Plus className="h-4 w-4" aria-hidden /> {t("newScoring")}
           </ButtonLink>
         }
       />
@@ -86,55 +91,55 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
       <div className="mb-6"><PeriodSelector period={period} /></div>
 
       <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Principal pendiente" value={fmtEur(outstanding)} hint={`${live.toLocaleString("es-ES")} contratos vivos`} accent />
-        <Stat label="IRR anualizada ponderada" value={fmtPct(current?.weightedAnnualIrr, 1)} hint="por valor del activo, contratos vivos" />
-        <Stat label="Default del periodo" value={fmtEur(periodDefaults)} hint={current ? `acumulado ${fmtEur(current.cumulativeDefaults)}` : undefined} />
-        <Stat label="Concentración top 5" value={fmtPct(top5Share, 1)} hint="del principal pendiente" />
+        <Stat label={t("kpi.outstanding")} value={fmtEur(outstanding)} hint={t("kpi.liveContracts", { count: live.toLocaleString("es-ES") })} accent />
+        <Stat label={t("kpi.irr")} value={fmtPct(current?.weightedAnnualIrr, 1)} hint={t("kpi.irrHint")} />
+        <Stat label={t("kpi.periodDefault")} value={fmtEur(periodDefaults)} hint={current ? t("kpi.cumulative", { amount: fmtEur(current.cumulativeDefaults) }) : undefined} />
+        <Stat label={t("kpi.top5")} value={fmtPct(top5Share, 1)} hint={t("kpi.top5Hint")} />
       </div>
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">Concentración</h2>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">{t("sections.concentration")}</h2>
       <div className="mb-8 grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-        <Card title="Top 20 clientes por principal pendiente" subtitle={`${fmtMonthKey(period.toKey)} · ${fmtPct(top5Share, 1)} del total en los 5 primeros`}>
+        <Card title={t("charts.topClients")} subtitle={t("charts.topClientsSubtitle", { month: fmtMonthKey(period.toKey), share: fmtPct(top5Share, 1) })}>
           <RankedBarChart data={topClients} />
         </Card>
         <div className="space-y-6">
-          <Card title="Principal pendiente por tamaño de operación" subtitle="Tramos por saldo pendiente de cada contrato">
+          <Card title={t("charts.bySize")} subtitle={t("charts.bySizeSubtitle")}>
             <BucketBarChart data={buckets} />
           </Card>
-          <Card title="Principal pendiente por tipo de activo">
+          <Card title={t("charts.byAsset")}>
             <DonutChart data={byAsset} total={outstanding} />
           </Card>
         </div>
       </div>
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">Distribución</h2>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">{t("sections.distribution")}</h2>
       <div className="mb-8 grid gap-6 lg:grid-cols-2">
-        <Card title="Principal pendiente por país">
+        <Card title={t("charts.byCountry")}>
           <DonutChart data={byCountry} total={outstanding} />
         </Card>
-        <Card title="Principal pendiente por partner">
+        <Card title={t("charts.byPartner")}>
           <DonutChart data={byPartner} total={outstanding} />
         </Card>
       </div>
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">Evolución mensual</h2>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">{t("sections.monthly")}</h2>
       <div className="mb-8 grid gap-6 xl:grid-cols-2">
-        <Card title="IRR anualizada ponderada" subtitle="IRR esperada de los contratos vivos, ponderada por valor del activo y anualizada">
+        <Card title={t("charts.irr")} subtitle={t("charts.irrSubtitle")}>
           <MonthlyLineChart data={irr.map((p) => ({ label: p.label, value: p.annualIrr }))} format="percent" />
         </Card>
-        <Card title="Loss rate acumulado" subtitle="Default acumulado sobre principal originado (Summary fila 45)">
+        <Card title={t("charts.lossRate")} subtitle={t("charts.lossRateSubtitle")}>
           <MonthlyLineChart data={defaults.map((p) => ({ label: p.label, value: p.cumulativeLossRate }))} format="percent" tone="loss" />
         </Card>
-        <Card title="Default mensual" subtitle="Principal no recuperado dado de baja en el mes (Summary fila 22)" className="xl:col-span-2">
+        <Card title={t("charts.monthlyDefault")} subtitle={t("charts.monthlyDefaultSubtitle")} className="xl:col-span-2">
           <MonthlyBarChart data={defaults.map((p) => ({ label: p.label, value: p.defaults, href: loanBookHref(defaultDrillDownQuery(p.key)) }))} />
         </Card>
       </div>
 
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">Actividad</h2>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mint-500/80">{t("sections.activity")}</h2>
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card title="Últimos scorings" action={<Link href="/scoring" className="text-xs text-slate-400 hover:text-mint-400">Ver todos</Link>} bodyClassName="p-0">
+        <Card title={t("activity.lastScorings")} action={<Link href="/scoring" className="text-xs text-slate-400 hover:text-mint-400">{t("activity.viewAll")}</Link>} bodyClassName="p-0">
           {scorings.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-slate-400">Sin scorings todavía.</p>
+            <p className="px-5 py-8 text-sm text-slate-400">{t("activity.noScorings")}</p>
           ) : (
             <ul className="divide-y divide-ink-800">
               {scorings.map((s) => (
@@ -155,9 +160,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           )}
         </Card>
 
-        <Card title="Pipeline de firma" subtitle="Contratos en borrador o pendientes de firma" bodyClassName="p-0">
+        <Card title={t("activity.signingPipeline")} subtitle={t("activity.signingPipelineSubtitle")} bodyClassName="p-0">
           {pipeline.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-slate-400">No hay operaciones pendientes.</p>
+            <p className="px-5 py-8 text-sm text-slate-400">{t("activity.noPending")}</p>
           ) : (
             <ul className="divide-y divide-ink-800">
               {pipeline.map((c) => (
@@ -176,18 +181,18 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
         </Card>
 
         <Card
-          title="Cobros previstos"
-          subtitle="Próximos 6 meses, cartera firmada"
+          title={t("activity.expected")}
+          subtitle={t("activity.expectedSubtitle")}
           action={<Link href="/portfolio" className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-mint-400">Waterfall <ArrowRight className="h-3 w-3" aria-hidden /></Link>}
           bodyClassName="p-0"
         >
           <Table>
             <thead>
               <tr>
-                <Th>Mes</Th>
-                <Th right>Cuotas</Th>
-                <Th right>Interés</Th>
-                <Th right>Principal</Th>
+                <Th>{t("activity.month")}</Th>
+                <Th right>{t("activity.installments")}</Th>
+                <Th right>{t("activity.interest")}</Th>
+                <Th right>{t("activity.principal")}</Th>
               </tr>
             </thead>
             <tbody>

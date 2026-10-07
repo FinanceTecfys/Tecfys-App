@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// i18n without locale routing: the language comes from the user's profile (src/i18n/request.ts).
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -9,4 +13,4 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf", "exceljs", "pdfkit"],
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

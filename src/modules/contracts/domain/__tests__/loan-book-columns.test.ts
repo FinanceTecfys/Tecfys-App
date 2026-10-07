@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import en from "@/i18n/messages/en.json";
+import es from "@/i18n/messages/es.json";
 import {
   columnsStorageKey,
   DEFAULT_COLUMN_KEYS,
@@ -93,10 +95,15 @@ describe("column registry", () => {
   });
 
   it("defaults to the table as it was before the chooser", () => {
-    expect(LOAN_BOOK_COLUMNS.filter((c) => DEFAULT_COLUMN_KEYS.includes(c.key)).map((c) => c.label)).toEqual([
+    expect(LOAN_BOOK_COLUMNS.filter((c) => DEFAULT_COLUMN_KEYS.includes(c.key)).map((c) => es.loanBook.columns[c.key])).toEqual([
       "Contrato", "Cliente", "País", "Distribuidor", "Tipo de activo", "Firma", "Meses", "Ext.", "Cuota", "Coste",
       "Expected IRR", "Estado", "Cancelación", "Estado adicional", "Principal pendiente", "Default",
     ]);
+  });
+
+  it("every column has a header in both languages, and no header without a column", () => {
+    expect(Object.keys(es.loanBook.columns).sort()).toEqual([...keys].sort());
+    expect(Object.keys(en.loanBook.columns).sort()).toEqual([...keys].sort());
   });
 
   it("offers the fields the view computes but the table did not show", () => {

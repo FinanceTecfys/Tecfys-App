@@ -11,11 +11,13 @@
  * detected type is what gets stored and served back.
  */
 
+// The name of each kind is a message (contract.documents.kinds.<kind>). `filePrefix` is not UI text:
+// it is the fixed, ASCII name a downloaded file gets, the same whatever the user's language.
 export const ATTACHMENT_KINDS = {
-  id_document: { label: "DNI / NIE del firmante", downloadLabel: "Descargar DNI / NIE del firmante", filePrefix: "DNI_firmante" },
-  bank_certificate: { label: "Certificado bancario", downloadLabel: "Descargar certificado bancario", filePrefix: "Certificado_bancario" },
-  contract: { label: "Contrato firmado", downloadLabel: "Descargar contrato firmado", filePrefix: "Contrato_firmado" },
-  extra: { label: "Anexo / otro documento", downloadLabel: "Descargar anexo", filePrefix: "Anexo" },
+  id_document: { filePrefix: "DNI_firmante" },
+  bank_certificate: { filePrefix: "Certificado_bancario" },
+  contract: { filePrefix: "Contrato_firmado" },
+  extra: { filePrefix: "Anexo" },
 } as const;
 
 export type AttachmentKind = keyof typeof ATTACHMENT_KINDS;
@@ -70,6 +72,7 @@ export interface ValidAttachment {
   bytes: Uint8Array;
 }
 
+/** `error` is a key of the catalogue (validation.attachment.*); it is translated with the kind as value. */
 export type AttachmentValidation = { ok: true; value: ValidAttachment } | { ok: false; error: string };
 
 /** Keep the original name readable but safe to store and to echo in a header. */
@@ -80,20 +83,20 @@ export function sanitizeFileName(name: string): string {
 }
 
 export function validateAttachment(kind: AttachmentKind, file: { name: string; size: number; bytes: Uint8Array }): AttachmentValidation {
-  const label = ATTACHMENT_KINDS[kind].label;
-  if (file.size === 0 || file.bytes.length === 0) return { ok: false, error: `${label}: el fichero está vacío` };
+  if (file.size === 0 || file.bytes.length === 0) return { ok: false, error: "validation.attachment.empty" };
   if (file.size > MAX_ATTACHMENT_BYTES || file.bytes.length > MAX_ATTACHMENT_BYTES) {
-    return { ok: false, error: `${label}: supera el máximo de 8 MB` };
+    return { ok: false, error: "validation.attachment.tooLarge" };
   }
   const mimeType = sniffAttachmentType(file.bytes);
-  if (!mimeType) return { ok: false, error: `${label}: solo se admiten PDF, JPG, PNG o WEBP` };
+  if (!mimeType) return { ok: false, error: "validation.attachment.type" };
   return { ok: true, value: { kind, fileName: sanitizeFileName(file.name), mimeType, size: file.bytes.length, bytes: file.bytes } };
 }
 
 /**
  * Read and validate the optional attachments of the operation form. A missing
  * or empty field is simply "not attached"; any other problem is an error for
- * that field, keyed like the form's field errors.
+ * that field, keyed like the form's field errors (the error is a message key,
+ * to be translated with the kind - the field name - as value).
  */
 export async function readAttachments(formData: FormData | undefined): Promise<
   { ok: true; attachments: ValidAttachment[] } | { ok: false; fieldErrors: Record<string, string> }
@@ -113,10 +116,10 @@ export async function readAttachments(formData: FormData | undefined): Promise<
 /** One form entry -> a validated attachment; null when nothing was attached. */
 export async function readAttachmentEntry(kind: AttachmentKind, entry: FormDataEntryValue | null): Promise<AttachmentValidation | null> {
   if (entry === null || entry === "") return null;
-  if (typeof entry === "string") return { ok: false, error: `${ATTACHMENT_KINDS[kind].label}: fichero no válido` };
+  if (typeof entry === "string") return { ok: false, error: "validation.attachment.invalidFile" };
   if (entry.size === 0 && entry.name === "") return null;
   // Never read more than the limit allows: an oversized file is refused by its declared size.
-  if (entry.size > MAX_ATTACHMENT_BYTES) return { ok: false, error: `${ATTACHMENT_KINDS[kind].label}: supera el máximo de 8 MB` };
+  if (entry.size > MAX_ATTACHMENT_BYTES) return { ok: false, error: "validation.attachment.tooLarge" };
   return validateAttachment(kind, { name: entry.name, size: entry.size, bytes: new Uint8Array(await entry.arrayBuffer()) });
 }
 
@@ -160,7 +163,6 @@ export interface StoredAttachment {
 
 export interface AttachmentSlot {
   kind: AttachmentKind;
-  label: string;
   /** The stored document; null while the slot is empty. */
   attachment: StoredAttachment | null;
 }
@@ -173,7 +175,6 @@ export interface AttachmentSlot {
 export function attachmentSlots(stored: readonly StoredAttachment[]): AttachmentSlot[] {
   return ATTACHMENT_KIND_ORDER.map((kind) => ({
     kind,
-    label: ATTACHMENT_KINDS[kind].label,
     attachment: stored.find((a) => a.kind === kind) ?? null,
   }));
 }
@@ -241,6 +242,9 @@ export interface AttachmentUploadDeps {
   newId: () => string;
 }
 
+/** On failure `error` is a message key (translated with `kind` and `detail` as values) and `detail` the storage / database message, if any. */
+export type AttachmentUploadOutcome = { ok: true; contractId: string; kind: AttachmentKind } | { ok: false; error: string; kind?: AttachmentKind; detail?: string };
+/** What the server action returns to the browser: the same, with the error already translated. */
 export type AttachmentUploadResult = { ok: true; contractId: string; kind: AttachmentKind } | { ok: false; error: string };
 
 /**
@@ -253,28 +257,27 @@ export type AttachmentUploadResult = { ok: true; contractId: string; kind: Attac
 export async function storeAttachment(
   params: { contractId: unknown; kind: unknown; file: FormDataEntryValue | null },
   deps: AttachmentUploadDeps,
-): Promise<AttachmentUploadResult> {
+): Promise<AttachmentUploadOutcome> {
   const { contractId, kind } = params;
-  if (typeof contractId !== "string" || !UUID.test(contractId) || !isAttachmentKind(kind)) return { ok: false, error: "Documento no válido" };
+  if (typeof contractId !== "string" || !UUID.test(contractId) || !isAttachmentKind(kind)) return { ok: false, error: "validation.attachment.invalidDocument" };
 
   const contract = await deps.findContract(contractId);
-  if (!contract) return { ok: false, error: "Contrato no encontrado" };
+  if (!contract) return { ok: false, error: "errors.contract.notFound" };
 
-  const label = ATTACHMENT_KINDS[kind].label;
-  if (await deps.hasAttachment(contract.id, kind)) return { ok: false, error: `${label}: el contrato ya tiene este documento` };
+  if (await deps.hasAttachment(contract.id, kind)) return { ok: false, error: "validation.attachment.slotTaken", kind };
 
   const file = await readAttachmentEntry(kind, params.file);
-  if (file === null) return { ok: false, error: `${label}: selecciona un fichero` };
-  if (!file.ok) return { ok: false, error: file.error };
+  if (file === null) return { ok: false, error: "validation.attachment.selectFile", kind };
+  if (!file.ok) return { ok: false, error: file.error, kind };
 
   const path = attachmentStoragePath(contract.id, kind, file.value.mimeType, deps.newId());
   const uploadError = await deps.upload(path, file.value);
-  if (uploadError) return { ok: false, error: `No se pudo guardar el documento: ${uploadError}` };
+  if (uploadError) return { ok: false, error: "errors.contract.documentNotStored", kind, detail: uploadError };
 
   const rowError = await deps.insert(toAttachmentRow(contract.id, file.value, path));
   if (rowError) {
     await deps.remove(path);
-    return { ok: false, error: `No se pudo guardar el documento: ${rowError}` };
+    return { ok: false, error: "errors.contract.documentNotStored", kind, detail: rowError };
   }
   return { ok: true, contractId: contract.id, kind };
 }

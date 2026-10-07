@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { fieldErrorsOf, getTranslate } from "@/i18n/server";
 import { dataScopeFor, inScope, operationDistributorId } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
@@ -37,14 +38,16 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  */
 export async function createContract(input: OperationInput, files?: FormData): Promise<CreateContractResult> {
   const user = await requireRole("operation.create");
+  const translate = await getTranslate();
   const parsed = operationSchema.safeParse(input);
   const attached = await readAttachments(files);
   if (!parsed.success || !attached.ok) {
     const fieldErrors = {
-      ...(parsed.success ? {} : Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]))),
-      ...(attached.ok ? {} : attached.fieldErrors),
+      ...(parsed.success ? {} : fieldErrorsOf(parsed.error, translate)),
+      // An attachment error is keyed by its kind, which is also the value its message needs.
+      ...(attached.ok ? {} : Object.fromEntries(Object.entries(attached.fieldErrors).map(([kind, key]) => [kind, translate(key, { kind })]))),
     };
-    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
+    return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors };
   }
   const v = parsed.data;
 
@@ -55,8 +58,8 @@ export async function createContract(input: OperationInput, files?: FormData): P
     .maybeSingle();
   if (scoringError) return { ok: false, error: scoringError.message };
   // A scoring outside the user's scope (another partner's) does not exist for them.
-  if (!scoring || !scoring.company || !inScope(dataScopeFor(user), scoring.created_by)) return { ok: false, error: "Scoring no encontrado" };
-  if (scoring.status !== "approved") return { ok: false, error: "El scoring no está aprobado" };
+  if (!scoring || !scoring.company || !inScope(dataScopeFor(user), scoring.created_by)) return { ok: false, error: translate("errors.contract.scoringNotFound") };
+  if (scoring.status !== "approved") return { ok: false, error: translate("errors.contract.scoringNotApproved") };
 
   // The id is chosen here so the files can be stored under it before the contract exists.
   const contractId = crypto.randomUUID();
@@ -73,7 +76,7 @@ export async function createContract(input: OperationInput, files?: FormData): P
     const { error: uploadError } = await db()
       .storage.from(ATTACHMENT_BUCKET)
       .upload(path, attachment.bytes, { contentType: attachment.mimeType, upsert: false });
-    if (uploadError) return fail(`No se pudo guardar el adjunto: ${uploadError.message}`);
+    if (uploadError) return fail(translate("errors.contract.attachmentNotStored", { detail: uploadError.message }));
     uploaded.push(path);
     rows.push(toAttachmentRow(contractId, attachment, path));
   }
@@ -96,7 +99,7 @@ export async function createContract(input: OperationInput, files?: FormData): P
   if (error) return fail(error.message);
   const contract = createdDraftOf(data);
   // The write succeeded: the files belong to a stored contract now, so they are not removed.
-  if (!contract) return { ok: false, error: "El contrato se creó pero no se pudo leer su número; búscalo en el loan book" };
+  if (!contract) return { ok: false, error: translate("errors.contract.notCreated") };
 
   revalidatePath("/contracts");
   redirect(`/contracts/${contract.id}`);
@@ -117,14 +120,12 @@ export async function createContract(input: OperationInput, files?: FormData): P
  */
 export async function updateDraftContract(contractId: string, input: OperationInput): Promise<CreateContractResult> {
   const user = await requireRole("operation.create");
+  const translate = await getTranslate();
   const id = z.uuid().safeParse(contractId);
   const parsed = operationSchema.safeParse(input);
-  if (!parsed.success) {
-    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
-    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
-  }
+  if (!parsed.success) return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors: fieldErrorsOf(parsed.error, translate) };
   const v = parsed.data;
-  if (!id.success) return { ok: false, error: "Contrato no encontrado" };
+  if (!id.success) return { ok: false, error: translate("errors.contract.notFound") };
 
   const { data: contract, error: readError } = await db()
     .from("contracts")
@@ -133,9 +134,9 @@ export async function updateDraftContract(contractId: string, input: OperationIn
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message };
   // A draft outside the user's scope (another partner's) does not exist for them.
-  if (!contract || !inScope(dataScopeFor(user), contract.created_by)) return { ok: false, error: "Contrato no encontrado" };
-  if (!isEditableDraft(contract.workflow_status)) return { ok: false, error: "Solo se puede editar un contrato en borrador" };
-  if (contract.scoring_id !== v.scoringId) return { ok: false, error: "El scoring no corresponde a este contrato" };
+  if (!contract || !inScope(dataScopeFor(user), contract.created_by)) return { ok: false, error: translate("errors.contract.notFound") };
+  if (!isEditableDraft(contract.workflow_status)) return { ok: false, error: translate("errors.contract.onlyDraftEditable") };
+  if (contract.scoring_id !== v.scoringId) return { ok: false, error: translate("errors.contract.scoringMismatch") };
 
   // The function checks the status again inside the write: a draft signed in the meantime is not touched.
   const { data: updated, error } = await db().rpc(
@@ -147,7 +148,7 @@ export async function updateDraftContract(contractId: string, input: OperationIn
     }),
   );
   if (error) return { ok: false, error: error.message };
-  if (!updated) return { ok: false, error: "El contrato ya no está en borrador" };
+  if (!updated) return { ok: false, error: translate("errors.contract.noLongerDraft") };
 
   revalidatePath(`/contracts/${contract.id}`);
   revalidatePath("/contracts");
@@ -194,7 +195,11 @@ export async function uploadContractAttachment(formData: FormData): Promise<Atta
       newId: () => crypto.randomUUID(),
     },
   );
-  if (result.ok) revalidatePath(`/contracts/${result.contractId}`);
+  if (!result.ok) {
+    const translate = await getTranslate();
+    return { ok: false, error: translate(result.error, { kind: result.kind ?? "extra", detail: result.detail ?? "" }) };
+  }
+  revalidatePath(`/contracts/${result.contractId}`);
   return result;
 }
 
@@ -226,11 +231,9 @@ export type CancellationResult = { ok: true } | { ok: false; error: string; fiel
  */
 export async function updateContractCancellation(input: CancellationInput): Promise<CancellationResult> {
   await requireRole("contract.manage");
+  const translate = await getTranslate();
   const parsed = cancellationSchema.safeParse(input);
-  if (!parsed.success) {
-    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
-    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
-  }
+  if (!parsed.success) return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors: fieldErrorsOf(parsed.error, translate) };
   const fields = resolveCancellation(parsed.data);
 
   const { data: contract, error: readError } = await db()
@@ -239,12 +242,12 @@ export async function updateContractCancellation(input: CancellationInput): Prom
     .eq("id", parsed.data.contractId)
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message };
-  if (!contract) return { ok: false, error: "Contrato no encontrado" };
+  if (!contract) return { ok: false, error: translate("errors.contract.notFound") };
   if (contract.workflow_status !== "signed") {
-    return { ok: false, error: "Solo se puede cancelar un contrato firmado" };
+    return { ok: false, error: translate("errors.contract.onlySignedCancellable") };
   }
   if (fields.cancel_date && fields.cancel_date < contract.signing_date) {
-    return { ok: false, error: "Revisa los datos marcados", fieldErrors: { cancelDate: "Anterior a la fecha de firma" } };
+    return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors: { cancelDate: translate("validation.cancellation.beforeSigning") } };
   }
 
   const { error } = await db().from("contracts").update(fields).eq("id", contract.id);

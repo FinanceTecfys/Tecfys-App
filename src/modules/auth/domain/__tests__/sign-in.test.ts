@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SIGN_IN_MESSAGES, signInErrorMessage, signInSchema } from "../sign-in";
+import en from "@/i18n/messages/en.json";
+import es from "@/i18n/messages/es.json";
+import { SIGN_IN_ERRORS, signInErrorKey, signInSchema } from "../sign-in";
 
-describe("signInErrorMessage", () => {
+describe("signInErrorKey", () => {
   it("never reveals whether the account exists: every credential failure reads the same", () => {
     const credentialFailures = [
       { status: 400, code: "invalid_credentials" },
@@ -13,14 +15,26 @@ describe("signInErrorMessage", () => {
       null,
       undefined,
     ];
-    for (const e of credentialFailures) expect(signInErrorMessage(e), JSON.stringify(e)).toBe(SIGN_IN_MESSAGES.invalid);
+    for (const e of credentialFailures) expect(signInErrorKey(e), JSON.stringify(e)).toBe("invalid");
   });
 
   it("tells rate limiting and outages apart (neither says anything about the account)", () => {
-    expect(signInErrorMessage({ status: 429 })).toBe(SIGN_IN_MESSAGES.rateLimited);
-    expect(signInErrorMessage({ status: 400, code: "over_request_rate_limit" })).toBe(SIGN_IN_MESSAGES.rateLimited);
-    expect(signInErrorMessage({ status: 500 })).toBe(SIGN_IN_MESSAGES.unavailable);
-    expect(signInErrorMessage({ status: 503 })).toBe(SIGN_IN_MESSAGES.unavailable);
+    expect(signInErrorKey({ status: 429 })).toBe("rateLimited");
+    expect(signInErrorKey({ status: 400, code: "over_request_rate_limit" })).toBe("rateLimited");
+    expect(signInErrorKey({ status: 500 })).toBe("unavailable");
+    expect(signInErrorKey({ status: 503 })).toBe("unavailable");
+  });
+
+  it("every error it can return has a message in both languages, and the wording is unchanged in Spanish", () => {
+    expect(Object.keys(es.auth.login.errors).sort()).toEqual([...SIGN_IN_ERRORS].sort());
+    expect(Object.keys(en.auth.login.errors).sort()).toEqual([...SIGN_IN_ERRORS].sort());
+    expect(es.auth.login.errors).toEqual({
+      invalid: "Email o contraseña incorrectos.",
+      rateLimited: "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+      unavailable: "No se pudo iniciar sesión. Inténtalo de nuevo más tarde.",
+    });
+    // The single credential message names no reason in either language.
+    for (const m of [es.auth.login.errors.invalid, en.auth.login.errors.invalid]) expect(m).not.toMatch(/exist|registr|bloque|banned|confirm/i);
   });
 });
 

@@ -45,6 +45,7 @@ describe("server-side enforcement is wired everywhere", () => {
       "modules/contracts/actions.ts",
       "modules/erp/actions.ts",
       "modules/scoring/actions.ts",
+      "modules/settings/actions.ts",
       "modules/users/actions.ts",
     ]);
 

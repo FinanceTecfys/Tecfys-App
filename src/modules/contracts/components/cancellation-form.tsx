@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, SelectField } from "@/components/ui/field";
@@ -24,6 +25,8 @@ export function CancellationForm({
   outstanding: number;
 }) {
   const router = useRouter();
+  const t = useTranslations("contract.cancellation");
+  const tStatuses = useTranslations("contract.additionalStatuses");
   const [cancelDate, setCancelDate] = useState(initialDate ?? "");
   const [status, setStatus] = useState(findStatus(initialStatus)?.code ?? "");
   const [settlement, setSettlement] = useState(initialSettlement === null ? "" : String(initialSettlement));
@@ -63,11 +66,11 @@ export function CancellationForm({
     <form onSubmit={onSubmit} className="space-y-4">
       {unknownImported && (
         <Alert tone="info">
-          Estado importado del Loan book: <span className="font-semibold">{unknownImported}</span>. Se mantiene salvo que elijas otro.
+          {t("imported", { status: unknownImported })}
         </Alert>
       )}
       <Field
-        label="Fecha de cancelación"
+        label={t("cancelDate")}
         name="cancelDate"
         type="date"
         value={cancelDate}
@@ -79,10 +82,10 @@ export function CancellationForm({
           }
         }}
         error={fieldErrors.cancelDate}
-        hint="Vacío = el contrato sigue vivo hasta su término"
+        hint={t("cancelDateHint")}
       />
       <SelectField
-        label="Estado adicional"
+        label={t("additionalStatus")}
         name="additionalStatus"
         value={status}
         disabled={!cancelDate}
@@ -90,14 +93,14 @@ export function CancellationForm({
           setStatus(e.target.value);
           if (!statusAllowsSettlement(e.target.value)) setSettlement("");
         }}
-        options={ADDITIONAL_STATUSES.map((s) => ({ value: s.code, label: s.legacy ? `${s.label} (heredado)` : s.label }))}
-        placeholder="— Sin estado —"
+        options={ADDITIONAL_STATUSES.map((s) => ({ value: s.code, label: s.legacy ? tStatuses("legacySuffix", { label: tStatuses(`${s.key}.label`) }) : tStatuses(`${s.key}.label`) }))}
+        placeholder={t("noStatus")}
         error={fieldErrors.additionalStatus}
       />
-      {definition && <p className="-mt-2 text-[11px] text-slate-500">{definition.description}</p>}
+      {definition && <p className="-mt-2 text-[11px] text-slate-500">{tStatuses(`${definition.key}.description`)}</p>}
       {allowsSettlement && (
         <Field
-          label="Importe cobrado en la liquidación"
+          label={t("settlement")}
           name="settlementAmount"
           type="number"
           step="0.01"
@@ -106,13 +109,13 @@ export function CancellationForm({
           value={settlement}
           onChange={(e) => setSettlement(e.target.value)}
           error={fieldErrors.settlementAmount}
-          hint={`Sustituye al valor residual en el mes de liquidación. Principal pendiente hoy: ${outstanding.toLocaleString("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })}`}
+          hint={t("settlementHint", { outstanding: outstanding.toLocaleString("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }) })}
         />
       )}
       {error && <Alert tone="error">{error}</Alert>}
-      {saved && <Alert tone="info">Cancelación guardada: el loan book y la cartera se han recalculado.</Alert>}
+      {saved && <Alert tone="info">{t("saved")}</Alert>}
       <Button type="submit" disabled={saving} className="w-full">
-        {saving ? "Guardando…" : "Guardar cancelación"}
+        {saving ? t("saving") : t("save")}
       </Button>
     </form>
   );

@@ -670,8 +670,10 @@ export type Database = {
           active: boolean
           created_at: string
           created_by: string | null
+          language: string
           partner_distributor_id: string | null
           role: Database["public"]["Enums"]["user_role"]
+          theme: string
           updated_at: string
           user_id: string
         }
@@ -679,8 +681,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           created_by?: string | null
+          language?: string
           partner_distributor_id?: string | null
           role: Database["public"]["Enums"]["user_role"]
+          theme?: string
           updated_at?: string
           user_id: string
         }
@@ -688,8 +692,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           created_by?: string | null
+          language?: string
           partner_distributor_id?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          theme?: string
           updated_at?: string
           user_id?: string
         }

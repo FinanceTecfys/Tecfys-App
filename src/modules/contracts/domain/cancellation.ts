@@ -21,9 +21,10 @@
 import { z } from "zod";
 
 export interface AdditionalStatusDefinition {
+  /** The value stored on the contract, as the Loan book writes it. */
   code: string;
-  label: string;
-  description: string;
+  /** Its name and description in the catalogue: contract.additionalStatuses.<key>.{label,description}. */
+  key: "fc" | "gesico" | "cap" | "cac" | "capClaim" | "cs" | "partial" | "cat" | "catClaim" | "b2c" | "nictonCobro";
   /** Gesico: the residual / settlement month is never booked. */
   waivesResidual: boolean;
   /** Early cancellation where an amount is collected to close the contract. */
@@ -32,19 +33,23 @@ export interface AdditionalStatusDefinition {
   legacy?: boolean;
 }
 
+// The codes are data: the values the Loan book stores, kept verbatim (accents and all) so they match on import.
+/* i18n-exempt-start: stored loan-book status codes */
 export const ADDITIONAL_STATUSES: AdditionalStatusDefinition[] = [
-  { code: "FC", label: "FC · Finalización de contrato", description: "El contrato llega a término y el cliente ha pagado todas las cuotas.", waivesResidual: false, allowsSettlement: false },
-  { code: "Gesico", label: "Gesico · Demanda", description: "Impago (habitualmente DPD+90) reclamado por la agencia: no se cobra el residual y el principal pendiente pasa a default.", waivesResidual: true, allowsSettlement: false },
-  { code: "CAP", label: "CAP · Cancelación anticipada partner", description: "El partner avalista liquida el contrato anticipadamente.", waivesResidual: false, allowsSettlement: true },
-  { code: "CAC", label: "CAC · Cancelación anticipada cliente", description: "El cliente liquida anticipadamente toda la deuda.", waivesResidual: false, allowsSettlement: true },
-  { code: "CAP (Reclamación)", label: "CAP (Reclamación)", description: "Cancelación anticipada por el partner tras reclamación.", waivesResidual: false, allowsSettlement: true, legacy: true },
-  { code: "CS", label: "CS", description: "Valor heredado del Loan book; admite importe de liquidación.", waivesResidual: false, allowsSettlement: true, legacy: true },
-  { code: "Cancelacion parcial", label: "Cancelación parcial", description: "Valor heredado del Loan book; admite importe de liquidación.", waivesResidual: false, allowsSettlement: true, legacy: true },
-  { code: "CAT", label: "CAT", description: "Valor heredado del Loan book.", waivesResidual: false, allowsSettlement: false, legacy: true },
-  { code: "CAT (Reclamación)", label: "CAT (Reclamación)", description: "Valor heredado del Loan book.", waivesResidual: false, allowsSettlement: false, legacy: true },
-  { code: "B2C", label: "B2C", description: "Valor heredado del Loan book; excluido del ratio de pérdida en el Summary.", waivesResidual: false, allowsSettlement: false, legacy: true },
-  { code: "Nicton Cobro", label: "Nicton Cobro", description: "Valor heredado del Loan book.", waivesResidual: false, allowsSettlement: false, legacy: true },
+  { code: "FC", key: "fc", waivesResidual: false, allowsSettlement: false },
+  { code: "Gesico", key: "gesico", waivesResidual: true, allowsSettlement: false },
+  { code: "CAP", key: "cap", waivesResidual: false, allowsSettlement: true },
+  { code: "CAC", key: "cac", waivesResidual: false, allowsSettlement: true },
+  { code: "CAP (Reclamación)", key: "capClaim", waivesResidual: false, allowsSettlement: true, legacy: true },
+  { code: "CS", key: "cs", waivesResidual: false, allowsSettlement: true, legacy: true },
+  { code: "Cancelacion parcial", key: "partial", waivesResidual: false, allowsSettlement: true, legacy: true },
+  { code: "CAT", key: "cat", waivesResidual: false, allowsSettlement: false, legacy: true },
+  { code: "CAT (Reclamación)", key: "catClaim", waivesResidual: false, allowsSettlement: false, legacy: true },
+  { code: "B2C", key: "b2c", waivesResidual: false, allowsSettlement: false, legacy: true },
+  { code: "Nicton Cobro", key: "nictonCobro", waivesResidual: false, allowsSettlement: false, legacy: true },
 ];
+
+/* i18n-exempt-end */
 
 const BY_CODE = new Map(ADDITIONAL_STATUSES.map((s) => [s.code.toLowerCase(), s]));
 
@@ -67,17 +72,17 @@ export const cancellationSchema = z
   })
   .superRefine((v, ctx) => {
     if (v.additionalStatus && !v.cancelDate) {
-      ctx.addIssue({ code: "custom", path: ["cancelDate"], message: "Indica la fecha de cancelación para fijar un estado" });
+      ctx.addIssue({ code: "custom", path: ["cancelDate"], message: "validation.cancellation.dateForStatus" });
     }
     if (v.additionalStatus && !findStatus(v.additionalStatus)) {
-      ctx.addIssue({ code: "custom", path: ["additionalStatus"], message: "Estado no reconocido" });
+      ctx.addIssue({ code: "custom", path: ["additionalStatus"], message: "validation.cancellation.unknownStatus" });
     }
     if (v.settlementAmount !== null) {
       if (v.settlementAmount < 0) {
-        ctx.addIssue({ code: "custom", path: ["settlementAmount"], message: "No puede ser negativo" });
+        ctx.addIssue({ code: "custom", path: ["settlementAmount"], message: "validation.cancellation.notNegative" });
       }
       if (!statusAllowsSettlement(v.additionalStatus)) {
-        ctx.addIssue({ code: "custom", path: ["settlementAmount"], message: "Este estado no admite importe de liquidación" });
+        ctx.addIssue({ code: "custom", path: ["settlementAmount"], message: "validation.cancellation.noSettlement" });
       }
     }
   });

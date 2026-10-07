@@ -30,10 +30,11 @@ import type { PortfolioMonth } from "@/modules/contracts/domain/portfolio";
 // Period
 // ---------------------------------------------------------------------------
 
+// A preset's name is a message: dashboard.period.<preset>.
 export const PERIOD_PRESETS = {
-  last12: { label: "Últimos 12 meses", months: 12 },
-  last24: { label: "Últimos 2 años", months: 24 },
-  custom: { label: "Rango personalizado", months: 0 },
+  last12: { label: "dashboard.period.last12", months: 12 },
+  last24: { label: "dashboard.period.last24", months: 24 },
+  custom: { label: "dashboard.period.custom", months: 0 },
 } as const;
 
 export type PeriodPreset = keyof typeof PERIOD_PRESETS;
@@ -180,7 +181,7 @@ export interface GroupOptions {
 export function groupOutstanding(
   rows: readonly LoanBookRowView[],
   dimension: GroupDimension,
-  { limit = 6, emptyLabel = "Sin informar", otherLabel = "Otros" }: GroupOptions = {},
+  { limit = 6, emptyLabel = "common.noValue", otherLabel = "common.others" }: GroupOptions = {},
 ): AggregateSlice[] {
   const groups = new Map<string, { label: string; amount: number; count: number }>();
   for (const r of rows) {

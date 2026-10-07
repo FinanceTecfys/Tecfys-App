@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { FileDown, FileSpreadsheet, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FilterBar, filterBoxClass, FilterCell, filterChipClass, filterSubmitClass } from "@/components/ui/filter-bar";
@@ -19,7 +20,7 @@ import {
   filterLoanBook,
   type GroupFilter,
   hasLoanBookFilters,
-  LOAN_BOOK_SORTS,
+  LOAN_BOOK_SORT_KEYS,
   LOAN_SIZE_BUCKETS,
   type LoanBookQuery,
   loanBookFilterOptions,
@@ -32,23 +33,20 @@ import type { ContractStatus } from "@/modules/contracts/domain/schedule";
 
 export const metadata = { title: "Loan book" };
 
-const STATUSES: { value: ContractStatus | "draft"; label: string }[] = [
-  { value: "Active", label: "Activos" },
-  { value: "On Track", label: "En plazo" },
-  { value: "Extended", label: "Extendidos" },
-  { value: "Finished", label: "Finalizados" },
-  { value: "draft", label: "Borradores" },
-];
+// Labels are messages: loanBook.statusFilter.<value> and loanBook.filters.<label | all>.
+const STATUSES = ["Active", "On Track", "Extended", "Finished", "draft"] as const satisfies readonly (ContractStatus | "draft")[];
 
-const GROUP_SELECTS: { name: GroupFilter; label: string; all: string }[] = [
-  { name: "country", label: "País", all: "Todos los países" },
-  { name: "distributor", label: "Distribuidor", all: "Todos los distribuidores" },
-  { name: "cluster", label: "Grupo de activo", all: "Todos los grupos de activo" },
-];
+const GROUP_SELECTS = [
+  { name: "country", label: "country", all: "allCountries" },
+  { name: "distributor", label: "distributor", all: "allDistributors" },
+  { name: "cluster", label: "cluster", all: "allClusters" },
+] as const satisfies readonly { name: GroupFilter; label: string; all: string }[];
 
 export default async function ContractsPage({ searchParams }: PageProps<"/contracts">) {
   const user = await requireRole("loanBook.view");
   const sp = await searchParams;
+  const t = await getTranslations("loanBook");
+  const tCommon = await getTranslations("common");
   const query = parseLoanBookQuery(toSearchParams(sp));
   const sort = query.sort ?? DEFAULT_SORT;
   const current: LoanBookQuery = { ...query, sort };
@@ -59,7 +57,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
 
   const book = await loadLoanBook({ includeDrafts: true, asOf });
   const rows = book.map(toLoanBookTableRow);
-  const options = loanBookFilterOptions(rows);
+  const options = loanBookFilterOptions(rows, tCommon("noValue"));
   const filtered = sortLoanBook(filterLoanBook(rows, query), sort);
   const filtering = hasLoanBookFilters(query);
   const filteredOutstanding = filtered.reduce((s, r) => s + (r.outstanding ?? 0), 0);
@@ -83,7 +81,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
     <>
       <PageHeader
         title="Loan book"
-        description={`Todos los contratos de renting. Estado, IRR, extensión y principal pendiente calculados ${query.asof ? `a ${fmtDate(asOf.toISOString())}` : "a día de hoy"}.`}
+        description={query.asof ? t("descriptionAsOf", { date: fmtDate(asOf.toISOString()) }) : t("description")}
         actions={
           <>
             <a href={`/contracts/export?${params({ format: "xlsx" })}`} className="inline-flex items-center gap-2 rounded-md border border-ink-600 px-3.5 py-2 text-sm text-slate-200 transition hover:border-mint-500/60">
@@ -96,9 +94,9 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
         }
       />
       <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <Stat interactive label="Contratos firmados" value={signed.length.toLocaleString("es-ES")} hint={`${live.length.toLocaleString("es-ES")} vivos`} />
-        <Stat interactive label="Principal pendiente" value={fmtEur(outstanding)} accent />
-        <Stat interactive label="Borradores / pendientes de firma" value={(rows.length - signed.length).toLocaleString("es-ES")} />
+        <Stat interactive label={t("signedContracts")} value={signed.length.toLocaleString("es-ES")} hint={t("live", { count: live.length.toLocaleString("es-ES") })} />
+        <Stat interactive label={t("outstanding")} value={fmtEur(outstanding)} accent />
+        <Stat interactive label={t("drafts")} value={(rows.length - signed.length).toLocaleString("es-ES")} />
       </div>
 
       <Card bodyClassName="p-0">
@@ -108,19 +106,19 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
               {query.asof && (
                 <span className="inline-flex items-center gap-2 rounded-md border border-mint-500/50 px-2.5 py-1 text-xs text-mint-400">
                   <input type="hidden" name="asof" value={query.asof} />
-                  Cartera a {fmtDate(asOf.toISOString())}
-                  <Link href={hrefWith({ asof: undefined })} aria-label="Ver a día de hoy" className="text-slate-400 hover:text-white">
+                  {t("asOfChip", { date: fmtDate(asOf.toISOString()) })}
+                  <Link href={hrefWith({ asof: undefined })} aria-label={t("viewToday")} className="text-slate-400 hover:text-white">
                     <X className="h-3.5 w-3.5" />
                   </Link>
                 </span>
               )}
               {pageSize !== DEFAULT_PAGE_SIZE && <input type="hidden" name="pageSize" value={pageSize} />}
               <span>
-                {filtered.length.toLocaleString("es-ES")} contratos
+                {t("count", { count: filtered.length })}
                 {filtering && (
                   <>
-                    {" · "}<span className="num text-slate-300">{fmtEur(filteredOutstanding)}</span> pendiente
-                    {query.defaulted && <>{" · "}<span className="num text-red-300">{fmtEur(filteredDefault, 2)}</span> default</>}
+                    {" · "}<span className="num text-slate-300">{fmtEur(filteredOutstanding)}</span> {t("pending")}
+                    {query.defaulted && <>{" · "}<span className="num text-red-300">{fmtEur(filteredDefault, 2)}</span> {t("defaultWord")}</>}
                   </>
                 )}
               </span>
@@ -128,27 +126,28 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
           }
           actions={
             <>
-              {filtering && <Link href={pageSize === DEFAULT_PAGE_SIZE ? "/contracts" : `/contracts?pageSize=${pageSize}`} className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
-              <button className={filterSubmitClass}>Aplicar</button>
+              {filtering && <Link href={pageSize === DEFAULT_PAGE_SIZE ? "/contracts" : `/contracts?pageSize=${pageSize}`} className="text-xs text-slate-400 hover:text-mint-400">{tCommon("actions.clearFilters")}</Link>}
+              <button className={filterSubmitClass}>{tCommon("actions.apply")}</button>
             </>
           }
         >
           <FilterCell wide>
-            <input name="q" defaultValue={q} placeholder="Buscar por cliente, CIF, nº contrato, distribuidor, país…" className={inputClass} aria-label="Buscar" />
+            <input name="q" defaultValue={q} placeholder={t("filters.searchPlaceholder")} className={inputClass} aria-label={t("filters.search")} />
           </FilterCell>
           <FilterCell>
-            <select name="status" defaultValue={status} className={inputClass} aria-label="Estado">
-              <option value="">Todos los estados</option>
-              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            <select name="status" defaultValue={status} className={inputClass} aria-label={t("filters.status")}>
+              <option value="">{t("filters.allStatuses")}</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{t(`statusFilter.${s}`)}</option>)}
             </select>
           </FilterCell>
           <FilterCell>
-            <select name="client" defaultValue={query.client ?? ""} className={inputClass} aria-label="Cliente">
-              <option value="">Todos los clientes</option>
+            <select name="client" defaultValue={query.client ?? ""} className={inputClass} aria-label={t("filters.client")}>
+              <option value="">{t("filters.allClients")}</option>
               {options.client.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </FilterCell>
-          {GROUP_SELECTS.map(({ name, label, all }) => {
+          {GROUP_SELECTS.map(({ name, label: labelKey, all }) => {
+            const label = t(`filters.${labelKey}`);
             const values = query[name] ?? [];
             // Several values only arrive from a drill-down into "Otros": kept as a chip.
             if (values.length > 1) {
@@ -156,8 +155,8 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
                 <FilterCell key={name}>
                   <span className={filterChipClass}>
                     {values.map((v) => <input key={v} type="hidden" name={name} value={v} />)}
-                    <span className="truncate">{label}: Otros ({values.length})</span>
-                    <Link href={hrefWith({ [name]: [] })} aria-label={`Quitar filtro ${label.toLowerCase()}`} className="text-slate-400 hover:text-white">
+                    <span className="truncate">{t("filters.others", { label, count: values.length })}</span>
+                    <Link href={hrefWith({ [name]: [] })} aria-label={t("filters.removeFilter", { label })} className="text-slate-400 hover:text-white">
                       <X className="h-3.5 w-3.5" />
                     </Link>
                   </span>
@@ -167,41 +166,41 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
             return (
               <FilterCell key={name}>
                 <select name={name} defaultValue={values[0] ?? ""} className={inputClass} aria-label={label}>
-                  <option value="">{all}</option>
+                  <option value="">{t(`filters.${all}`)}</option>
                   {options[name].map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </FilterCell>
             );
           })}
           <FilterCell>
-            <select name="size" defaultValue={query.size ?? ""} className={inputClass} aria-label="Tamaño por principal pendiente">
-              <option value="">Todos los tamaños</option>
-              {LOAN_SIZE_BUCKETS.map((b) => <option key={b.key} value={b.key}>Pendiente {b.label}</option>)}
+            <select name="size" defaultValue={query.size ?? ""} className={inputClass} aria-label={t("filters.size")}>
+              <option value="">{t("filters.allSizes")}</option>
+              {LOAN_SIZE_BUCKETS.map((b) => <option key={b.key} value={b.key}>{t("filters.sizeOption", { range: b.label })}</option>)}
             </select>
           </FilterCell>
           <FilterCell wide>
             <label className={`${filterBoxClass} py-0 pr-1 text-slate-400`}>
-              <span className="shrink-0">Default en</span>
+              <span className="shrink-0">{t("filters.defaultIn")}</span>
               <input
                 type="month"
                 name="defaulted"
                 defaultValue={query.defaulted ?? ""}
                 className="min-w-0 flex-1 bg-transparent py-2 text-sm text-slate-100 outline-none"
-                aria-label="Default en el mes"
+                aria-label={t("filters.defaultInAria")}
               />
             </label>
           </FilterCell>
           <FilterCell>
-            <select name="sort" defaultValue={sort} className={inputClass} aria-label="Ordenar por">
-              {Object.entries(LOAN_BOOK_SORTS).map(([value, { label }]) => (
-                <option key={value} value={value}>{label}</option>
+            <select name="sort" defaultValue={sort} className={inputClass} aria-label={t("filters.sortBy")}>
+              {LOAN_BOOK_SORT_KEYS.map((value) => (
+                <option key={value} value={value}>{t(`sorts.${value}`)}</option>
               ))}
             </select>
           </FilterCell>
           <FilterCell>
             <label className={filterBoxClass}>
               <input type="checkbox" name="pending" value="1" defaultChecked={query.pending} className="h-4 w-4 shrink-0 accent-mint-500" />
-              <span className="truncate" title="Solo con principal pendiente">Solo con principal pendiente</span>
+              <span className="truncate" title={t("filters.onlyPending")}>{t("filters.onlyPending")}</span>
             </label>
           </FilterCell>
         </FilterBar>
@@ -210,7 +209,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/contra
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <PageSizeSelect value={pageSize} options={PAGE_SIZES.map((size) => ({ size, href: `/contracts?${params(sizeParam(size))}` }))} />
             <span className="num" aria-live="polite">
-              {paging.from.toLocaleString("es-ES")}–{paging.to.toLocaleString("es-ES")} de {paging.total.toLocaleString("es-ES")}
+              {tCommon("pagination.range", { from: paging.from.toLocaleString("es-ES"), to: paging.to.toLocaleString("es-ES"), total: paging.total.toLocaleString("es-ES") })}
             </span>
           </div>
           <Pagination items={paging.items} page={paging.page} pages={paging.pages} hrefFor={pageHref} />

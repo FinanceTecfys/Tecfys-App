@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { type AuthIdentity, createGuards } from "@/lib/auth/guard";
+import { LOCALE_COOKIE } from "@/i18n/config";
 import { serverEnv } from "@/lib/env";
+import { resolvePreferences, type UserPreferences } from "@/lib/theme";
 import { readProfile } from "./profile";
 import { db } from "./server";
 
@@ -38,11 +40,23 @@ async function identity(): Promise<AuthIdentity | null> {
 }
 
 // cache(): the layout, the page and its data functions share one lookup per request.
-const guards = createGuards({
-  identity: cache(identity),
-  profile: cache((userId: string) => readProfile(db(), userId)),
-  redirect,
-});
+const cachedIdentity = cache(identity);
+const cachedProfile = cache((userId: string) => readProfile(db(), userId));
+const guards = createGuards({ identity: cachedIdentity, profile: cachedProfile, redirect });
+
+/**
+ * The language and theme mode of this request: the signed-in user's stored
+ * preferences, and for the pages shown before signing in the language last
+ * chosen on this browser (a plain cookie), else the defaults. Never redirects
+ * and never denies - it only decides how the page is rendered - and shares the
+ * guards' per-request lookups, so it costs no extra query.
+ */
+export async function currentPreferences(): Promise<UserPreferences> {
+  const cookieLanguage = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const who = await cachedIdentity();
+  const profile = who ? await cachedProfile(who.id) : null;
+  return resolvePreferences(profile, cookieLanguage);
+}
 
 /**
  * Guards for every page, Server Action and route handler (logic and tests in

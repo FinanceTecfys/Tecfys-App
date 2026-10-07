@@ -1,7 +1,10 @@
 /**
- * Login input and the messages shown back. Pure, so the "never reveal whether
+ * Login input and the errors shown back. Pure, so the "never reveal whether
  * the email exists" rule is unit-tested: every credential-related failure maps
- * to the same message.
+ * to the same error.
+ *
+ * An error is a message key (auth.login.errors.<key>): the server action
+ * translates it into the active language before it reaches the form.
  */
 import { z } from "zod";
 
@@ -11,25 +14,23 @@ export const signInSchema = z.object({
   next: z.string().optional(),
 });
 
-export const SIGN_IN_MESSAGES = {
-  invalid: "Email o contraseña incorrectos.",
-  rateLimited: "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
-  unavailable: "No se pudo iniciar sesión. Inténtalo de nuevo más tarde.",
-} as const;
+export const SIGN_IN_ERRORS = ["invalid", "rateLimited", "unavailable"] as const;
+export type SignInError = (typeof SIGN_IN_ERRORS)[number];
 
 /**
- * Map a Supabase Auth error to what the user sees. Unknown users, wrong
+ * Map a Supabase Auth error to what the user is told. Unknown users, wrong
  * passwords, unconfirmed or banned accounts all read the same, so the screen
  * never tells whether an account exists.
  */
-export function signInErrorMessage(error: { status?: number; code?: string } | null | undefined): string {
-  if (!error) return SIGN_IN_MESSAGES.invalid;
-  if (error.status === 429 || error.code === "over_request_rate_limit") return SIGN_IN_MESSAGES.rateLimited;
-  if (error.status !== undefined && error.status >= 500) return SIGN_IN_MESSAGES.unavailable;
-  return SIGN_IN_MESSAGES.invalid;
+export function signInErrorKey(error: { status?: number; code?: string } | null | undefined): SignInError {
+  if (!error) return "invalid";
+  if (error.status === 429 || error.code === "over_request_rate_limit") return "rateLimited";
+  if (error.status !== undefined && error.status >= 500) return "unavailable";
+  return "invalid";
 }
 
 export interface SignInState {
+  /** Already translated by the server action. */
   error: string | null;
   /** Echoed back so the email field keeps its value after a failure (never the password). */
   email: string;

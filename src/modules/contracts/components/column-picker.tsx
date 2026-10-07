@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Columns3 } from "lucide-react";
 
 /**
@@ -21,6 +22,7 @@ export function ColumnPicker({
   onReset: () => void;
   canReset: boolean;
 }) {
+  const t = useTranslations("loanBook.columnPicker");
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -53,19 +55,19 @@ export function ColumnPicker({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        aria-label="Elegir columnas"
-        title="Elegir columnas"
+        aria-label={t("choose")}
+        title={t("choose")}
         className="inline-flex items-center gap-2 rounded-md border border-ink-600 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-mint-500/60 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint-500"
       >
         <Columns3 className="h-4 w-4" aria-hidden />
-        Columnas
+        {t("button")}
         <span className="num text-slate-500">{visible.length}/{columns.length}</span>
       </button>
       {open && (
         <div
           id={panelId}
           role="group"
-          aria-label="Columnas visibles"
+          aria-label={t("visible")}
           className="absolute right-0 z-20 mt-2 w-64 rounded-lg border border-ink-600 bg-ink-900 shadow-xl shadow-black/40"
         >
           <ul className="max-h-80 overflow-y-auto p-2">
@@ -85,9 +87,9 @@ export function ColumnPicker({
             ))}
           </ul>
           <div className="flex items-center justify-between gap-3 border-t border-ink-700 px-4 py-2 text-xs">
-            <span className="text-slate-500">Se guarda en este navegador</span>
+            <span className="text-slate-500">{t("savedHere")}</span>
             <button type="button" onClick={onReset} disabled={!canReset} className="text-mint-400 hover:underline disabled:text-slate-600 disabled:no-underline">
-              Restablecer
+              {t("reset")}
             </button>
           </div>
         </div>

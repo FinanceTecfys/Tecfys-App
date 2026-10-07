@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Card } from "@/components/ui/card";
 import { inputClass, Label } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
@@ -10,29 +12,36 @@ import { loadLoanBook } from "@/modules/contracts/data";
 import { monthKey, monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { buildPortfolio, type PortfolioMonth } from "@/modules/contracts/domain/portfolio";
 
-export const metadata = { title: "Cartera / Waterfall" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("portfolio"))("title") };
+}
 
-type Row = { label: string; get: (m: PortfolioMonth) => number | null; format?: "eur" | "pct" | "int"; strong?: boolean; muted?: boolean; ref?: string };
+/** `label` is the key of the concept's name: portfolio.rows.<label>. */
+type Row = { label: RowKey; get: (m: PortfolioMonth) => number | null; format?: "eur" | "pct" | "int"; strong?: boolean; muted?: boolean; ref?: string };
+
+type RowKey =
+  | "installments" | "interest" | "principal" | "newContracts" | "newPrincipal" | "newInterest" | "openingPrincipal" | "defaults"
+  | "closingPrincipal" | "closingInterest" | "liveContracts" | "weightedIrr" | "cumulativeDefaults" | "cumulativeLossRate" | "reconciliation";
 
 const ROWS: (Row | "sep")[] = [
-  { label: "Cuotas facturadas", get: (m) => m.installments, strong: true, ref: "4" },
-  { label: "Interés", get: (m) => m.interest, ref: "5" },
-  { label: "Principal cobrado", get: (m) => m.principal, ref: "6" },
+  { label: "installments", get: (m) => m.installments, strong: true, ref: "4" },
+  { label: "interest", get: (m) => m.interest, ref: "5" },
+  { label: "principal", get: (m) => m.principal, ref: "6" },
   "sep",
-  { label: "Nuevos contratos", get: (m) => m.newContracts, format: "int" },
-  { label: "Principal originado", get: (m) => m.newPrincipal, ref: "15" },
-  { label: "Interés de los nuevos contratos", get: (m) => m.newInterest, ref: "14" },
+  { label: "newContracts", get: (m) => m.newContracts, format: "int" },
+  { label: "newPrincipal", get: (m) => m.newPrincipal, ref: "15" },
+  { label: "newInterest", get: (m) => m.newInterest, ref: "14" },
   "sep",
-  { label: "Principal pendiente — apertura", get: (m) => m.openingPrincipal, ref: "11" },
-  { label: "Default DPD+90 (baja de principal)", get: (m) => -m.defaults, ref: "22" },
-  { label: "Principal pendiente — cierre", get: (m) => m.closingPrincipal, strong: true, ref: "28" },
-  { label: "Interés pendiente — cierre", get: (m) => m.closingInterest },
-  { label: "Contratos vivos", get: (m) => m.liveContracts, format: "int" },
-  { label: "IRR anualizada ponderada", get: (m) => m.weightedAnnualIrr, format: "pct" },
+  { label: "openingPrincipal", get: (m) => m.openingPrincipal, ref: "11" },
+  { label: "defaults", get: (m) => -m.defaults, ref: "22" },
+  { label: "closingPrincipal", get: (m) => m.closingPrincipal, strong: true, ref: "28" },
+  { label: "closingInterest", get: (m) => m.closingInterest },
+  { label: "liveContracts", get: (m) => m.liveContracts, format: "int" },
+  { label: "weightedIrr", get: (m) => m.weightedAnnualIrr, format: "pct" },
   "sep",
-  { label: "Default acumulado", get: (m) => m.cumulativeDefaults, ref: "23" },
-  { label: "Loss rate acumulado (s/ originado)", get: (m) => m.cumulativeLossRate, format: "pct", ref: "45" },
-  { label: "Control: roll-forward − contratos", get: (m) => m.reconciliationDiff, muted: true, ref: "30" },
+  { label: "cumulativeDefaults", get: (m) => m.cumulativeDefaults, ref: "23" },
+  { label: "cumulativeLossRate", get: (m) => m.cumulativeLossRate, format: "pct", ref: "45" },
+  { label: "reconciliation", get: (m) => m.reconciliationDiff, muted: true, ref: "30" },
 ];
 
 function cell(value: number | null, format: Row["format"]) {
@@ -46,6 +55,7 @@ function cell(value: number | null, format: Row["format"]) {
 export default async function PortfolioPage({ searchParams }: PageProps<"/portfolio">) {
   await requireRole("waterfall.view");
   const sp = await searchParams;
+  const t = await getTranslations("portfolio");
   const asOfParam = typeof sp.asOf === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : null;
   const asOf = asOfParam ? new Date(`${asOfParam}T00:00:00Z`) : new Date();
   const year = Number(sp.year) || asOf.getUTCFullYear();
@@ -67,32 +77,32 @@ export default async function PortfolioPage({ searchParams }: PageProps<"/portfo
   return (
     <>
       <PageHeader
-        title="Cartera / Waterfall"
-        description="Réplica de la pestaña Summary del Borrowing Base: cobros, originación, default y roll-forward del principal pendiente."
+        title={t("title")}
+        description={t("description")}
         actions={
           <form className="flex items-end gap-2">
             <input type="hidden" name="year" value={year} />
             <div>
-              <Label htmlFor="asOf">Fecha de cálculo</Label>
+              <Label htmlFor="asOf">{t("asOf")}</Label>
               <input id="asOf" name="asOf" type="date" defaultValue={asOfParam ?? asOf.toISOString().slice(0, 10)} className={inputClass} />
             </div>
-            <button className="rounded-md border border-ink-600 px-3 py-2 text-sm text-slate-200 hover:border-mint-500/60">Recalcular</button>
+            <button className="rounded-md border border-ink-600 px-3 py-2 text-sm text-slate-200 hover:border-mint-500/60">{t("recalculate")}</button>
           </form>
         }
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
-        <Stat label={`Principal pendiente ${fmtMonthKey(currentKey)}`} value={fmtEur(current?.closingPrincipal)} accent />
-        <Stat label="Cobros últimos 12 meses" value={fmtEur(ltmCollections)} />
-        <Stat label="Default últimos 12 meses" value={fmtEur(ltmDefaults)} hint={current ? `acumulado ${fmtEur(current.cumulativeDefaults)}` : undefined} />
-        <Stat label="Loss rate acumulado" value={fmtPct(current?.cumulativeLossRate)} hint="default / principal originado" />
+        <Stat label={t("kpi.outstanding", { month: fmtMonthKey(currentKey) })} value={fmtEur(current?.closingPrincipal)} accent />
+        <Stat label={t("kpi.collections12")} value={fmtEur(ltmCollections)} />
+        <Stat label={t("kpi.defaults12")} value={fmtEur(ltmDefaults)} hint={current ? t("kpi.cumulative", { amount: fmtEur(current.cumulativeDefaults) }) : undefined} />
+        <Stat label={t("kpi.lossRate")} value={fmtPct(current?.cumulativeLossRate)} hint={t("kpi.lossRateHint")} />
       </div>
 
       <Card
-        title={`Summary ${year}`}
-        subtitle={`${book.length.toLocaleString("es-ES")} contratos firmados · control de cuadre máx. ${maxDiff.toExponential(1)} €`}
+        title={t("summaryTitle", { year })}
+        subtitle={t("summarySubtitle", { count: book.length.toLocaleString("es-ES"), diff: maxDiff.toExponential(1) })}
         action={
-          <nav className="flex flex-wrap gap-1" aria-label="Año">
+          <nav className="flex flex-wrap gap-1" aria-label={t("year")}>
             {years.map((y) => (
               <Link key={y} href={query(y)} className={cn("rounded px-2 py-1 text-xs num", y === year ? "bg-mint-500/15 text-mint-400" : "text-slate-400 hover:text-slate-100")}>
                 {y}
@@ -106,7 +116,7 @@ export default async function PortfolioPage({ searchParams }: PageProps<"/portfo
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-ink-900 px-4 py-2 text-left text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">Concepto</th>
+                <th className="sticky left-0 z-10 bg-ink-900 px-4 py-2 text-left text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">{t("concept")}</th>
                 {shown.map((m) => (
                   <th key={m.key} className={cn("num px-3 py-2 text-right text-[11px] font-medium uppercase text-slate-400", m.key === currentKey && "text-mint-400")}>
                     {fmtMonthKey(m.key)}
@@ -121,8 +131,8 @@ export default async function PortfolioPage({ searchParams }: PageProps<"/portfo
                 ) : (
                   <tr key={row.label} className="hover:bg-ink-800/40">
                     <td className={cn("sticky left-0 z-10 whitespace-nowrap bg-ink-900 px-4 py-1.5", row.strong ? "font-semibold text-slate-100" : "text-slate-300", row.muted && "text-slate-500")}>
-                      {row.label}
-                      {row.ref && <span className="ml-2 text-[10px] text-slate-600">fila {row.ref}</span>}
+                      {t(`rows.${row.label}`)}
+                      {row.ref && <span className="ml-2 text-[10px] text-slate-600">{t("row", { ref: row.ref })}</span>}
                     </td>
                     {shown.map((m) => (
                       <td key={m.key} className={cn("num whitespace-nowrap px-3 py-1.5 text-right", row.strong ? "font-semibold text-slate-100" : "text-slate-300", row.muted && "text-slate-600", m.key === currentKey && "bg-mint-500/5")}>

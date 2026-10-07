@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslate } from "@/i18n/server";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import { erpSettingsSchema, type ErpSettingsInput } from "./domain/settings";
@@ -11,14 +12,14 @@ import { runApiSync } from "./sync";
 
 export type ErpResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
-const NO_KEY = "Falta HOLDED_API_KEY en el entorno del servidor (.env.local)";
+const NO_KEY = "erp.errors.noKey";
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Pull sales invoices and credit notes from Holded and upsert them by Num. */
 export async function syncHolded(): Promise<ErpResult<{ counts: SyncCounts; messages: string[] }>> {
   const user = await requireRole("erp.sync");
-  if (!isHoldedConfigured()) return { ok: false, error: NO_KEY };
+  if (!isHoldedConfigured()) return { ok: false, error: (await getTranslate())(NO_KEY) };
   try {
     const settings = await readErpSettings(db());
     const result = await runApiSync({
@@ -36,7 +37,7 @@ export async function syncHolded(): Promise<ErpResult<{ counts: SyncCounts; mess
 /** "Probar conexión": one authenticated, one-item call to the invoice list. */
 export async function testHoldedConnection(): Promise<ErpResult<{ ms: number }>> {
   await requireRole("settings.access");
-  if (!isHoldedConfigured()) return { ok: false, error: NO_KEY };
+  if (!isHoldedConfigured()) return { ok: false, error: (await getTranslate())(NO_KEY) };
   try {
     const settings = await readErpSettings(db());
     const started = Date.now();
@@ -50,7 +51,7 @@ export async function testHoldedConnection(): Promise<ErpResult<{ ms: number }>>
 export async function saveErpSettings(input: ErpSettingsInput): Promise<ErpResult> {
   await requireRole("settings.access");
   const parsed = erpSettingsSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!parsed.success) return { ok: false, error: (await getTranslate())(parsed.error.issues[0].message) };
   const { error } = await db().from("erp_settings").upsert({ id: true, ...parsed.data }, { onConflict: "id" });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
