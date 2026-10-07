@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { Check, Plus, X } from "lucide-react";
 import { inputClass, Label } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ export function CatalogSelect({
   onChange,
   onCreate,
   disabled = false,
-  placeholder = "— Selecciona —",
+  placeholder,
   error,
   createExtra,
 }: {
@@ -39,6 +40,7 @@ export function CatalogSelect({
   /** Extra input rendered next to the name while creating (e.g. cluster for asset types). */
   createExtra?: React.ReactNode;
 }) {
+  const t = useTranslations("operation.catalog");
   const [items, setItems] = useState(options);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -77,13 +79,13 @@ export function CatalogSelect({
                 }
                 if (e.key === "Escape") setAdding(false);
               }}
-              placeholder="Nombre"
+              placeholder={t("name")}
               className={cn(inputClass, "border-mint-500")}
             />
-            <button type="button" onClick={submit} disabled={pending} aria-label="Guardar" className="rounded-md bg-mint-500 px-3 text-ink-950 hover:bg-mint-400 disabled:opacity-50">
+            <button type="button" onClick={submit} disabled={pending} aria-label={t("save")} className="rounded-md bg-mint-500 px-3 text-ink-950 hover:bg-mint-400 disabled:opacity-50">
               <Check className="h-4 w-4" />
             </button>
-            <button type="button" onClick={() => setAdding(false)} aria-label="Cancelar" className="rounded-md border border-ink-700 px-3 text-slate-400 hover:text-white">
+            <button type="button" onClick={() => setAdding(false)} aria-label={t("cancel")} className="rounded-md border border-ink-700 px-3 text-slate-400 hover:text-white">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -92,7 +94,7 @@ export function CatalogSelect({
       ) : (
         <div className="flex gap-1">
           <select id={name} name={name} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} disabled={disabled} className={inputClass}>
-            <option value="">{placeholder}</option>
+            <option value="">{placeholder ?? t("select")}</option>
             {items.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -103,8 +105,8 @@ export function CatalogSelect({
             <button
               type="button"
               onClick={() => setAdding(true)}
-              aria-label={`Crear ${label.toLowerCase()}`}
-              title={`Crear ${label.toLowerCase()}`}
+              aria-label={t("create", { label })}
+              title={t("create", { label })}
               className="rounded-md border border-mint-500/50 px-3 text-mint-400 transition hover:border-mint-500 hover:bg-mint-500/10"
             >
               <Plus className="h-4 w-4" />

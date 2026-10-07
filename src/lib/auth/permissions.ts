@@ -17,12 +17,7 @@ export const isRole = (value: unknown): value is Role => typeof value === "strin
 /** The root role belongs to this account: exactly one owner, never deleted or demoted. */
 export const OWNER_EMAIL = "finance@tecfys.com";
 
-export const ROLE_LABELS: Record<Role, string> = {
-  owner: "Owner",
-  admin: "Administrador",
-  sales: "Comercial",
-  partner: "Partner",
-};
+// A role's name is a message: common.roles.<role>.
 
 const EVERYONE: readonly Role[] = ROLES;
 const TECFYS: readonly Role[] = ["owner", "admin", "sales"];

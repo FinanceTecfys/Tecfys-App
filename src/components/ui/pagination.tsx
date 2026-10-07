@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PageItem } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,7 @@ const link = "border-ink-600 text-slate-300 hover:border-mint-500/60 hover:text-
  * page lives in the URL and works with the keyboard and without JavaScript.
  * The buttons come from paginate() in src/lib/pagination.ts.
  */
-export function Pagination({
+export async function Pagination({
   items,
   page,
   pages,
@@ -24,6 +25,7 @@ export function Pagination({
   hrefFor: (page: number) => string;
   className?: string;
 }) {
+  const t = await getTranslations("common.pagination");
   const step = (target: number, label: string, icon: React.ReactNode) =>
     target >= 1 && target <= pages ? (
       <Link href={hrefFor(target)} aria-label={label} title={label} className={cn(cell, link)}>{icon}</Link>
@@ -32,25 +34,25 @@ export function Pagination({
     );
 
   return (
-    <nav aria-label="Paginación" className={className}>
+    <nav aria-label={t("ariaLabel")} className={className}>
       <ul className="flex flex-wrap items-center gap-1">
-        <li>{step(page - 1, "Página anterior", <ChevronLeft className="h-4 w-4" aria-hidden />)}</li>
+        <li>{step(page - 1, t("previous"), <ChevronLeft className="h-4 w-4" aria-hidden />)}</li>
         {items.map((item) =>
           item.type === "ellipsis" ? (
             <li key={item.key} aria-hidden className="num px-1 text-slate-500">…</li>
           ) : (
             <li key={item.page}>
               {item.current ? (
-                <span aria-current="page" aria-label={`Página ${item.page}, actual`} className={cn(cell, "num border-mint-500 bg-mint-500/10 font-semibold text-mint-400")}>
+                <span aria-current="page" aria-label={t("currentPage", { page: item.page })} className={cn(cell, "num border-mint-500 bg-mint-500/10 font-semibold text-mint-400")}>
                   {item.page}
                 </span>
               ) : (
-                <Link href={hrefFor(item.page)} aria-label={`Página ${item.page}`} className={cn(cell, link, "num")}>{item.page}</Link>
+                <Link href={hrefFor(item.page)} aria-label={t("page", { page: item.page })} className={cn(cell, link, "num")}>{item.page}</Link>
               )}
             </li>
           ),
         )}
-        <li>{step(page + 1, "Página siguiente", <ChevronRight className="h-4 w-4" aria-hidden />)}</li>
+        <li>{step(page + 1, t("next"), <ChevronRight className="h-4 w-4" aria-hidden />)}</li>
       </ul>
     </nav>
   );

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { inputClass } from "@/components/ui/field";
@@ -23,15 +24,17 @@ function Money({ value }: { value: number | null }) {
 export default async function ErpPage({ searchParams }: PageProps<"/erp">) {
   await requireRole("erp.view");
   const query = parseErpQuery(await searchParams);
+  const t = await getTranslations("erp");
+  const tCommon = await getTranslations("common");
   const [{ rows, count }, run] = await Promise.all([listHoldedInvoices(query), lastSyncRun()]);
   const pages = Math.max(1, Math.ceil(count / ERP_PAGE_SIZE));
   const filtering = Boolean(query.q || query.status);
 
   return (
     <>
-      <PageHeader title="ERP · Holded" description="Facturas de venta y abonos sincronizados desde Holded, con las mismas columnas que su exportación de ventas." />
+      <PageHeader title={t("title")} description={t("description")} />
 
-      <Card title="Sincronización" className="mb-6">
+      <Card title={t("syncTitle")} className="mb-6">
         <SyncPanel
           configured={isHoldedConfigured()}
           lastRun={
@@ -50,26 +53,26 @@ export default async function ErpPage({ searchParams }: PageProps<"/erp">) {
 
       <Card bodyClassName="p-0">
         <form className="flex flex-wrap gap-3 border-b border-ink-700 p-4" role="search">
-          <input name="q" defaultValue={query.q} placeholder="Buscar por nº, cliente, descripción o tag…" className={`${inputClass} max-w-sm`} aria-label="Buscar" />
-          <select name="status" defaultValue={query.status ?? ""} className={`${inputClass} w-44`} aria-label="Estado">
-            <option value="">Todos los estados</option>
+          <input name="q" defaultValue={query.q} placeholder={t("searchPlaceholder")} className={`${inputClass} max-w-sm`} aria-label={tCommon("actions.search")} />
+          <select name="status" defaultValue={query.status ?? ""} className={`${inputClass} w-44`} aria-label={t("status")}>
+            <option value="">{t("allStatuses")}</option>
             {HOLDED_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <button className="rounded-md border border-ink-600 px-4 text-sm text-slate-200 hover:border-mint-500/60">Buscar</button>
-          {filtering && <Link href="/erp" className="self-center text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
-          <span className="ml-auto self-center text-xs text-slate-500">{count.toLocaleString("es-ES")} documentos</span>
+          <button className="rounded-md border border-ink-600 px-4 text-sm text-slate-200 hover:border-mint-500/60">{tCommon("actions.search")}</button>
+          {filtering && <Link href="/erp" className="self-center text-xs text-slate-400 hover:text-mint-400">{tCommon("actions.clearFilters")}</Link>}
+          <span className="ml-auto self-center text-xs text-slate-500">{t("documents", { count: count.toLocaleString("es-ES") })}</span>
         </form>
         <Table>
           <thead>
             <tr>
-              {HOLDED_COLUMNS.map((c) => <Th key={c.key} right={c.kind === "money"}>{c.label}</Th>)}
+              {HOLDED_COLUMNS.map((c) => <Th key={c.key} right={c.kind === "money"}>{t(`columns.${c.key}`)}</Th>)}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
                 <td colSpan={HOLDED_COLUMNS.length} className="border-b border-ink-800 px-3 py-8 text-center text-sm text-slate-500">
-                  {filtering ? "Ningún documento coincide con la búsqueda." : "Sin documentos: sincroniza con Holded o importa su Excel."}
+                  {filtering ? t("noMatch") : t("empty")}
                 </td>
               </tr>
             )}
@@ -94,11 +97,11 @@ export default async function ErpPage({ searchParams }: PageProps<"/erp">) {
             ))}
           </tbody>
         </Table>
-        <nav className="flex items-center justify-between p-4 text-sm text-slate-400" aria-label="Paginación">
-          <span>Página {Math.min(query.page, pages)} de {pages}</span>
+        <nav className="flex items-center justify-between p-4 text-sm text-slate-400" aria-label={tCommon("pagination.ariaLabel")}>
+          <span>{tCommon("pagination.pageOf", { page: Math.min(query.page, pages), pages })}</span>
           <div className="flex gap-2">
-            {query.page > 1 && <Link href={`/erp?${erpSearch(query, { page: query.page - 1 })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Anterior</Link>}
-            {query.page < pages && <Link href={`/erp?${erpSearch(query, { page: query.page + 1 })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Siguiente</Link>}
+            {query.page > 1 && <Link href={`/erp?${erpSearch(query, { page: query.page - 1 })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">{tCommon("pagination.previousShort")}</Link>}
+            {query.page < pages && <Link href={`/erp?${erpSearch(query, { page: query.page + 1 })}`} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">{tCommon("pagination.nextShort")}</Link>}
           </div>
         </nav>
       </Card>

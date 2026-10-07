@@ -177,7 +177,7 @@ export interface FilterOption {
 }
 
 /** Choices of the loan-book filter selects, from the rows themselves (label = first spelling seen). */
-export function loanBookFilterOptions(rows: readonly LoanBookRowView[], emptyLabel = "Sin informar") {
+export function loanBookFilterOptions(rows: readonly LoanBookRowView[], emptyLabel = "common.noValue") {
   const collect = (key: (r: LoanBookRowView) => string, label: (r: LoanBookRowView) => string): FilterOption[] => {
     const seen = new Map<string, string>();
     for (const r of rows) {
@@ -195,6 +195,12 @@ export function loanBookFilterOptions(rows: readonly LoanBookRowView[], emptyLab
   };
 }
 
+/**
+ * The sorts of the listing. On screen each is named by its message
+ * (loanBook.sorts.<key>); `label` is the Spanish name the exports print in
+ * their header, which stay in Spanish whatever the user's language.
+ */
+/* i18n-exempt-start: Spanish labels of the fixed-Spanish Excel / PDF exports */
 export const LOAN_BOOK_SORTS = {
   signing_desc: { label: "Firma (recientes primero)", compare: (a: LoanBookRowView, b: LoanBookRowView) => b.signingDate.localeCompare(a.signingDate) },
   signing_asc: { label: "Firma (antiguos primero)", compare: (a: LoanBookRowView, b: LoanBookRowView) => a.signingDate.localeCompare(b.signingDate) },
@@ -204,6 +210,8 @@ export const LOAN_BOOK_SORTS = {
   default_desc: { label: "Default (mayor primero)", compare: (a: LoanBookRowView, b: LoanBookRowView) => (a.defaultAmount ?? 0) - (b.defaultAmount ?? 0) },
   cancel_desc: { label: "Cancelación (recientes primero)", compare: (a: LoanBookRowView, b: LoanBookRowView) => (b.cancelDate ?? "").localeCompare(a.cancelDate ?? "") },
 } as const;
+
+/* i18n-exempt-end */
 
 export type LoanBookSort = keyof typeof LOAN_BOOK_SORTS;
 export const DEFAULT_SORT: LoanBookSort = "signing_desc";
@@ -230,7 +238,8 @@ export interface ExportColumn {
   value: (row: LoanBookRowView) => ExportValue;
 }
 
-/** One definition per column, used by both the Excel and the PDF export. */
+/** One definition per column, used by both the Excel and the PDF export (headers fixed in Spanish). */
+/* i18n-exempt-start: column headers of the fixed-Spanish Excel / PDF exports */
 export const EXPORT_COLUMNS: ExportColumn[] = [
   { key: "contractNumber", header: "Contrato", type: "text", width: 14, value: (r) => r.contractNumber },
   { key: "loanBookRef", header: "Ref. Loan book", type: "text", width: 14, value: (r) => r.loanBookRef },
@@ -254,6 +263,8 @@ export const EXPORT_COLUMNS: ExportColumn[] = [
   { key: "outstanding", header: "Principal pendiente", type: "money", width: 16, value: (r) => r.outstanding },
   { key: "defaultAmount", header: "Default (BD)", type: "money", width: 13, value: (r) => r.defaultAmount },
 ];
+
+/* i18n-exempt-end */
 
 /** Totals row: only the money columns that make sense to add up. */
 export const EXPORT_TOTAL_COLUMNS = ["cost", "outstanding", "settlementAmount", "defaultAmount"] as const;

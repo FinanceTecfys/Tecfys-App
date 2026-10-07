@@ -18,9 +18,9 @@ export const erpSettingsSchema = z.object({
     .string()
     .trim()
     .transform((v) => v.replace(/\/+$/, ""))
-    .refine(isHoldedHost, "La URL debe ser https y de un dominio holded.com"),
+    .refine(isHoldedHost, "validation.erp.holdedUrl"),
   include_credit_notes: z.boolean(),
-  sync_lookback_days: z.coerce.number().int("Días enteros").min(0, "Mínimo 0").max(365, "Máximo 365"),
+  sync_lookback_days: z.coerce.number().int("validation.erp.wholeDays").min(0, "validation.erp.min0").max(365, "validation.erp.max365"),
 });
 
 export type ErpSettingsInput = z.input<typeof erpSettingsSchema>;

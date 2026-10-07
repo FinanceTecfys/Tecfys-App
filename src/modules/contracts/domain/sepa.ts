@@ -61,13 +61,14 @@ export function validateIban(raw: string): { ok: true; iban: string } | { ok: fa
   return { ok: true, iban };
 }
 
+/** The message of each IBAN error, as a key of the catalogue (validation.sepa.*). */
 export const IBAN_ERROR_MESSAGES: Record<IbanError, string> = {
-  empty: "Indica el IBAN",
-  format: "Formato de IBAN no válido",
-  country: "País no admitido en SEPA",
-  length: "Longitud incorrecta para el país",
-  checksum: "Dígitos de control del IBAN incorrectos",
-  national_check: "Dígitos de control de la cuenta (CCC) incorrectos",
+  empty: "validation.sepa.empty",
+  format: "validation.sepa.format",
+  country: "validation.sepa.country",
+  length: "validation.sepa.length",
+  checksum: "validation.sepa.checksum",
+  national_check: "validation.sepa.national_check",
 };
 
 /** ISO 7064 mod 97-10 over the IBAN with letters mapped A=10 .. Z=35. */

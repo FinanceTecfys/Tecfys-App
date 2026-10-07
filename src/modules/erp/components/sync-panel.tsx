@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { RefreshCw } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,19 +22,14 @@ const fmtStamp = (iso: string) =>
   new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Madrid" });
 
 function Counts({ counts }: { counts: SyncCounts }) {
-  const items: [string, number][] = [
-    ["Leídas", counts.fetched],
-    ["Creadas", counts.created],
-    ["Actualizadas", counts.updated],
-    ["Sin cambios", counts.skipped],
-    ["Descartadas", counts.invalid],
-  ];
+  const t = useTranslations("erp.sync");
+  const items = (["fetched", "created", "updated", "skipped", "invalid"] as const).map((key) => [key, counts[key]] as const);
   return (
     <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
-      {items.map(([label, n]) => (
-        <div key={label} className="flex gap-1.5">
-          <dt className="text-slate-500">{label}</dt>
-          <dd className={`num ${label === "Descartadas" && n > 0 ? "text-orange-300" : "text-slate-200"}`}>{n.toLocaleString("es-ES")}</dd>
+      {items.map(([key, n]) => (
+        <div key={key} className="flex gap-1.5">
+          <dt className="text-slate-500">{t(key)}</dt>
+          <dd className={`num ${key === "invalid" && n > 0 ? "text-orange-300" : "text-slate-200"}`}>{n.toLocaleString("es-ES")}</dd>
         </div>
       ))}
     </dl>
@@ -41,10 +37,11 @@ function Counts({ counts }: { counts: SyncCounts }) {
 }
 
 function Messages({ messages }: { messages: string[] }) {
+  const t = useTranslations("erp.sync");
   if (!messages.length) return null;
   return (
     <details className="text-xs text-slate-400">
-      <summary className="cursor-pointer hover:text-slate-200">{messages.length} avisos</summary>
+      <summary className="cursor-pointer hover:text-slate-200">{t("notices", { count: messages.length })}</summary>
       <ul className="mt-2 max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5">
         {messages.map((m, i) => <li key={i}>{m}</li>)}
       </ul>
@@ -53,6 +50,7 @@ function Messages({ messages }: { messages: string[] }) {
 }
 
 export function SyncPanel({ configured, lastRun }: { configured: boolean; lastRun: LastRunView | null }) {
+  const t = useTranslations("erp.sync");
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ ok: true; counts: SyncCounts; messages: string[] } | { ok: false; error: string } | null>(null);
 
@@ -70,28 +68,28 @@ export function SyncPanel({ configured, lastRun }: { configured: boolean; lastRu
           }
         >
           <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} aria-hidden />
-          {pending ? "Sincronizando…" : "Sincronizar con Holded"}
+          {pending ? t("running") : t("run")}
         </Button>
         <p className="text-xs text-slate-400">
           {lastRun ? (
             <>
-              Última {lastRun.source === "excel" ? "importación (Excel)" : "sincronización"}:{" "}
+              {lastRun.source === "excel" ? t("lastImport") : t("lastSync")}{" "}
               <span className="text-slate-200">{fmtStamp(lastRun.finishedAt ?? lastRun.startedAt)}</span>
-              {lastRun.status === "error" && <span className="text-red-300"> · con error</span>}
-              {lastRun.status === "running" && <span className="text-yellow-300"> · en curso</span>}
+              {lastRun.status === "error" && <span className="text-red-300">{t("withError")}</span>}
+              {lastRun.status === "running" && <span className="text-yellow-300">{t("inProgress")}</span>}
             </>
           ) : (
-            "Todavía no se ha sincronizado."
+            t("never")
           )}
         </p>
       </div>
       {!configured && (
-        <Alert tone="warning" title="API de Holded sin configurar">
-          Añade HOLDED_API_KEY al entorno del servidor (.env.local) y reinicia. Mientras tanto puedes cargar el Excel de Holded con{" "}
-          <code className="num">npm run import:holded -- &quot;ruta.xlsx&quot;</code>.
+        <Alert tone="warning" title={t("notConfiguredTitle")}>
+          {t("notConfiguredBody")}{" "}
+          <code className="num">npm run import:holded -- &quot;file.xlsx&quot;</code>.
         </Alert>
       )}
-      {result && !result.ok && <Alert tone="error" title="La sincronización ha fallado">{result.error}</Alert>}
+      {result && !result.ok && <Alert tone="error" title={t("failedTitle")}>{result.error}</Alert>}
       {result?.ok ? (
         <div className="space-y-2">
           <Counts counts={result.counts} />

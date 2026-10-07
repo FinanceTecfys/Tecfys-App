@@ -172,8 +172,16 @@ idioma no va en la URL, es una preferencia del usuario guardada en `profiles.lan
 - **Modo de color**: `profiles.theme` (`green` por defecto, o `blue`) llega a `<html data-theme>`. La paleta azul / blanca
   **aún no existe**: el bloque `[data-theme="blue"]` de `src/app/globals.css` está vacío y hoy se ve el tema verde.
 
-Estado de la traducción: infraestructura, login, menú lateral y Configuración (página, pestañas, catálogos, modelo de
-scoring y Preferencias). El resto de pantallas se traduce en el siguiente commit de la rama.
+Toda la interfaz está traducida: no queda texto de usuario escrito en los componentes. Un test recorre **todo** `src/`
+y falla si encuentra español fuera de los catálogos, o una clave escrita en el código que no existe. Quedan en español a
+propósito, y el test los lista con su motivo: el contrato `.docx` y sus cláusulas, los correos de Supabase, los exports
+Excel / PDF, las etiquetas con las que se leen el PDF de Informa y el Excel de Holded, los nombres de ratio guardados con el
+modelo de scoring y los códigos de estado adicional del Loan book. Los datos guardados (razones sociales, estados importados,
+estados de Holded) se muestran tal cual.
+
+Los mensajes que nacen en código puro (reglas, esquemas zod, ciclo de vida) son **claves** del catálogo
+(`validation.*`, `errors.*`…); la Server Action o el componente los traduce al idioma activo (`src/i18n/server.ts`,
+`src/i18n/client.ts`). Las abreviaturas de mes (`ene-26`) forman parte del formato de fecha y no cambian con el idioma.
 
 **Añadir un idioma**: (1) su código en `LOCALES` (`src/i18n/config.ts`); (2) una migración que lo admita en el check
 `profiles_language_check`; (3) `src/i18n/messages/<código>.json` con todas las claves de `es.json`; (4) su nombre en

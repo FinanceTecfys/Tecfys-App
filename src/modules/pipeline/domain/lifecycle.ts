@@ -14,11 +14,12 @@
  *   signed     contract signed = in the loan book
  */
 
+// Every label, hint and state name below is a key of the message catalogue; the stepper translates them.
 export const LIFECYCLE_STEPS = [
-  { key: "scoring", label: "Scoring" },
-  { key: "operation", label: "Operación (borrador)" },
-  { key: "signature", label: "Enviado a firma" },
-  { key: "signed", label: "Firmado · loan book" },
+  { key: "scoring", label: "contract.lifecycleSteps.scoring" },
+  { key: "operation", label: "contract.lifecycleSteps.operation" },
+  { key: "signature", label: "contract.lifecycleSteps.signature" },
+  { key: "signed", label: "contract.lifecycleSteps.signed" },
 ] as const;
 
 export type StepKey = (typeof LIFECYCLE_STEPS)[number]["key"];
@@ -58,15 +59,15 @@ export interface LifecycleInput {
   contract: { workflowStatus: string; hasSignatureRequest?: boolean } | null;
 }
 
-const SIGNATURE_FUTURE = "La firma electrónica (Signaturit) aún no está integrada";
+const SIGNATURE_FUTURE = "pipeline.lifecycle.hints.signatureFuture";
 
 export function lifecycleOf({ scoringStatus, contract }: LifecycleInput): Lifecycle {
   const state: Record<StepKey, StepState> = { scoring: "pending", operation: "pending", signature: "unavailable", signed: "pending" };
   const hint: Record<StepKey, string> = {
-    scoring: "Sin scoring",
-    operation: "Operación aún no creada",
+    scoring: "pipeline.lifecycle.hints.noScoring",
+    operation: "pipeline.lifecycle.hints.operationNotCreated",
     signature: SIGNATURE_FUTURE,
-    signed: "Pendiente de firma",
+    signed: "pipeline.lifecycle.hints.pendingSignature",
   };
   let stage: StepKey = "scoring";
   let outcome: LifecycleOutcome = "in_progress";
@@ -75,22 +76,22 @@ export function lifecycleOf({ scoringStatus, contract }: LifecycleInput): Lifecy
   if (!contract) {
     if (scoringStatus === "rejected") {
       state.scoring = "stopped";
-      hint.scoring = "Scoring rechazado: no se puede originar la operación";
-      hint.operation = "No aplica: scoring rechazado";
-      hint.signed = "No aplica: scoring rechazado";
+      hint.scoring = "pipeline.lifecycle.hints.scoringRejected";
+      hint.operation = "pipeline.lifecycle.hints.naScoringRejected";
+      hint.signed = "pipeline.lifecycle.hints.naScoringRejected";
       outcome = "rejected";
-      label = "Rechazado";
+      label = "pipeline.lifecycle.labels.rejected";
     } else if (scoringStatus === "approved") {
       state.scoring = "current";
-      hint.scoring = "Scoring aprobado: falta crear la operación";
-      label = "Aprobado · sin operación";
+      hint.scoring = "pipeline.lifecycle.hints.scoringApproved";
+      label = "pipeline.lifecycle.labels.approvedNoOperation";
     } else if (scoringStatus === "pending_review") {
       state.scoring = "current";
-      hint.scoring = "Scoring pendiente de revisión manual";
-      label = "Pendiente de revisión";
+      hint.scoring = "pipeline.lifecycle.hints.scoringPendingReview";
+      label = "pipeline.lifecycle.labels.pendingReview";
     } else {
       // No scoring and no contract: nothing has happened yet.
-      label = "Sin iniciar";
+      label = "pipeline.lifecycle.labels.notStarted";
     }
     return build(state, hint, stage, outcome, label);
   }
@@ -98,55 +99,55 @@ export function lifecycleOf({ scoringStatus, contract }: LifecycleInput): Lifecy
   // A contract exists: the scoring stage is behind it, or was never recorded here.
   if (scoringStatus === null) {
     state.scoring = "unavailable";
-    hint.scoring = "Sin scoring en la plataforma (contrato importado)";
+    hint.scoring = "pipeline.lifecycle.hints.importedNoScoring";
   } else {
     state.scoring = "done";
-    hint.scoring = "Scoring realizado";
+    hint.scoring = "pipeline.lifecycle.hints.scoringDone";
   }
 
   const sentToSignature = contract.hasSignatureRequest === true;
   switch (contract.workflowStatus) {
     case "signed":
       state.operation = "done";
-      hint.operation = "Operación creada";
+      hint.operation = "pipeline.lifecycle.hints.operationCreated";
       if (sentToSignature) {
         state.signature = "done";
-        hint.signature = "Enviado a firma electrónica";
+        hint.signature = "pipeline.lifecycle.hints.sentToSignature";
       } else {
-        hint.signature = "Firmado fuera de la plataforma (sin envío a firma electrónica)";
+        hint.signature = "pipeline.lifecycle.hints.signedOutside";
       }
       state.signed = "done";
-      hint.signed = "Contrato firmado: en el loan book";
+      hint.signed = "pipeline.lifecycle.hints.contractSigned";
       stage = "signed";
       outcome = "completed";
-      label = "Firmado · en loan book";
+      label = "pipeline.lifecycle.labels.signed";
       break;
     case "pending_signature":
       state.operation = "done";
-      hint.operation = "Operación creada";
+      hint.operation = "pipeline.lifecycle.hints.operationCreated";
       state.signature = "current";
-      hint.signature = "Enviado a firma: pendiente de que firme el cliente";
+      hint.signature = "pipeline.lifecycle.hints.awaitingClient";
       stage = "signature";
-      label = "Enviado a firma";
+      label = "pipeline.lifecycle.labels.sentToSignature";
       break;
     case "cancelled":
       state.operation = "stopped";
-      hint.operation = "Operación anulada";
-      hint.signed = "No aplica: operación anulada";
+      hint.operation = "pipeline.lifecycle.hints.operationCancelled";
+      hint.signed = "pipeline.lifecycle.hints.naOperationCancelled";
       if (sentToSignature) {
         state.signature = "done";
-        hint.signature = "Se envió a firma electrónica antes de anularse";
+        hint.signature = "pipeline.lifecycle.hints.sentBeforeCancel";
       }
       stage = "operation";
       outcome = "cancelled";
-      label = "Anulado";
+      label = "pipeline.lifecycle.labels.cancelled";
       break;
     default:
       // "draft", and any status this code does not know yet: the operation exists and nothing after it is proven.
       state.operation = "current";
-      hint.operation = "Borrador creado: pendiente de firma";
+      hint.operation = "pipeline.lifecycle.hints.draftCreated";
       stage = "operation";
-      label = "Borrador · pendiente de firma";
+      label = "pipeline.lifecycle.labels.draft";
   }
   return build(state, hint, stage, outcome, label);
 }
@@ -156,11 +157,11 @@ function build(state: Record<StepKey, StepState>, hint: Record<StepKey, string>,
 }
 
 export const STEP_STATE_LABELS: Record<StepState, string> = {
-  done: "Completado",
-  current: "En curso",
-  pending: "Pendiente",
-  unavailable: "No disponible",
-  stopped: "Detenido",
+  done: "pipeline.lifecycle.states.done",
+  current: "pipeline.lifecycle.states.current",
+  pending: "pipeline.lifecycle.states.pending",
+  unavailable: "pipeline.lifecycle.states.unavailable",
+  stopped: "pipeline.lifecycle.states.stopped",
 };
 
 /** Share of the bar that is filled: steps the deal has reached, out of all of them. */

@@ -28,6 +28,10 @@ vi.mock("next/navigation", () => ({
     throw new Error(`NEXT_REDIRECT ${url}`);
   },
 }));
+// A message is its key: what the action would look up in the catalogue.
+vi.mock("next-intl/server", () => ({
+  getTranslations: async (namespace?: string) => Object.assign((key: string) => (namespace ? `${namespace}.${key}` : key), { has: () => true }),
+}));
 vi.mock("@/lib/supabase/auth", () => ({
   requireRole: vi.fn(async () => {
     if (!state.user) throw new Error("NEXT_REDIRECT /login");
@@ -181,21 +185,21 @@ describe("createContract writes everything in one database call", () => {
   it("a failed upload stops before the database is touched, and removes what was already uploaded", async () => {
     state.uploadError = "bucket unavailable";
     const { result } = await run(() => createContract(input(), files()));
-    expect(result).toEqual({ ok: false, error: "No se pudo guardar el adjunto: bucket unavailable" });
+    expect(result).toEqual({ ok: false, error: "errors.contract.attachmentNotStored" });
     expect(state.rpcCalls).toEqual([]);
     expect(state.tableWrites).toEqual([]);
     expect(state.bucket.size).toBe(0);
   });
 
   it("validation and the scoring checks are unchanged, and run before any write", async () => {
-    expect((await run(() => createContract(input({ sepaIban: "ES00", installment: 0 })))).result).toMatchObject({ ok: false, error: "Revisa los datos marcados", fieldErrors: { installment: "La cuota debe ser positiva" } });
+    expect((await run(() => createContract(input({ sepaIban: "ES00", installment: 0 })))).result).toMatchObject({ ok: false, error: "common.errors.reviewFields", fieldErrors: { installment: "validation.operation.installmentPositive" } });
 
     state.user = OTHER_PARTNER;
-    expect((await run(() => createContract(input()))).result).toEqual({ ok: false, error: "Scoring no encontrado" });
+    expect((await run(() => createContract(input()))).result).toEqual({ ok: false, error: "errors.contract.scoringNotFound" });
 
     state.user = OWNER;
     state.tables.scorings[0].status = "pending_review";
-    expect((await run(() => createContract(input()))).result).toEqual({ ok: false, error: "El scoring no está aprobado" });
+    expect((await run(() => createContract(input()))).result).toEqual({ ok: false, error: "errors.contract.scoringNotApproved" });
 
     expect(state.rpcCalls).toEqual([]);
     expect(state.tableWrites).toEqual([]);
@@ -237,23 +241,23 @@ describe("updateDraftContract writes everything in one database call", () => {
 
   it("a draft signed in the meantime: the function writes nothing and says so", async () => {
     state.rpc = () => ({ data: false, error: null });
-    expect((await edit()).result).toEqual({ ok: false, error: "El contrato ya no está en borrador" });
+    expect((await edit()).result).toEqual({ ok: false, error: "errors.contract.noLongerDraft" });
     expect(state.tableWrites).toEqual([]);
   });
 
   it("the guards are unchanged and run before the write", async () => {
-    expect((await edit({ durationMonths: 0 })).result).toMatchObject({ ok: false, error: "Revisa los datos marcados" });
-    expect((await edit({}, "not-a-uuid")).result).toEqual({ ok: false, error: "Contrato no encontrado" });
+    expect((await edit({ durationMonths: 0 })).result).toMatchObject({ ok: false, error: "common.errors.reviewFields" });
+    expect((await edit({}, "not-a-uuid")).result).toEqual({ ok: false, error: "errors.contract.notFound" });
 
     state.user = OTHER_PARTNER;
-    expect((await edit()).result).toEqual({ ok: false, error: "Contrato no encontrado" });
+    expect((await edit()).result).toEqual({ ok: false, error: "errors.contract.notFound" });
 
     state.user = OWNER;
-    expect((await edit({ scoringId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301" })).result).toEqual({ ok: false, error: "El scoring no corresponde a este contrato" });
+    expect((await edit({ scoringId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301" })).result).toEqual({ ok: false, error: "errors.contract.scoringMismatch" });
 
     for (const status of ["pending_signature", "signed", "cancelled"]) {
       state.tables.contracts[0].workflow_status = status;
-      expect((await edit()).result, status).toEqual({ ok: false, error: "Solo se puede editar un contrato en borrador" });
+      expect((await edit()).result, status).toEqual({ ok: false, error: "errors.contract.onlyDraftEditable" });
     }
     expect(state.rpcCalls).toEqual([]);
     expect(state.tableWrites).toEqual([]);

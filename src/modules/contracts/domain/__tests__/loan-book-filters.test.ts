@@ -120,7 +120,7 @@ describe("filter options", () => {
       row({ country: "ES", distributor: "Nicton", client: "Beta SA", cif: "B2" }),
       row({ country: "es", distributor: null, client: "Alfa SL", cif: "B1" }),
       row({ country: null, distributor: "nicton", client: "Sin CIF", cif: null }),
-    ]);
+    ], "Sin informar");
     expect(options.country).toEqual([{ value: "es", label: "ES" }, { value: NONE_KEY, label: "Sin informar" }]);
     expect(options.distributor).toEqual([{ value: "nicton", label: "Nicton" }, { value: NONE_KEY, label: "Sin informar" }]);
     expect(options.client).toEqual([

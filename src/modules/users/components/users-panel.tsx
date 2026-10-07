@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass, SelectField } from "@/components/ui/field";
 import { Table, Td, Th } from "@/components/ui/table";
-import { type Role, ROLE_LABELS } from "@/lib/auth/permissions";
+import type { Role } from "@/lib/auth/permissions";
 import { deleteUser, inviteUser, setUserActive, updateUserRole, type UserResult } from "../actions";
 import type { UserRow } from "../data";
 import { type Actor, assignableRoles, checkCanManage, checkDeleteUser } from "../domain/rules";
@@ -15,9 +16,15 @@ interface DistributorOption {
   name: string;
 }
 
-const roleOptions = (roles: Role[]) => roles.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
+/** Role options named in the active language (common.roles.<role>). */
+function useRoleOptions(roles: Role[]) {
+  const t = useTranslations("common.roles");
+  return roles.map((r) => ({ value: r, label: t(r) }));
+}
 
 function InviteUserForm({ roles, distributors }: { roles: Role[]; distributors: DistributorOption[] }) {
+  const t = useTranslations("users");
+  const roleOptions = useRoleOptions(roles);
   const [role, setRole] = useState<Role>(roles[roles.length - 1]);
   const [feedback, setFeedback] = useState<UserResult | null>(null);
   const [pending, start] = useTransition();
@@ -39,27 +46,30 @@ function InviteUserForm({ roles, distributors }: { roles: Role[]; distributors: 
       className="space-y-3"
     >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.6fr_180px_1fr_auto] xl:items-end">
-        <Field label="Email del nuevo usuario" name="email" type="email" autoComplete="off" required />
-        <SelectField label="Rol" name="role" value={role} onChange={(e) => setRole(e.target.value as Role)} options={roleOptions(roles)} />
+        <Field label={t("inviteEmail")} name="email" type="email" autoComplete="off" required />
+        <SelectField label={t("role")} name="role" value={role} onChange={(e) => setRole(e.target.value as Role)} options={roleOptions} />
         {role === "partner" ? (
-          <SelectField label="Distribuidor" name="distributorId" required placeholder="— Selecciona —" options={distributors.map((d) => ({ value: d.id, label: d.name }))} />
+          <SelectField label={t("distributor")} name="distributorId" required placeholder={t("selectPlaceholder")} options={distributors.map((d) => ({ value: d.id, label: d.name }))} />
         ) : (
           <span className="hidden xl:block" />
         )}
-        <Button type="submit" disabled={pending}>{pending ? "Enviando…" : "Invitar"}</Button>
+        <Button type="submit" disabled={pending}>{pending ? t("inviting") : t("invite")}</Button>
       </div>
       <p role="status" className={`text-[11px] ${feedback ? (feedback.ok ? "text-mint-400" : "text-red-300") : "text-slate-500"}`}>
         {feedback
           ? feedback.ok
-            ? (feedback.notice ?? "Invitación enviada.")
+            ? (feedback.notice ?? t("inviteSent"))
             : feedback.error
-          : "El usuario recibe un email con un enlace para crear su propia contraseña; el rol queda asignado desde ahora."}
+          : t("inviteHelp")}
       </p>
     </form>
   );
 }
 
 function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user: UserRow; roles: Role[]; distributors: DistributorOption[]; canEdit: boolean; canDelete: boolean }) {
+  const t = useTranslations("users");
+  const tCommon = useTranslations("common.actions");
+  const roleOptions = useRoleOptions(roles);
   const [role, setRole] = useState<Role | "">(user.role ?? "");
   const [distributorId, setDistributorId] = useState(user.distributor?.id ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -77,15 +87,15 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
 
   if (confirmingDelete) {
     return (
-      <div role="group" aria-label={`Confirmar la eliminación de ${who}`} className="space-y-2">
+      <div role="group" aria-label={t("confirmDeleteAria", { user: who })} className="space-y-2">
         <p className="text-xs text-slate-300">
-          ¿Eliminar definitivamente a <span className="font-semibold">{who}</span>? Pierde el acceso y su cuenta se borra; los scorings y operaciones que creó se conservan.
+          {t("confirmDelete", { user: who })}
         </p>
         <div className="flex gap-2">
           <Button type="button" variant="danger" disabled={pending} onClick={() => run(() => deleteUser({ userId: user.id }))}>
-            {pending ? "Eliminando…" : "Sí, eliminar"}
+            {pending ? t("deleting") : t("confirmYes")}
           </Button>
-          <Button type="button" variant="ghost" disabled={pending} autoFocus onClick={() => setConfirmingDelete(false)}>Cancelar</Button>
+          <Button type="button" variant="ghost" disabled={pending} autoFocus onClick={() => setConfirmingDelete(false)}>{tCommon("cancel")}</Button>
         </div>
       </div>
     );
@@ -96,13 +106,13 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
       <div className="flex flex-wrap items-center gap-2">
         {canEdit && (
           <>
-            <select value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label={`Rol de ${who}`} className={`${inputClass} w-40`}>
-              {user.role === null && <option value="">Sin acceso</option>}
-              {roleOptions(roles).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <select value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label={t("roleOf", { user: who })} className={`${inputClass} w-40`}>
+              {user.role === null && <option value="">{t("noAccess")}</option>}
+              {roleOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             {role === "partner" && (
-              <select value={distributorId} onChange={(e) => setDistributorId(e.target.value)} aria-label={`Distribuidor de ${who}`} className={`${inputClass} w-48`}>
-                <option value="">— Distribuidor —</option>
+              <select value={distributorId} onChange={(e) => setDistributorId(e.target.value)} aria-label={t("distributorOf", { user: who })} className={`${inputClass} w-48`}>
+                <option value="">{t("distributorPlaceholder")}</option>
                 {distributors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             )}
@@ -113,7 +123,7 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
                 disabled={pending}
                 onClick={() => run(() => updateUserRole({ userId: user.id, role, distributorId: role === "partner" ? distributorId : null }))}
               >
-                Guardar
+                {tCommon("save")}
               </Button>
             )}
             {user.role !== null && (
@@ -123,7 +133,7 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
                 onClick={() => run(() => setUserActive({ userId: user.id, active: !user.active }))}
                 className="text-xs text-slate-400 hover:text-mint-400 hover:underline disabled:opacity-50"
               >
-                {user.active ? "Desactivar" : "Reactivar"}
+                {user.active ? t("deactivate") : t("reactivate")}
               </button>
             )}
           </>
@@ -133,10 +143,10 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
             type="button"
             disabled={pending}
             onClick={() => setConfirmingDelete(true)}
-            aria-label={`Eliminar a ${who}`}
+            aria-label={t("deleteAria", { user: who })}
             className="text-xs text-red-300 hover:underline disabled:opacity-50"
           >
-            Eliminar
+            {tCommon("delete")}
           </button>
         )}
       </div>
@@ -146,10 +156,12 @@ function UserRowEditor({ user, roles, distributors, canEdit, canDelete }: { user
 }
 
 function Status({ user }: { user: UserRow }) {
+  const t = useTranslations("users");
+  const tStatus = useTranslations("common.status");
   if (user.role === null) return <span className="text-slate-600">—</span>;
-  if (!user.active) return <span className="text-xs text-yellow-300">Desactivado</span>;
-  if (user.invitePending) return <span className="text-xs text-slate-400">Invitación pendiente</span>;
-  return <span className="text-xs text-mint-400">Activo</span>;
+  if (!user.active) return <span className="text-xs text-yellow-300">{t("deactivated")}</span>;
+  if (user.invitePending) return <span className="text-xs text-slate-400">{t("invitePending")}</span>;
+  return <span className="text-xs text-mint-400">{tStatus("active")}</span>;
 }
 
 /**
@@ -158,11 +170,13 @@ function Status({ user }: { user: UserRow }) {
  */
 export function UsersPanel({ actor, users, distributors }: { actor: Actor; users: UserRow[]; distributors: DistributorOption[] }) {
   const roles = assignableRoles(actor.role);
+  const t = useTranslations("users");
+  const tRoles = useTranslations("common.roles");
   return (
     <div className="space-y-5">
       <InviteUserForm roles={roles} distributors={distributors} />
       <Table>
-        <thead><tr><Th>Email</Th><Th>Rol</Th><Th>Distribuidor</Th><Th>Estado</Th><Th>Gestión</Th></tr></thead>
+        <thead><tr><Th>{t("email")}</Th><Th>{t("role")}</Th><Th>{t("distributor")}</Th><Th>{t("status")}</Th><Th>{t("manage")}</Th></tr></thead>
         <tbody>
           {users.map((u) => {
             const canEdit = checkCanManage(actor, { id: u.id, role: u.role }).ok;
@@ -171,9 +185,9 @@ export function UsersPanel({ actor, users, distributors }: { actor: Actor; users
               <tr key={u.id}>
                 <Td>
                   {u.email ?? "—"}
-                  {u.id === actor.id && <span className="ml-2 text-xs text-slate-500">(tú)</span>}
+                  {u.id === actor.id && <span className="ml-2 text-xs text-slate-500">{t("you")}</span>}
                 </Td>
-                <Td>{u.role ? <Badge tone={u.role === "owner" ? "mint" : "slate"}>{ROLE_LABELS[u.role]}</Badge> : <span className="text-slate-500">Sin acceso</span>}</Td>
+                <Td>{u.role ? <Badge tone={u.role === "owner" ? "mint" : "slate"}>{tRoles(u.role)}</Badge> : <span className="text-slate-500">{t("noAccess")}</span>}</Td>
                 <Td className="text-slate-400">{u.distributor?.name ?? "—"}</Td>
                 <Td><Status user={u} /></Td>
                 <Td className="whitespace-normal">
