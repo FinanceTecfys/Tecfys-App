@@ -1,0 +1,168 @@
+{
+  "common": {
+    "brand": {
+      "tagline": "Renting platform",
+      "description": "Scoring, origination and loan book for equipment renting"
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Administrator",
+      "sales": "Sales",
+      "partner": "Partner"
+    },
+    "actions": {
+      "add": "Add",
+      "save": "Save",
+      "saving": "Saving…"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "noPermission": "No permission"
+  },
+  "nav": {
+    "ariaLabel": "Main",
+    "dashboard": "Dashboard",
+    "scoring": "Scoring",
+    "newOperation": "New operation",
+    "pipeline": "Pipeline",
+    "loanBook": "Loan book",
+    "portfolio": "Portfolio / Waterfall",
+    "erp": "ERP",
+    "settings": "Settings",
+    "signOut": "Sign out",
+    "environment": "v0.1 · local environment"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "noAccessTitle": "User without access",
+      "noAccessBody": "Your user has no active role on the platform. Ask a Tecfys administrator for access.",
+      "errors": {
+        "invalid": "Incorrect email or password.",
+        "rateLimited": "Too many attempts. Wait a few minutes and try again.",
+        "unavailable": "Could not sign in. Please try again later."
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Users and roles, origination catalogs, the scoring model in force and the connections to the ERP and Informa.",
+    "descriptionPersonal": "Your language and appearance preferences on the platform.",
+    "tabsAriaLabel": "Settings sections",
+    "tabs": {
+      "users": "Users and roles",
+      "distributors": "Distributors",
+      "assets": "Asset types",
+      "scoring": "Scoring model",
+      "apis": "APIs",
+      "preferences": "Preferences"
+    },
+    "users": {
+      "title": "Users",
+      "subtitle": "{count, plural, one {# account} other {# accounts}} · the role decides what each user can see and do",
+      "noPermission": "Your role cannot manage users."
+    },
+    "distributors": {
+      "title": "Distributors",
+      "subtitle": "{count, plural, one {# registered} other {# registered}}",
+      "name": "Name",
+      "cif": "Tax ID",
+      "status": "Status",
+      "newLabel": "New distributor",
+      "email": "Email"
+    },
+    "assets": {
+      "title": "Asset types",
+      "subtitle": "Each type belongs to a Loan book group",
+      "type": "Type",
+      "cluster": "Group",
+      "status": "Status",
+      "newLabel": "New asset type",
+      "clusterLabel": "Group (Loan book cluster)",
+      "contractTypesTitle": "Contract types",
+      "code": "Code",
+      "descriptionColumn": "Description",
+      "billingLag": "Billing lag",
+      "billingLagValue": "{months, plural, one {+# month} other {+# months}}"
+    },
+    "scoringModel": {
+      "readOnlyTitle": "Read only",
+      "readOnlyBody": "This is the scoring model in force. Editing weights, tiers and decision rules will come in a later branch.",
+      "title": "Scoring model",
+      "version": "Version {version}",
+      "defaultVersion": "Default model (no saved version)",
+      "ratio": "Ratio",
+      "weight": "Weight",
+      "formula": "Formula",
+      "prudence": "prudence {value}"
+    },
+    "apis": {
+      "holdedTitle": "Holded / ERP",
+      "holdedSubtitle": "Connection to the Holded API v2 to sync sales into the ERP",
+      "informaTitle": "Informa",
+      "informaSubtitle": "Informa D&B API v2: report by tax ID for the scoring"
+    },
+    "catalog": {
+      "errors": {
+        "nameTooShort": "Name is too short",
+        "emailInvalid": "Invalid email",
+        "clusterRequired": "Select a group",
+        "distributorExists": "A distributor with that name already exists",
+        "assetTypeExists": "An asset type with that name already exists"
+      }
+    }
+  },
+  "preferences": {
+    "title": "Preferences",
+    "subtitle": "Saved on your user and follow you to any browser",
+    "language": {
+      "label": "Language",
+      "hint": "Interface language. Amounts, numbers and dates always keep the Spanish format (1.234,56 € · dd/mm/yyyy)."
+    },
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    },
+    "theme": {
+      "label": "Colour mode",
+      "hint": "The Blue / White mode is already saved on your user; its palette will arrive in a later version and until then the Green mode is shown."
+    },
+    "themes": {
+      "green": "Green",
+      "blue": "Blue / White"
+    },
+    "save": "Save preferences",
+    "saving": "Saving…",
+    "saved": "Preferences saved.",
+    "errors": {
+      "invalid": "Invalid preferences",
+      "notSaved": "The preferences could not be saved"
+    }
+  },
+  "scoring": {
+    "decisions": {
+      "auto": "Automatically approved",
+      "limited": "Approved with limits",
+      "manual": "Manual review",
+      "reject": "Rejected"
+    },
+    "ratios": {
+      "guarantee": { "label": "Guarantee (collateral)", "formula": "Total assets / Total liabilities" },
+      "solvency": { "label": "Solvency", "formula": "Current assets / Current liabilities" },
+      "indebtedness": { "label": "Indebtedness", "formula": "Total liabilities / Equity" },
+      "netMargin": { "label": "Net margin", "formula": "Net result / Revenue" },
+      "sectorialRisk": { "label": "Sector risk", "formula": "Sector → rating" },
+      "maturity": { "label": "Age (years)", "formula": "Years since incorporation" },
+      "economicProfit": { "label": "Return on assets (ROA)", "formula": "Net result / Total assets" },
+      "financialProfit": { "label": "Return on equity (ROE)", "formula": "Net result / Equity" },
+      "paymentPeriod": { "label": "Average payment period (days)", "formula": "(Payables / Procurement) × 365" },
+      "collectionPeriod": { "label": "Average collection period (days)", "formula": "(Receivables / Revenue) × 365" }
+    }
+  }
+}

@@ -37,9 +37,19 @@ const location = (promise: Promise<unknown>) =>
 describe("requireUser", () => {
   it("returns the user with its role", async () => {
     const guards = setup({ role: "partner", partnerDistributorId: "dist-1", active: true });
-    await expect(guards.requireUser()).resolves.toEqual({ ...USER, role: "partner", partnerDistributorId: "dist-1" });
+    // A profile with no stored preferences gets the defaults: Spanish, green.
+    await expect(guards.requireUser()).resolves.toEqual({ ...USER, role: "partner", partnerDistributorId: "dist-1", language: "es", theme: "green" });
     expect(guards.profileOf).toHaveBeenCalledWith(USER.id);
     expect(guards.redirect).not.toHaveBeenCalled();
+  });
+
+  it("carries the user's stored language and theme, and ignores values it does not know", async () => {
+    const stored = setup({ role: "sales", partnerDistributorId: null, active: true, language: "en", theme: "blue" });
+    await expect(stored.requireUser()).resolves.toMatchObject({ language: "en", theme: "blue" });
+    const stale = setup({ role: "sales", partnerDistributorId: null, active: true, language: "fr", theme: "purple" });
+    await expect(stale.requireUser()).resolves.toMatchObject({ language: "es", theme: "green" });
+    const empty = setup({ role: "sales", partnerDistributorId: null, active: true, language: null, theme: null });
+    await expect(empty.requireUser()).resolves.toMatchObject({ language: "es", theme: "green" });
   });
 
   it("sends a request with no session to /login without reading any profile", async () => {

@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -12,53 +14,68 @@ import { getErpSettings } from "@/modules/erp/data";
 import { isHoldedConfigured } from "@/modules/erp/holded/server";
 import { InformaSettingsPanel } from "@/modules/scoring/components/informa-settings-panel";
 import { informaConfigStatus } from "@/modules/scoring/informa/server";
-import { DECISION_LABELS, type RatioKey } from "@/modules/scoring/domain/criteria";
+import type { RatioKey } from "@/modules/scoring/domain/criteria";
 import { RatingBadge } from "@/modules/scoring/components/badges";
 import { getActiveCriteria } from "@/modules/scoring/data";
+import { PreferencesForm } from "@/modules/settings/components/preferences-form";
 import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
-import { parseSettingsTab } from "@/modules/settings/domain/tabs";
+import { resolveSettingsTab, settingsTabsFor } from "@/modules/settings/domain/tabs";
 import { UsersPanel } from "@/modules/users/components/users-panel";
 import { listUsers } from "@/modules/users/data";
 
-export const metadata = { title: "Configuración" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("settings"))("title") };
+}
 
-/** Settings as tabs: ?tab= picks the tab and only that tab's data is loaded. */
+/**
+ * Settings as tabs: ?tab= picks the tab and only that tab's data is loaded.
+ *
+ * The page is open to every role, because everyone sets their own language
+ * and theme here ("Preferencias"). Each tab is gated on the server by its own
+ * capability: resolveSettingsTab only ever returns a tab the role may open, so
+ * the administration tabs are neither listed nor rendered for sales or
+ * partners, whatever ?tab= says.
+ */
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
-  const user = await requireRole("settings.access");
-  const tab = parseSettingsTab((await searchParams).tab);
+  const user = await requireRole("preferences.manage");
+  const tab = resolveSettingsTab((await searchParams).tab, user.role);
+  const t = await getTranslations("settings");
 
   return (
     <>
-      <PageHeader title="Configuración" description="Usuarios y roles, catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa." />
-      <SettingsTabs active={tab} />
+      <PageHeader title={t("title")} description={can(user.role, "settings.access") ? t("description") : t("descriptionPersonal")} />
+      <SettingsTabs tabs={settingsTabsFor(user.role)} active={tab} />
       {tab === "users" && <UsersTab user={user} />}
       {tab === "distributors" && <DistributorsTab />}
       {tab === "assets" && <AssetTypesTab />}
       {tab === "scoring" && <ScoringModelTab />}
       {tab === "apis" && <ApisTab />}
+      {tab === "preferences" && <PreferencesTab user={user} />}
     </>
   );
 }
 
 async function UsersTab({ user }: { user: SessionUser }) {
+  const t = await getTranslations("settings.users");
   // Same roles as Settings today; checked on its own so the two can diverge safely.
-  if (!can(user.role, "users.manage")) return <Alert tone="warning" title="Sin permiso">Tu rol no puede gestionar usuarios.</Alert>;
+  if (!can(user.role, "users.manage")) return <Alert tone="warning" title={(await getTranslations("common"))("noPermission")}>{t("noPermission")}</Alert>;
   const [users, distributors] = await Promise.all([listUsers(), listDistributors({ activeOnly: true })]);
   return (
-    <Card title="Usuarios" subtitle={`${users.length} cuentas · el rol decide qué puede ver y hacer cada usuario`}>
+    <Card title={t("title")} subtitle={t("subtitle", { count: users.length })}>
       <UsersPanel actor={{ id: user.id, role: user.role }} users={users} distributors={distributors.map((d) => ({ id: d.id, name: d.name }))} />
     </Card>
   );
 }
 
 async function DistributorsTab() {
+  const t = await getTranslations("settings.distributors");
   const distributors = await listDistributors();
   return (
-    <Card title="Distribuidores" subtitle={`${distributors.length} registrados`}>
+    <Card title={t("title")} subtitle={t("subtitle", { count: distributors.length })}>
       <NewDistributorForm />
       <div className="mt-4 max-h-[32rem] overflow-y-auto">
         <Table>
-          <thead><tr><Th>Nombre</Th><Th>CIF</Th><Th>Estado</Th></tr></thead>
+          <thead><tr><Th>{t("name")}</Th><Th>{t("cif")}</Th><Th>{t("status")}</Th></tr></thead>
           <tbody>
             {distributors.map((d) => (
               <tr key={d.id}>
@@ -75,15 +92,16 @@ async function DistributorsTab() {
 }
 
 async function AssetTypesTab() {
+  const t = await getTranslations("settings.assets");
   const [assetTypes, contractTypes] = await Promise.all([listAssetTypes(), listContractTypes()]);
   const clusters = [...new Set(assetTypes.map((a) => a.cluster))].sort();
   return (
     <div className="grid gap-6 xl:grid-cols-2">
-      <Card title="Tipos de activo" subtitle="Cada tipo pertenece a un grupo del Loan book">
+      <Card title={t("title")} subtitle={t("subtitle")}>
         <NewAssetTypeForm clusters={clusters} />
         <div className="mt-4 max-h-96 overflow-y-auto">
           <Table>
-            <thead><tr><Th>Tipo</Th><Th>Grupo</Th><Th>Estado</Th></tr></thead>
+            <thead><tr><Th>{t("type")}</Th><Th>{t("cluster")}</Th><Th>{t("status")}</Th></tr></thead>
             <tbody>
               {assetTypes.map((a) => (
                 <tr key={a.id}>
@@ -97,15 +115,15 @@ async function AssetTypesTab() {
         </div>
       </Card>
 
-      <Card title="Tipos de contrato">
+      <Card title={t("contractTypesTitle")}>
         <Table>
-          <thead><tr><Th>Código</Th><Th>Descripción</Th><Th right>Desfase facturación</Th></tr></thead>
+          <thead><tr><Th>{t("code")}</Th><Th>{t("descriptionColumn")}</Th><Th right>{t("billingLag")}</Th></tr></thead>
           <tbody>
-            {contractTypes.map((t) => (
-              <tr key={t.code}>
-                <Td mono>{t.code}</Td>
-                <Td>{t.label}</Td>
-                <Td right mono>{t.billing_lag_months ? `+${t.billing_lag_months} mes` : "—"}</Td>
+            {contractTypes.map((type) => (
+              <tr key={type.code}>
+                <Td mono>{type.code}</Td>
+                <Td>{type.label}</Td>
+                <Td right mono>{type.billing_lag_months ? t("billingLagValue", { months: type.billing_lag_months }) : "—"}</Td>
               </tr>
             ))}
           </tbody>
@@ -116,22 +134,24 @@ async function AssetTypesTab() {
 }
 
 async function ScoringModelTab() {
+  const t = await getTranslations("settings.scoringModel");
+  const tScoring = await getTranslations("scoring");
   const criteria = await getActiveCriteria();
   const c = criteria.config;
   return (
     <div className="space-y-4">
-      <Alert tone="info" title="Solo lectura">
-        Este es el modelo de scoring vigente. La edición de pesos, tramos y reglas de decisión llegará en una rama posterior.
+      <Alert tone="info" title={t("readOnlyTitle")}>
+        {t("readOnlyBody")}
       </Alert>
-      <Card title="Modelo de scoring" subtitle={criteria.version ? `Versión ${criteria.version}` : "Modelo por defecto (sin versión guardada)"}>
+      <Card title={t("title")} subtitle={criteria.version ? t("version", { version: criteria.version }) : t("defaultVersion")}>
         <Table>
-          <thead><tr><Th>Ratio</Th><Th right>Peso</Th><Th>Fórmula</Th></tr></thead>
+          <thead><tr><Th>{t("ratio")}</Th><Th right>{t("weight")}</Th><Th>{t("formula")}</Th></tr></thead>
           <tbody>
             {(Object.entries(c.weights) as [RatioKey, number][]).sort((a, b) => b[1] - a[1]).map(([key, w]) => (
               <tr key={key}>
-                <Td>{c.ratios[key].label}</Td>
+                <Td>{tScoring(`ratios.${key}.label`)}</Td>
                 <Td right mono>{fmtPct(w, 0)}</Td>
-                <Td className="text-slate-400">{c.ratios[key].formula}</Td>
+                <Td className="text-slate-400">{tScoring(`ratios.${key}.formula`)}</Td>
               </tr>
             ))}
           </tbody>
@@ -141,8 +161,8 @@ async function ScoringModelTab() {
             <div key={rating} className="rounded-md border border-ink-700 p-2">
               <RatingBadge rating={rating} />
               <div className="num mt-1 text-slate-400">≥ {fmtNum(lower, 1)}</div>
-              <div className="text-slate-500">{DECISION_LABELS[c.decisionRules[rating]]}</div>
-              <div className="num text-slate-500">prudencia {fmtPct(c.prudence[rating], 0)}</div>
+              <div className="text-slate-500">{tScoring(`decisions.${c.decisionRules[rating]}`)}</div>
+              <div className="num text-slate-500">{t("prudence", { value: fmtPct(c.prudence[rating], 0) })}</div>
             </div>
           ))}
         </div>
@@ -152,16 +172,28 @@ async function ScoringModelTab() {
 }
 
 async function ApisTab() {
+  const t = await getTranslations("settings.apis");
   const erpSettings = await getErpSettings();
   return (
     <div className="grid gap-6 xl:grid-cols-2">
-      <Card title="Holded / ERP" subtitle="Conexión con la API v2 de Holded para sincronizar las ventas en ERP">
+      <Card title={t("holdedTitle")} subtitle={t("holdedSubtitle")}>
         <HoldedSettingsForm settings={erpSettings} configured={isHoldedConfigured()} />
       </Card>
 
-      <Card title="Informa" subtitle="API v2 de Informa D&B: informe por CIF para el scoring">
+      <Card title={t("informaTitle")} subtitle={t("informaSubtitle")}>
         <InformaSettingsPanel config={informaConfigStatus()} />
       </Card>
     </div>
+  );
+}
+
+/** The user's own language and theme mode: the one tab every role has. */
+async function PreferencesTab({ user }: { user: SessionUser }) {
+  const t = await getTranslations("preferences");
+  return (
+    <Card title={t("title")} subtitle={t("subtitle")}>
+      {/* Keyed by the stored values: after a save the form starts again from what the server holds. */}
+      <PreferencesForm key={`${user.language}:${user.theme}`} language={user.language} theme={user.theme} />
+    </Card>
   );
 }

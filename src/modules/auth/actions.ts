@@ -1,23 +1,26 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { HOME_PATH, LOGIN_PATH, safeNextPath } from "@/lib/auth/routes";
 import { authClient } from "@/lib/supabase/auth";
 import { SET_PASSWORD_MESSAGES, type SetPasswordState, setPasswordSchema, setPasswordStep, updateErrorMessage, verifyErrorMessage } from "./domain/set-password";
-import { signInErrorMessage, signInSchema, type SignInState } from "./domain/sign-in";
+import { signInErrorKey, signInSchema, type SignInState } from "./domain/sign-in";
 
 /** Email + password login. The session lands in cookies; then into the app. */
 export async function signIn(_prev: SignInState, formData: FormData): Promise<SignInState> {
   const raw = Object.fromEntries(formData);
   const email = typeof raw.email === "string" ? raw.email.trim() : "";
+  // No user yet: the language is the one last chosen on this browser, else Spanish.
+  const t = await getTranslations("auth.login.errors");
   const parsed = signInSchema.safeParse(raw);
-  if (!parsed.success) return { error: signInErrorMessage(null), email };
+  if (!parsed.success) return { error: t(signInErrorKey(null)), email };
 
   const { error } = await (await authClient()).auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
-  if (error) return { error: signInErrorMessage(error), email };
+  if (error) return { error: t(signInErrorKey(error)), email };
 
   redirect(safeNextPath(parsed.data.next));
 }

@@ -1,3 +1,11 @@
+/**
+ * Number, currency and date formatting. ALWAYS es-ES, whatever the interface
+ * language: "1.234,56 €" and dd/mm/yyyy in Spanish and in English alike. The
+ * figures are reconciled to the Borrowing Base workbook and are read, copied
+ * and compared between users; a separator that changed with each reader's
+ * language ("1.234,56" vs "1,234.56") would make the same amount ambiguous.
+ * The language (src/i18n) only changes words, never these formats.
+ */
 const eur0 = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const eur2 = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

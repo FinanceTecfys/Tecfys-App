@@ -55,8 +55,10 @@ const MATRIX = {
   "contract.view": EVERYONE,
   /** Mark as signed, cancel, settle. */
   "contract.manage": ADMINS,
-  /** Settings: catalogs, ERP and Informa connections. */
+  /** The administration tabs of Settings: users, catalogs, scoring model, ERP and Informa connections. */
   "settings.access": ADMINS,
+  /** Open Settings to set one's own language and theme mode (the "Preferencias" tab): every role. */
+  "preferences.manage": EVERYONE,
   /** See every record instead of only the ones the user created. */
   "records.viewAll": TECFYS,
   /** Create users, change roles, deactivate - never an owner (users/domain/rules.ts). */
@@ -86,7 +88,8 @@ const ROUTE_RULES: readonly (readonly [RegExp, Capability])[] = [
   [/^\/portfolio$/, "waterfall.view"],
   [/^\/pipeline$/, "pipeline.view"],
   [/^\/erp$/, "erp.view"],
-  [/^\/settings$/, "settings.access"],
+  // Open to every role; each tab is gated by its own capability (modules/settings/domain/tabs.ts).
+  [/^\/settings$/, "preferences.manage"],
 ];
 
 /** The capability a path needs; null when no rule knows the path. */

@@ -1,0 +1,168 @@
+{
+  "common": {
+    "brand": {
+      "tagline": "Renting platform",
+      "description": "Scoring, originación y loan book de renting"
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Administrador",
+      "sales": "Comercial",
+      "partner": "Partner"
+    },
+    "actions": {
+      "add": "Añadir",
+      "save": "Guardar",
+      "saving": "Guardando…"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "noPermission": "Sin permiso"
+  },
+  "nav": {
+    "ariaLabel": "Principal",
+    "dashboard": "Dashboard",
+    "scoring": "Scoring",
+    "newOperation": "Nueva operación",
+    "pipeline": "Pipeline",
+    "loanBook": "Loan book",
+    "portfolio": "Cartera / Waterfall",
+    "erp": "ERP",
+    "settings": "Configuración",
+    "signOut": "Cerrar sesión",
+    "environment": "v0.1 · entorno local"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "email": "Email",
+      "password": "Contraseña",
+      "submit": "Entrar",
+      "submitting": "Entrando…",
+      "noAccessTitle": "Usuario sin acceso",
+      "noAccessBody": "Tu usuario no tiene un rol activo en la plataforma. Pide acceso a un administrador de Tecfys.",
+      "errors": {
+        "invalid": "Email o contraseña incorrectos.",
+        "rateLimited": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+        "unavailable": "No se pudo iniciar sesión. Inténtalo de nuevo más tarde."
+      }
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "description": "Usuarios y roles, catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa.",
+    "descriptionPersonal": "Tus preferencias de idioma y de apariencia en la plataforma.",
+    "tabsAriaLabel": "Secciones de configuración",
+    "tabs": {
+      "users": "Usuarios y roles",
+      "distributors": "Distribuidores",
+      "assets": "Tipos de activo",
+      "scoring": "Modelo de scoring",
+      "apis": "APIs",
+      "preferences": "Preferencias"
+    },
+    "users": {
+      "title": "Usuarios",
+      "subtitle": "{count, plural, one {# cuenta} other {# cuentas}} · el rol decide qué puede ver y hacer cada usuario",
+      "noPermission": "Tu rol no puede gestionar usuarios."
+    },
+    "distributors": {
+      "title": "Distribuidores",
+      "subtitle": "{count, plural, one {# registrado} other {# registrados}}",
+      "name": "Nombre",
+      "cif": "CIF",
+      "status": "Estado",
+      "newLabel": "Nuevo distribuidor",
+      "email": "Email"
+    },
+    "assets": {
+      "title": "Tipos de activo",
+      "subtitle": "Cada tipo pertenece a un grupo del Loan book",
+      "type": "Tipo",
+      "cluster": "Grupo",
+      "status": "Estado",
+      "newLabel": "Nuevo tipo de activo",
+      "clusterLabel": "Grupo (cluster del Loan book)",
+      "contractTypesTitle": "Tipos de contrato",
+      "code": "Código",
+      "descriptionColumn": "Descripción",
+      "billingLag": "Desfase facturación",
+      "billingLagValue": "{months, plural, one {+# mes} other {+# meses}}"
+    },
+    "scoringModel": {
+      "readOnlyTitle": "Solo lectura",
+      "readOnlyBody": "Este es el modelo de scoring vigente. La edición de pesos, tramos y reglas de decisión llegará en una rama posterior.",
+      "title": "Modelo de scoring",
+      "version": "Versión {version}",
+      "defaultVersion": "Modelo por defecto (sin versión guardada)",
+      "ratio": "Ratio",
+      "weight": "Peso",
+      "formula": "Fórmula",
+      "prudence": "prudencia {value}"
+    },
+    "apis": {
+      "holdedTitle": "Holded / ERP",
+      "holdedSubtitle": "Conexión con la API v2 de Holded para sincronizar las ventas en ERP",
+      "informaTitle": "Informa",
+      "informaSubtitle": "API v2 de Informa D&B: informe por CIF para el scoring"
+    },
+    "catalog": {
+      "errors": {
+        "nameTooShort": "Nombre demasiado corto",
+        "emailInvalid": "Email no válido",
+        "clusterRequired": "Selecciona un grupo",
+        "distributorExists": "Ya existe un distribuidor con ese nombre",
+        "assetTypeExists": "Ya existe un tipo de activo con ese nombre"
+      }
+    }
+  },
+  "preferences": {
+    "title": "Preferencias",
+    "subtitle": "Se guardan en tu usuario y te siguen en cualquier navegador",
+    "language": {
+      "label": "Idioma",
+      "hint": "Idioma de la interfaz. Los importes, números y fechas mantienen siempre el formato español (1.234,56 € · dd/mm/aaaa)."
+    },
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    },
+    "theme": {
+      "label": "Modo de color",
+      "hint": "El modo Azul / Blanco se guarda ya en tu usuario; su paleta llegará en una próxima versión y hasta entonces se muestra el modo Green."
+    },
+    "themes": {
+      "green": "Green",
+      "blue": "Azul / Blanco"
+    },
+    "save": "Guardar preferencias",
+    "saving": "Guardando…",
+    "saved": "Preferencias guardadas.",
+    "errors": {
+      "invalid": "Preferencias no válidas",
+      "notSaved": "No se pudieron guardar las preferencias"
+    }
+  },
+  "scoring": {
+    "decisions": {
+      "auto": "Aprobado automático",
+      "limited": "Aprobado con límites",
+      "manual": "Revisión manual",
+      "reject": "Rechazado"
+    },
+    "ratios": {
+      "guarantee": { "label": "Garantía (colateral)", "formula": "Activo total / Pasivo total" },
+      "solvency": { "label": "Solvencia", "formula": "Activo corriente / Pasivo corriente" },
+      "indebtedness": { "label": "Endeudamiento", "formula": "Pasivo total / Patrimonio neto" },
+      "netMargin": { "label": "Margen neto", "formula": "Resultado neto / Ventas" },
+      "sectorialRisk": { "label": "Riesgo sectorial", "formula": "Sector → rating" },
+      "maturity": { "label": "Antigüedad (años)", "formula": "Años desde la constitución" },
+      "economicProfit": { "label": "Rentabilidad económica (ROA)", "formula": "Resultado neto / Activo total" },
+      "financialProfit": { "label": "Rentabilidad financiera (ROE)", "formula": "Resultado neto / Patrimonio neto" },
+      "paymentPeriod": { "label": "Periodo medio de pago (días)", "formula": "(Proveedores / Aprovisionamientos) × 365" },
+      "collectionPeriod": { "label": "Periodo medio de cobro (días)", "formula": "(Clientes / Ventas) × 365" }
+    }
+  }
+}

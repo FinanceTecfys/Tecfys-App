@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
-/* Tecfys palette (from the scoring mockup): deep green "ink" surfaces, mint accent. */
+/*
+ * Tecfys palette (from the scoring mockup): deep green "ink" surfaces, mint accent.
+ *
+ * These tokens ARE the "green" theme mode and the default. Every ink-* / mint-*
+ * utility reads them as CSS custom properties, so a theme mode is a block that
+ * redefines them under the data-theme attribute the root layout sets on <html>
+ * from the user's stored preference (src/lib/theme.ts).
+ */
 @theme {
   --color-ink-950: #040d08;
   --color-ink-900: #071a0f;
@@ -16,6 +23,29 @@
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+/*
+ * Theme seam. data-theme="green" needs no block: it is the @theme above.
+ *
+ * data-theme="blue" (the "Azul / Blanco" mode) is already stored per user and
+ * applied to <html>, but its palette is NOT defined yet, so it renders the
+ * green one. To implement it, fill this block - and only this block - with the
+ * blue values of the same tokens, e.g.
+ *
+ *   [data-theme="blue"] {
+ *     --color-ink-950: ...;   (page background)
+ *     --color-ink-900: ...;   (cards)
+ *     --color-ink-800 ... --color-ink-500: ...;   (inputs, borders)
+ *     --color-mint-400 ... --color-mint-700: ...; (accent)
+ *     --color-paper: ...;     (default text)
+ *     color-scheme: light;
+ *   }
+ *
+ * Known limit: text on surfaces uses Tailwind's fixed slate-* scale, which
+ * this block cannot redefine; a light theme also needs those moved to tokens.
+ */
+[data-theme="blue"] {
 }
 
 @layer base {
