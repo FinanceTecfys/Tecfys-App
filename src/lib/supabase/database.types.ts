@@ -626,34 +626,37 @@ export type Database = {
           company_id: string | null
           created_at: string
           created_by: string | null
+          fetched_at: string | null
           file_name: string | null
+          file_sha256: string | null
           id: string
-          parsed: Json
           reference_year: number | null
+          report_date: string | null
           source: Database["public"]["Enums"]["scoring_source"]
-          storage_path: string | null
         }
         Insert: {
           company_id?: string | null
           created_at?: string
           created_by?: string | null
+          fetched_at?: string | null
           file_name?: string | null
+          file_sha256?: string | null
           id?: string
-          parsed: Json
           reference_year?: number | null
+          report_date?: string | null
           source: Database["public"]["Enums"]["scoring_source"]
-          storage_path?: string | null
         }
         Update: {
           company_id?: string | null
           created_at?: string
           created_by?: string | null
+          fetched_at?: string | null
           file_name?: string | null
+          file_sha256?: string | null
           id?: string
-          parsed?: Json
           reference_year?: number | null
+          report_date?: string | null
           source?: Database["public"]["Enums"]["scoring_source"]
-          storage_path?: string | null
         }
         Relationships: [
           {
@@ -753,6 +756,11 @@ export type Database = {
           prudence: number
           rating: Database["public"]["Enums"]["credit_rating"]
           ratios: Json
+          report_date: string | null
+          report_fetched_at: string | null
+          report_file_name: string | null
+          report_file_sha256: string | null
+          report_source: string | null
           review_note: string | null
           reviewed_at: string | null
           status: Database["public"]["Enums"]["scoring_status"]
@@ -775,6 +783,11 @@ export type Database = {
           prudence: number
           rating: Database["public"]["Enums"]["credit_rating"]
           ratios: Json
+          report_date?: string | null
+          report_fetched_at?: string | null
+          report_file_name?: string | null
+          report_file_sha256?: string | null
+          report_source?: string | null
           review_note?: string | null
           reviewed_at?: string | null
           status: Database["public"]["Enums"]["scoring_status"]
@@ -797,6 +810,11 @@ export type Database = {
           prudence?: number
           rating?: Database["public"]["Enums"]["credit_rating"]
           ratios?: Json
+          report_date?: string | null
+          report_fetched_at?: string | null
+          report_file_name?: string | null
+          report_file_sha256?: string | null
+          report_source?: string | null
           review_note?: string | null
           reviewed_at?: string | null
           status?: Database["public"]["Enums"]["scoring_status"]

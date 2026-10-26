@@ -35,11 +35,42 @@ repository root.
    - the schema and RLS (forced on every table);
    - the revoked API-role privileges;
    - the reference data: contract types, asset types and the `Direct` distributor;
-   - both **private** storage buckets, `contract-attachments` and `informa-reports`.
+   - the **private** storage bucket `contract-attachments`;
+   - the Informa provenance columns (zero retention, see below).
 
    They were verified to apply cleanly from zero with `supabase db reset`.
-3. Run the checks in [section 7.1](#71-database-run-in-the-sql-editor) before
+3. Remove the `informa-reports` bucket. An older migration (`20261004000000`)
+   still creates it, empty. Migrations cannot delete it, because Supabase
+   forbids SQL deletes on storage tables. Remove it through the Storage API,
+   with the shell variables of [section 5](#5-first-owner) set:
+
+   ```powershell
+   npm run purge:informa-reports -- --dry-run   # counts only
+   npm run purge:informa-reports                # deletes its files and the bucket
+   ```
+
+   It is safe to re-run: a second run reports "nothing to purge". It touches no
+   other bucket, and it fails if the number of files in `contract-attachments`
+   changes.
+4. Run the checks in [section 7.1](#71-database-run-in-the-sql-editor) before
    going further.
+
+### Informa: zero retention
+
+Tecfys does **not** store Informa reports, so there is no `informa-reports`
+bucket. Neither the uploaded PDF nor the raw API response is kept anywhere:
+not in Storage, the database, logs or temp files.
+
+- The PDF is parsed in memory and discarded at the end of the request.
+- The API response is mapped in memory, and only the mapped fields reach the
+  browser.
+- What is persisted is only:
+  - the mapped financial data on the scoring (`scorings.financials`);
+  - the report's provenance: source (`pdf` / `api`), the report's own date,
+    and, for a PDF, its file name and the SHA-256 of its bytes, or, for the
+    API, the fetch time.
+- The provenance is kept on the scoring (`scorings.report_*`) and on a receipt
+  without content (`informa_reports`), which proves who parsed or fetched it.
 
 ## 2. Supabase dashboard settings (from config.toml, by hand)
 
@@ -206,8 +237,8 @@ where n.nspname = 'public' and c.relkind = 'r' order by 1;
 -- expect: relrowsecurity true everywhere, relforcerowsecurity false only for profiles,
 --         anon_select / auth_select false everywhere
 
--- Private buckets, no storage policies.
-select id, public from storage.buckets;  -- expect: contract-attachments f, informa-reports f
+-- Private bucket, no storage policies, no informa-reports bucket (zero retention).
+select id, public from storage.buckets;  -- expect: contract-attachments f (only)
 select count(*) from pg_policy where polrelid = 'storage.objects'::regclass;  -- expect: 0
 ```
 
@@ -241,8 +272,11 @@ bucket listing returns an empty array.
 3. **Roles:** the test user sees the sales screens only. A partner sees only
    their own scorings and operations.
 4. **Scoring:** run "Buscar en Informa por CIF". Settings > Informa > "Probar
-   conexion" must pass. Upload a small Informa PDF (under 4 MB, see below), and
-   check that its file lands in the `informa-reports` bucket.
+   conexion" must pass. Upload an Informa PDF and save the scoring:
+   - The scoring page shows its provenance: "PDF de Informa «file» (no
+     conservado) · informe del dd/mm/yyyy".
+   - Storage still holds only `contract-attachments`.
+   - A PDF over 4 MB is refused with a translated message, before any upload.
 5. **Contract generation:** create an operation with a small ID document and
    bank certificate. Download the draft `.docx` (the template is bundled with
    the function) and open each attachment.
@@ -253,12 +287,15 @@ bucket listing returns an empty array.
 
 ## 8. Known platform limits
 
-- **Request body: 4.5 MB per Vercel Function request and response.** The app
-  accepts larger uploads, all through Server Actions: attachments up to 8 MB
-  each (two per form) and Informa PDFs up to 20 MB. On Vercel, anything over
-  ~4.5 MB in one submission fails with `413 FUNCTION_PAYLOAD_TOO_LARGE`. Until
-  uploads go directly to Storage (a future branch), keep files small. Also check
-  that the loan-book PDF export stays under the response limit.
+- **Request body: 4.5 MB per Vercel Function request and response.**
+  - **Informa PDFs** are capped at **4 MB**, checked both in the browser and in
+    the action. The 81 real Informa Comercial reports on hand weigh 185 KB to
+    1.1 MB (median 762 KB).
+  - **Contract attachments** still accept up to 8 MB each, two per form,
+    through a Server Action. On Vercel, anything over ~4.5 MB in one submission
+    fails with `413 FUNCTION_PAYLOAD_TOO_LARGE`. Until they upload directly to
+    Storage (a future branch), keep them small.
+  - Also check that the loan-book PDF export stays under the response limit.
 - Informa keeps its session in server memory, per function instance. A cold
   instance simply logs in again.
 - Long Holded syncs run inside one request: keep the function's maximum

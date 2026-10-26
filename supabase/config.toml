@@ -117,10 +117,8 @@ enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
-[storage.buckets.informa-reports]
-public = false
-file_size_limit = "20MiB"
-allowed_mime_types = ["application/pdf"]
+# No informa-reports bucket: Informa reports are never stored (zero retention,
+# migration 20261026000000). The PDF is parsed in memory and discarded.
 
 # Contract attachments (signatory ID, bank certificate). Private: served only
 # through /contracts/[id]/attachments/[kind]. Mirrors the migration.

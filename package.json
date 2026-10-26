@@ -17,7 +17,8 @@
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
     "template:build": "tsx scripts/build-contract-template.ts",
     "verify:auth": "tsx scripts/verify-auth.ts",
-    "bootstrap:owner": "tsx scripts/bootstrap-owner.ts"
+    "bootstrap:owner": "tsx scripts/bootstrap-owner.ts",
+    "purge:informa-reports": "tsx scripts/purge-informa-reports.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

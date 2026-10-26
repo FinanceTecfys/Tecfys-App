@@ -34,7 +34,9 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
         description={
           <>
             <span className="num">{scoring.company?.cif}</span> · {f.sector ?? t("noSector")} · {t("scoringOf", { date: fmtDate(scoring.created_at) })}
-            {scoring.report?.file_name && <> · {scoring.report.file_name}</>}
+            {scoring.report_source === "pdf" && <> · <span title={scoring.report_file_sha256 ? `SHA-256 ${scoring.report_file_sha256}` : undefined}>{t("sourcePdf", { file: scoring.report_file_name ?? "" })}</span></>}
+            {scoring.report_source === "api" && <> · {t("sourceApi", { date: fmtDate(scoring.report_fetched_at) })}</>}
+            {scoring.report_date && <> · {t("reportDate", { date: fmtDate(scoring.report_date) })}</>}
           </>
         }
         actions={
