@@ -16,7 +16,8 @@
     "sync:holded": "tsx scripts/sync-holded.ts",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
     "template:build": "tsx scripts/build-contract-template.ts",
-    "verify:auth": "tsx scripts/verify-auth.ts"
+    "verify:auth": "tsx scripts/verify-auth.ts",
+    "bootstrap:owner": "tsx scripts/bootstrap-owner.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

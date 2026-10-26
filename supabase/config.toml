@@ -172,7 +172,9 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# The app passes redirectTo = SITE_URL on invitations (local SITE_URL: one of these).
+# Hosted: Auth > URL Configuration > Redirect URLs (https://app.tecfys.com, https://staging.tecfys.com).
+additional_redirect_urls = ["http://127.0.0.1:3000", "http://127.0.0.1:3100", "http://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -264,7 +266,8 @@ otp_expiry = 3600
 
 # Invitation and recovery emails link to the app's own /auth/set-password page
 # (token_hash in the query string) instead of Supabase's /verify endpoint: the
-# user sets the password there. The link is built on site_url above.
+# user sets the password there. The link is built on {{ .RedirectTo }}: the app's
+# SITE_URL passed as redirectTo, or site_url above when the sender passes none.
 # Guarded by src/modules/auth/domain/__tests__/email-templates.test.ts.
 # Hosted projects ignore these files: paste the templates in the dashboard.
 [auth.email.template.invite]
