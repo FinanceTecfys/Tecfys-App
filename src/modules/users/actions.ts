@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getTranslate } from "@/i18n/server";
 import { z } from "zod";
+import { serverEnv } from "@/lib/env";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import { getAuthUser, getUserRole } from "./data";
@@ -31,7 +32,10 @@ const done = (notice?: string): UserResult => {
  * Invite a user by email with a role (owner / admin only; an admin cannot
  * invite admins, nobody invites an owner). Supabase Auth creates the account
  * and emails a link to /auth/set-password, where the user chooses their own
- * password. The profile (role + distributor) is written here, at invite time,
+ * password. The link is built on SITE_URL (redirectTo -> {{ .RedirectTo }} in
+ * supabase/templates/invite.html), so staging and production each send their
+ * own domain whatever host served the request.
+ * The profile (role + distributor) is written here, at invite time,
  * keyed by the id of the account the invitation just created: the role is in
  * place before the first login, and until the password is set the account
  * simply cannot sign in.
@@ -45,7 +49,7 @@ export async function inviteUser(input: InviteUserInput): Promise<UserResult> {
   const allowed = checkInviteUser(actor, { email, role, distributorId });
   if (!allowed.ok) return { ok: false, error: translate(allowed.error) };
 
-  const { data, error } = await db().auth.admin.inviteUserByEmail(email);
+  const { data, error } = await db().auth.admin.inviteUserByEmail(email, { redirectTo: serverEnv().SITE_URL });
   if (error || !data.user) {
     return { ok: false, error: error?.code === "email_exists" ? translate("errors.users.emailExists") : (error?.message ?? translate("errors.users.inviteFailed")) };
   }

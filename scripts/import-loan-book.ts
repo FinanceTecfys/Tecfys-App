@@ -1,7 +1,12 @@
 /**
- * Load the Borrowing Base "Loan book" tab into the local Supabase database.
+ * Load the Borrowing Base "Loan book" tab into the Supabase database.
  *
  *   npm run import:loan-book -- "Legacy/Tecfys Borrowing base_15092026_default alignment.xlsx"
+ *
+ * Targets SUPABASE_URL / SUPABASE_SECRET_KEY from .env.local unless they are
+ * already set in the shell (shell values win): that is how it is run against a
+ * cloud project (docs/DEPLOYMENT.md). Needs the reference data of migration
+ * 20261004000000 (contract types, asset types) and refuses to run without it.
  *
  * Idempotent: contracts previously imported (contract_number "LB-...") are
  * deleted and re-inserted; companies, distributors and asset types are upserted.
@@ -25,6 +30,7 @@ async function main() {
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) throw new Error("SUPABASE_URL / SUPABASE_SECRET_KEY missing in .env.local");
   const sb = createClient<Database>(url, key, { auth: { persistSession: false } });
+  console.log(`Target project ${new URL(url).host}`);
 
   const { loanBook } = await readBorrowingBase(path);
   console.log(`Read ${loanBook.length} contracts`);
@@ -66,6 +72,18 @@ async function main() {
   const { data: assetTypes, error: atErr } = await sb.from("asset_types").select("id, name");
   if (atErr) throw atErr;
   const assetTypeIds = new Map(assetTypes.map((a) => [a.name.toLowerCase(), a.id]));
+  // Without the reference data the insert fails on contract_type and every equipment line is dropped.
+  const { data: contractTypes, error: ctErr } = await sb.from("contract_types").select("code");
+  if (ctErr) throw ctErr;
+  const knownTypes = new Set(contractTypes.map((c) => c.code));
+  const unknownTypes = [...new Set(loanBook.map((r) => r.contractType))].filter((t) => !knownTypes.has(t));
+  const unknownClusters = [...new Set(loanBook.flatMap((r) => r.assets.map((a) => a.cluster)))].filter((c) => !assetTypeIds.has(c.toLowerCase()));
+  if (unknownTypes.length || unknownClusters.length) {
+    throw new Error(
+      `Reference data missing in the target database (apply all migrations first - 20261004000000_cloud_reference_data.sql): ` +
+        `contract types [${unknownTypes.join(", ")}], asset types [${unknownClusters.join(", ")}]`,
+    );
+  }
 
   // --- contracts: replace the previous import
   const { error: delErr } = await sb.from("contracts").delete().like("contract_number", "LB-%");

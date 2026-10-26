@@ -14,6 +14,8 @@ import { LINK_TYPES, parsePasswordLink, passwordLinkPath } from "../set-password
 const SUPABASE = path.join(process.cwd(), "supabase");
 const config = readFileSync(path.join(SUPABASE, "config.toml"), "utf8");
 const HASH = "3f9a1c0b7d2e4f6a8b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c";
+/** SITE_URL as the app passes it in redirectTo (one deployment's origin). */
+const SITE_URL = "https://staging.tecfys.com";
 
 describe("auth email templates", () => {
   for (const type of LINK_TYPES) {
@@ -23,7 +25,7 @@ describe("auth email templates", () => {
       /** The href of the template with Supabase's Go-template variables filled in. */
       const renderedLink = () => {
         const href = template().match(/<a href="([^"]+)"/)?.[1];
-        return href?.replace("{{ .SiteURL }}", "http://127.0.0.1:3000").replace("{{ .TokenHash }}", HASH);
+        return href?.replace("{{ .RedirectTo }}", SITE_URL).replace("{{ .TokenHash }}", HASH);
       };
 
       it("is registered in config.toml with a subject and an existing file", () => {
@@ -32,9 +34,15 @@ describe("auth email templates", () => {
         expect(template().length).toBeGreaterThan(100);
       });
 
-      it("links to the app's set-password page with the token hash, on the site URL", () => {
+      it("links to the app's set-password page with the token hash, on the deployment's SITE_URL", () => {
         const link = renderedLink();
-        expect(link).toBe(`http://127.0.0.1:3000${passwordLinkPath({ tokenHash: HASH, type })}`);
+        expect(link).toBe(`${SITE_URL}${passwordLinkPath({ tokenHash: HASH, type })}`);
+      });
+
+      it("builds the link on the redirect the app passes (SITE_URL), not on the project's Site URL", () => {
+        const body = template().replace(/<!--[\s\S]*?-->/g, "");
+        expect(body).toContain('href="{{ .RedirectTo }}/auth/set-password?');
+        expect(body).not.toContain("{{ .SiteURL }}");
       });
 
       it("is a link the page accepts and the proxy lets through without a session", () => {
