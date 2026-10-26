@@ -945,6 +945,10 @@ export type Database = {
         }
         Returns: Json
       }
+      current_app_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
       update_draft_contract: {
         Args: {
           p_asset: Json
