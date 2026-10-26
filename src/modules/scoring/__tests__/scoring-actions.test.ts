@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The scoring server actions against an in-memory database: the live preview
- * (what it returns and that it agrees with the scoring that gets stored) and
- * the ownership of the Informa report a scoring links. No real Supabase.
+ * (what it returns and that it agrees with the scoring that gets stored), the
+ * ownership of the Informa report a scoring links, and zero retention of
+ * Informa reports (no storage call, no report content written, provenance
+ * only). No real Supabase.
  */
 type Row = Record<string, unknown>;
 
@@ -12,7 +14,8 @@ const state = vi.hoisted(() => ({
   capabilities: [] as string[],
   tables: {} as Record<string, Record<string, unknown>[]>,
   writes: [] as { table: string; op: string; values: Record<string, unknown> }[],
-  uploads: [] as string[],
+  /** Every Storage call any action makes: must stay empty (Informa reports are never stored). */
+  storageCalls: [] as string[],
   seq: 0,
 }));
 
@@ -73,21 +76,26 @@ vi.mock("@/lib/supabase/server", () => ({
       return query;
     },
     storage: {
-      from: () => ({
-        upload: async (path: string) => {
-          state.uploads.push(path);
-          return { error: null };
-        },
-      }),
+      from: (bucket: string) => {
+        state.storageCalls.push(`from ${bucket}`);
+        return {
+          upload: async (path: string) => {
+            state.storageCalls.push(`upload ${bucket}/${path}`);
+            return { error: null };
+          },
+        };
+      },
     },
   }),
 }));
 vi.mock("@/modules/scoring/informa/server", () => ({
   isInformaConfigured: () => true,
   informaConfigStatus: () => ({ baseUrlAllowed: true, hasUsername: true, hasPassword: true }),
-  appInformaClient: () => ({ getReport: async () => ({ raw: "report" }), ping: async () => undefined }),
+  appInformaClient: () => ({ getReport: async () => RAW_API_REPORT, ping: async () => undefined }),
 }));
-vi.mock("@/modules/scoring/informa/extract-pdf-text", () => ({ extractInformaText: async () => "texto del informe" }));
+vi.mock("@/modules/scoring/informa/extract-pdf-text", () => ({
+  extractInformaText: async () => `Informa Comercial ALFA SL Usuario: analista@tecfys.com Fecha: 13/08/2026 ${REPORT_CONTENT_MARKER}`,
+}));
 vi.mock("@/modules/scoring/informa/parse-informa-text", async () => {
   const { EMPTY_FINANCIALS } = await import("@/modules/scoring/domain/financials");
   return { parseInformaText: () => ({ financials: { ...EMPTY_FINANCIALS, cif: "B12345678", name: "Alfa SL", totalRevenue: 1000 }, missing: [] }) };
@@ -101,6 +109,7 @@ vi.mock("@/modules/scoring/informa/map-informa-report", async (original) => {
   };
 });
 
+import { createHash } from "node:crypto";
 import { createScoring, fetchInformaReport, parseInformaPdf, previewScoring } from "../actions";
 import { DEFAULT_CRITERIA, type ScoringCriteria } from "../domain/criteria";
 import { EMPTY_FINANCIALS, type Financials } from "../domain/financials";
@@ -110,6 +119,14 @@ const ADMIN = { id: "user-admin", role: "admin", partnerDistributorId: null };
 const SALES = { id: "user-sales", role: "sales", partnerDistributorId: null };
 const PARTNER = { id: "user-partner", role: "partner", partnerDistributorId: "dist-1" };
 const OTHER_PARTNER = { id: "user-partner-2", role: "partner", partnerDistributorId: "dist-2" };
+
+/** Text that exists only inside the report: it must never be written, returned or stored. */
+const REPORT_CONTENT_MARKER = vi.hoisted(() => "CONTENIDO-PRIVADO-DEL-INFORME");
+const RAW_API_REPORT = vi.hoisted(() => ({
+  productoSolicitado: "INFORME_MAYOR",
+  datosPeticion: { usuario: "secret-user", idSesion: "secret-session" },
+  datosProducto: { informacionComercial: { datosGenerales: { fechaUltimoDatoIncluidoInforme: "2026-06-05" } }, nota: "CONTENIDO-PRIVADO-DEL-INFORME" },
+}));
 
 const OWN_REPORT = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 const OTHERS_REPORT = "0b0e7a3c-1b1d-4c57-9b0e-3f6a1f0c2d11";
@@ -124,6 +141,10 @@ const company = (over: Partial<Financials> = {}): Financials => ({
   receivables: 300_000, payables: 180_000,
   ...over,
 });
+
+const PDF_SHA = "a".repeat(64);
+const PDF_RECEIPT = { source: "informa_pdf", file_name: "alfa.pdf", file_sha256: PDF_SHA, report_date: "2026-08-13", fetched_at: null };
+const API_RECEIPT = { source: "informa_api", file_name: null, file_sha256: null, report_date: "2026-06-05", fetched_at: "2026-10-26T09:00:00.000Z" };
 
 const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
 const writesTo = (table: string) => state.writes.filter((w) => w.table === table);
@@ -144,17 +165,17 @@ beforeEach(() => {
   state.user = OWNER;
   state.capabilities = [];
   state.writes = [];
-  state.uploads = [];
+  state.storageCalls = [];
   state.seq = 0;
   state.tables = {
     scoring_criteria: [],
     companies: [],
     scorings: [],
     informa_reports: [
-      { id: OWN_REPORT, created_by: PARTNER.id, company_id: null },
-      { id: OTHERS_REPORT, created_by: OTHER_PARTNER.id, company_id: null },
-      { id: LEGACY_REPORT, created_by: null, company_id: null },
-      { id: STAFF_REPORT, created_by: SALES.id, company_id: null },
+      { id: OWN_REPORT, created_by: PARTNER.id, company_id: null, ...PDF_RECEIPT },
+      { id: OTHERS_REPORT, created_by: OTHER_PARTNER.id, company_id: null, ...API_RECEIPT },
+      { id: LEGACY_REPORT, created_by: null, company_id: null, ...API_RECEIPT, report_date: null, fetched_at: null },
+      { id: STAFF_REPORT, created_by: SALES.id, company_id: null, ...PDF_RECEIPT },
     ],
   };
 });
@@ -336,11 +357,80 @@ describe("a report belongs to whoever created it", () => {
 
   it("the PDF path stores the user that uploaded it", async () => {
     state.user = SALES;
-    const form = new FormData();
-    form.set("pdf", new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "informe.pdf", { type: "application/pdf" }));
-    const res = await parseInformaPdf(form);
+    const res = await parseInformaPdf(pdfForm());
     expect(res.ok).toBe(true);
     expect(writesTo("informa_reports").at(-1)?.values).toMatchObject({ source: "informa_pdf", file_name: "informe.pdf", created_by: SALES.id });
-    expect(state.uploads).toHaveLength(1);
+  });
+});
+
+const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+function pdfForm(bytes: Uint8Array = PDF_BYTES, name = "informe.pdf") {
+  const form = new FormData();
+  form.set("pdf", new File([bytes as Uint8Array<ArrayBuffer>], name, { type: "application/pdf" }));
+  return form;
+}
+
+describe("zero retention of Informa reports", () => {
+  it("a PDF is parsed in memory: no storage call, only a provenance receipt", async () => {
+    const res = await parseInformaPdf(pdfForm());
+    expect(res.ok).toBe(true);
+    expect(state.storageCalls).toEqual([]);
+    const receipt = writesTo("informa_reports").at(-1)!.values;
+    expect(receipt).toEqual({
+      source: "informa_pdf",
+      file_name: "informe.pdf",
+      file_sha256: createHash("sha256").update(PDF_BYTES).digest("hex"),
+      report_date: "2026-08-13",
+      reference_year: null,
+      created_by: OWNER.id,
+    });
+    // Nothing of the report's text, nor the portal user of its header, is written anywhere.
+    const written = JSON.stringify(state.writes);
+    expect(written).not.toContain(REPORT_CONTENT_MARKER);
+    expect(written).not.toContain("analista@tecfys.com");
+  });
+
+  it("an API report is mapped in memory: the raw response is neither written nor returned", async () => {
+    const before = Date.now();
+    const res = await fetchInformaReport("B12345678");
+    if (!res.ok) throw new Error(res.error);
+    expect(state.storageCalls).toEqual([]);
+    const receipt = writesTo("informa_reports").at(-1)!.values;
+    expect(Object.keys(receipt).sort()).toEqual(["created_by", "fetched_at", "reference_year", "report_date", "source"]);
+    expect(receipt).toMatchObject({ source: "informa_api", report_date: "2026-06-05" });
+    expect(Date.parse(receipt.fetched_at as string)).toBeGreaterThanOrEqual(before - 1);
+    for (const payload of [JSON.stringify(state.writes), JSON.stringify(res)]) {
+      expect(payload).not.toContain(REPORT_CONTENT_MARKER);
+      expect(payload).not.toContain("secret-session");
+      expect(payload).not.toContain("secret-user");
+    }
+    expect(Object.keys(res).sort()).toEqual(["balance", "financials", "missing", "ok", "reportId", "risk", "status", "warnings"]);
+  });
+
+  it(`refuses a PDF over the ${4} MB limit before reading it, with the translated message`, async () => {
+    const res = await parseInformaPdf(pdfForm(new Uint8Array(4 * 1024 * 1024 + 1)));
+    expect(res).toEqual({ ok: false, error: "scoring.errors.pdfTooLarge" });
+    expect(state.writes).toEqual([]);
+    expect(state.storageCalls).toEqual([]);
+  });
+
+  it("a scoring copies its provenance from the server-issued receipt", async () => {
+    state.user = PARTNER;
+    await save({ financials: company(), informaReportId: OWN_REPORT });
+    expect(storedScoring()).toMatchObject({
+      report_source: "pdf", report_date: "2026-08-13", report_file_name: "alfa.pdf", report_file_sha256: PDF_SHA, report_fetched_at: null,
+    });
+
+    state.user = OWNER;
+    await save({ financials: company(), informaReportId: OTHERS_REPORT });
+    expect(storedScoring()).toMatchObject({
+      report_source: "api", report_date: "2026-06-05", report_file_name: null, report_file_sha256: null, report_fetched_at: "2026-10-26T09:00:00.000Z",
+    });
+
+    await save({ financials: company() });
+    expect(storedScoring()).toMatchObject({
+      informa_report_id: null, report_source: null, report_date: null, report_file_name: null, report_file_sha256: null, report_fetched_at: null,
+    });
+    expect(state.storageCalls).toEqual([]);
   });
 });

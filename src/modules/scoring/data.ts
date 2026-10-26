@@ -36,7 +36,7 @@ export async function listScorings(scope: DataScope, { limit = 100, status }: { 
 export async function getScoring(id: string, scope: DataScope) {
   const { data, error } = await db()
     .from("scorings")
-    .select("*, company:companies ( * ), report:informa_reports ( id, file_name, reference_year, source )")
+    .select("*, company:companies ( * )")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -55,7 +55,11 @@ export async function getScoring(id: string, scope: DataScope) {
  * than informa_reports.created_by) is Tecfys's, like every record with no creator.
  */
 export async function getInformaReport(id: string, scope: DataScope) {
-  const { data, error } = await db().from("informa_reports").select("id, created_by").eq("id", id).maybeSingle();
+  const { data, error } = await db()
+    .from("informa_reports")
+    .select("id, created_by, source, file_name, file_sha256, report_date, fetched_at")
+    .eq("id", id)
+    .maybeSingle();
   if (error) throw error;
   return data && inScope(scope, data.created_by) ? data : null;
 }

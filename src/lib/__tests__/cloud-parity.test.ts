@@ -18,7 +18,13 @@ const configBuckets = [...config.matchAll(/^\[storage\.buckets\.([\w-]+)\]/gm)].
 
 describe("cloud parity", () => {
   it("finds the app's buckets in config.toml", () => {
-    expect(configBuckets.sort()).toEqual(["contract-attachments", "informa-reports"]);
+    expect(configBuckets.sort()).toEqual(["contract-attachments"]);
+  });
+
+  it("declares no bucket for Informa reports, which are never stored (zero retention)", () => {
+    expect(config).not.toMatch(/^\[storage\.buckets\.informa/m);
+    expect(migrations).toMatch(/drop column if exists storage_path/);
+    expect(migrations).toMatch(/drop column if exists parsed/);
   });
 
   for (const bucket of configBuckets) {

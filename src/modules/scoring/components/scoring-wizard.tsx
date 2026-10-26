@@ -13,6 +13,7 @@ import { fmtEur, fmtNum } from "@/lib/format";
 import { createScoring, fetchInformaReport, parseInformaPdf, previewScoring } from "../actions";
 import { EMPTY_FINANCIALS, FINANCIAL_FIELDS, type Financials } from "../domain/financials";
 import type { InformaCompanyStatus, InformaRisk } from "../informa/map-informa-report";
+import { MAX_PDF_BYTES, MAX_PDF_MB } from "../informa/pdf-limits";
 import type { ScoringPreview } from "../domain/preview";
 import { DecisionBadge, RatingBadge } from "./badges";
 import { InformaCompanyStatusAlert } from "./informa-company-status";
@@ -100,6 +101,9 @@ export function ScoringWizard({
 
   function onUpload(formData: FormData) {
     setError(null);
+    // Checked here too: on Vercel a body over 4.5 MB is refused before the action runs.
+    const pdf = formData.get("pdf");
+    if (pdf instanceof File && pdf.size > MAX_PDF_BYTES) return setError(translate("scoring.errors.pdfTooLarge", { max: MAX_PDF_MB }));
     startParsing(async () => {
       const res = await parseInformaPdf(formData);
       if (!res.ok) return setError(res.error);
@@ -170,7 +174,7 @@ export function ScoringWizard({
             <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-ink-600 bg-ink-800/40 px-6 py-10 text-center transition hover:border-mint-500/60">
               <FileUp className="h-8 w-8 text-mint-500" aria-hidden />
               <span className="text-sm text-slate-300">{fileName ?? t("pdfPick")}</span>
-              <span className="text-xs text-slate-500">{t("pdfMax")}</span>
+              <span className="text-xs text-slate-500">{t("pdfMax", { max: MAX_PDF_MB })}</span>
               <input
                 type="file"
                 name="pdf"

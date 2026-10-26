@@ -17,9 +17,10 @@ import { extractInformaText } from "./informa/extract-pdf-text";
 import { parseInformaText } from "./informa/parse-informa-text";
 import { type InformaReportMapping, mapInformaReport, normalizeCif } from "./informa/map-informa-report";
 import { InformaApiError } from "./informa/api-client";
+import { MAX_PDF_BYTES, MAX_PDF_MB } from "./informa/pdf-limits";
+import { apiReportDate, pdfReportDate, receiptProvenance, sha256Hex } from "./informa/provenance";
 import { appInformaClient, informaConfigStatus, isInformaConfigured } from "./informa/server";
 
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
 const INFORMA_ERRORS = "scoring.informa.errors";
 
@@ -57,9 +58,12 @@ export type FetchInformaResult =
 
 /**
  * "Buscar en Informa por CIF": fetch the INFORME_MAYOR from the Informa API and
- * map it to Financials. Only the mapping is kept (informa_reports, source
- * informa_api): the raw report echoes the request credentials, so it is
- * neither stored nor sent to the browser. The report belongs to whoever fetched it.
+ * map it to Financials for the wizard. Zero retention: the raw response lives
+ * only in this request's memory - it is never stored, logged or sent to the
+ * browser (it also echoes the request credentials). What is written is a
+ * provenance receipt (informa_reports: source, report date, fetch time, owner)
+ * with no report content; the mapped data is persisted only when a scoring is
+ * saved from it.
  */
 export async function fetchInformaReport(cifInput: string): Promise<FetchInformaResult> {
   const user = await requireRole("scoring.run");
@@ -74,16 +78,20 @@ export async function fetchInformaReport(cifInput: string): Promise<FetchInforma
   } catch (e) {
     return { ok: false, error: informaErrorMessage(e, translate) };
   }
-  const { reportType, ...mapping } = mapInformaReport(report);
+  const fetchedAt = new Date().toISOString();
+  // An allow-list of mapped fields is all that leaves this function; the raw report goes out of scope here.
+  const { financials, missing, status, risk, balance, warnings } = mapInformaReport(report);
+  const mapping = { financials, missing, status, risk, balance, warnings };
+  const reportDate = apiReportDate(report);
   if (!mapping.financials.cif) mapping.financials.cif = cif;
 
   const { data, error } = await db()
     .from("informa_reports")
     .insert({
       source: "informa_api",
-      file_name: `Informa API ${reportType ?? "informe"} ${cif}`,
       reference_year: mapping.financials.referenceYear,
-      parsed: { ...mapping, reportType, requestedCif: cif } as unknown as Json,
+      report_date: reportDate,
+      fetched_at: fetchedAt,
       created_by: user.id,
     })
     .select("id")
@@ -111,16 +119,23 @@ export type ParsePdfResult =
   | { ok: true; reportId: string; financials: Financials; missing: (keyof Financials)[] }
   | { ok: false; error: string };
 
-/** Parse an Informa PDF, keep the original in storage and the parse in informa_reports, owned by whoever uploaded it. */
+/**
+ * Parse an Informa PDF for the wizard. Zero retention: the file is read and
+ * parsed in memory and dropped with the request - never uploaded to Storage,
+ * written to disk or logged. Only a provenance receipt is written (file name,
+ * SHA-256 of the bytes, the report's date, owner); the mapped data is persisted
+ * only when a scoring is saved from it.
+ */
 export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResult> {
   const user = await requireRole("scoring.run");
   const translate = await getTranslate();
   const file = formData.get("pdf");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: translate("scoring.errors.pdfMissing") };
   if (file.type && file.type !== "application/pdf") return { ok: false, error: translate("scoring.errors.notPdf") };
-  if (file.size > MAX_PDF_BYTES) return { ok: false, error: translate("scoring.errors.pdfTooLarge") };
+  if (file.size > MAX_PDF_BYTES) return { ok: false, error: translate("scoring.errors.pdfTooLarge", { max: MAX_PDF_MB }) };
 
   const buffer = await file.arrayBuffer();
+  const fileSha256 = await sha256Hex(buffer);
   let text: string;
   try {
     text = await extractInformaText(buffer.slice(0));
@@ -132,17 +147,14 @@ export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResul
     return { ok: false, error: translate("scoring.errors.pdfNotInforma") };
   }
 
-  const storagePath = `${crypto.randomUUID()}.pdf`;
-  const upload = await db().storage.from("informa-reports").upload(storagePath, buffer, { contentType: "application/pdf" });
-
   const { data, error } = await db()
     .from("informa_reports")
     .insert({
       source: "informa_pdf",
-      file_name: file.name,
-      storage_path: upload.error ? null : storagePath,
+      file_name: file.name.slice(0, 255),
+      file_sha256: fileSha256,
+      report_date: pdfReportDate(text),
       reference_year: financials.referenceYear,
-      parsed: { financials, missing } as unknown as Json,
       created_by: user.id,
     })
     .select("id")
@@ -184,13 +196,15 @@ export async function createScoring(input: { financials: Financials; informaRepo
   if (!parsed.success) return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors: fieldErrorsOf(parsed.error, translate) };
   const f = { ...parsed.data, cif: parsed.data.cif.replace(/[\s.-]/g, "").toUpperCase() };
 
-  let reportId: string | null = null;
+  // The provenance is copied from the server-issued receipt, never taken from the browser.
+  let report: Awaited<ReturnType<typeof getInformaReport>> = null;
   if (input.informaReportId) {
     const id = z.uuid().safeParse(input.informaReportId);
-    const report = id.success ? await getInformaReport(id.data, dataScopeFor(user)) : null;
+    report = id.success ? await getInformaReport(id.data, dataScopeFor(user)) : null;
     if (!report) return { ok: false, error: translate("scoring.errors.reportNotFound") };
-    reportId = report.id;
   }
+  const reportId = report?.id ?? null;
+  const provenance = report ? receiptProvenance(report) : null;
 
   const criteria = await getActiveCriteria();
   const result = scoreCompany(f, criteria.config);
@@ -230,6 +244,11 @@ export async function createScoring(input: { financials: Financials; informaRepo
     .insert({
       company_id: company.id,
       informa_report_id: reportId,
+      report_source: provenance?.source ?? null,
+      report_date: provenance?.reportDate ?? null,
+      report_file_name: provenance?.fileName ?? null,
+      report_file_sha256: provenance?.fileSha256 ?? null,
+      report_fetched_at: provenance?.fetchedAt ?? null,
       criteria_id: criteria.id,
       criteria_snapshot: criteria.config as unknown as Json,
       financials: f as unknown as Json,
