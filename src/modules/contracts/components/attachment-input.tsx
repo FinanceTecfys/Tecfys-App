@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 import { FileText, Paperclip, RefreshCw, X } from "lucide-react";
 import { Label } from "@/components/ui/field";
 import { ATTACHMENT_ACCEPT, MAX_ATTACHMENT_BYTES } from "../domain/attachments";
@@ -25,9 +26,10 @@ export function AttachmentInput({
   onChange: (file: File | null) => void;
   error?: string;
 }) {
+  const t = useTranslations("contract.documents");
   const input = useRef<HTMLInputElement>(null);
   const tooBig = value !== null && value.size > MAX_ATTACHMENT_BYTES;
-  const message = error ?? (tooBig ? "Supera el máximo de 8 MB" : undefined);
+  const message = error ?? (tooBig ? t("tooLargeHint") : undefined);
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     onChange(e.target.files?.[0] ?? null);
@@ -46,10 +48,10 @@ export function AttachmentInput({
             <span className="min-w-0 flex-1 truncate">{value.name}</span>
             <span className="num shrink-0 text-[11px] text-slate-500">{fmtSize(value.size)}</span>
           </span>
-          <button type="button" onClick={() => input.current?.click()} aria-label={`Sustituir ${label.toLowerCase()}`} title="Sustituir" className="rounded-md border border-ink-700 px-2.5 py-2 text-slate-400 hover:text-white">
+          <button type="button" onClick={() => input.current?.click()} aria-label={t("replaceAria", { document: label })} title={t("replace")} className="rounded-md border border-ink-700 px-2.5 py-2 text-slate-400 hover:text-white">
             <RefreshCw className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => onChange(null)} aria-label={`Quitar ${label.toLowerCase()}`} title="Quitar" className="rounded-md border border-ink-700 px-2.5 py-2 text-slate-400 hover:text-white">
+          <button type="button" onClick={() => onChange(null)} aria-label={t("removeAria", { document: label })} title={t("remove")} className="rounded-md border border-ink-700 px-2.5 py-2 text-slate-400 hover:text-white">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -59,13 +61,13 @@ export function AttachmentInput({
           onClick={() => input.current?.click()}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-mint-500/50 px-3 py-2 text-sm text-mint-400 transition hover:border-mint-500 hover:bg-mint-500/10"
         >
-          <Paperclip className="h-4 w-4" aria-hidden /> Adjuntar
+          <Paperclip className="h-4 w-4" aria-hidden /> {t("attach")}
         </button>
       )}
       {message ? (
         <p className="mt-1 text-[11px] text-red-300">{message}</p>
       ) : (
-        <p className="mt-1 text-[11px] text-slate-500">PDF o imagen, máx. 8 MB · opcional</p>
+        <p className="mt-1 text-[11px] text-slate-500">{t("optionalHint")}</p>
       )}
     </div>
   );

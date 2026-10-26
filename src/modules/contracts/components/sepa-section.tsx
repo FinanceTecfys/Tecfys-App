@@ -1,7 +1,9 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
+import { useTranslate } from "@/i18n/client";
 import { bicMatchesIbanCountry, deriveBic, IBAN_ERROR_MESSAGES, isValidBic, normalizeIban, validateIban } from "../domain/sepa";
 
 export interface SepaState {
@@ -27,13 +29,15 @@ export function SepaSection({
   /** Control to attach the bank certificate, next to the IBAN. */
   bankCertificateAttachment?: React.ReactNode;
 }) {
+  const t = useTranslations("operation.sepa");
+  const translate = useTranslate();
   const normalized = normalizeIban(value.iban);
   // Only complain once the IBAN looks complete, not while it is being typed.
   const check = normalized.length >= 15 ? validateIban(normalized) : null;
-  const ibanError = errors.sepaIban ?? (check && !check.ok ? IBAN_ERROR_MESSAGES[check.error] : undefined);
+  const ibanError = errors.sepaIban ?? (check && !check.ok ? translate(IBAN_ERROR_MESSAGES[check.error]) : undefined);
   const bicWarning =
     value.bic && isValidBic(value.bic) && check?.ok && !bicMatchesIbanCountry(value.bic, normalized)
-      ? "El país del BIC no coincide con el del IBAN"
+      ? t("bicCountryMismatch")
       : undefined;
 
   function onIban(raw: string) {
@@ -44,31 +48,31 @@ export function SepaSection({
   }
 
   return (
-    <Card title="B · Orden de domiciliación SEPA" subtitle="Adeudo directo recurrente a favor de TecfysPay S.L.">
+    <Card title={t("title")} subtitle={t("subtitle")}>
       <div className="grid gap-4 md:grid-cols-4">
         <Field
-          label="IBAN"
+          label={t("iban")}
           name="sepaIban"
           className="md:col-span-2"
           value={value.iban}
           onChange={(e) => onIban(e.target.value)}
           placeholder="ES00 0000 0000 0000 0000 0000"
           error={ibanError}
-          hint={check?.ok ? "IBAN válido" : undefined}
+          hint={check?.ok ? t("ibanValid") : undefined}
           autoComplete="off"
         />
         <Field
-          label="BIC"
+          label={t("bic")}
           name="sepaBic"
           value={value.bic}
           onChange={(e) => onChange({ bic: e.target.value, bicDerived: false })}
           error={errors.sepaBic ?? bicWarning}
-          hint={value.bicDerived ? "Deducido del IBAN" : "Opcional para cuentas españolas"}
+          hint={value.bicDerived ? t("bicDerived") : t("bicOptional")}
           autoComplete="off"
         />
         <div>{bankCertificateAttachment}</div>
         <Field
-          label="Nombre del deudor (titular de la cuenta)"
+          label={t("debtor")}
           name="sepaDebtorName"
           className="md:col-span-3"
           value={value.debtorName}
@@ -77,7 +81,7 @@ export function SepaSection({
         />
       </div>
       <p className="mt-3 text-[11px] text-slate-500">
-        La dirección del deudor es la dirección fiscal (sección A). La referencia de la orden será el número de contrato.
+        {t("note")}
       </p>
     </Card>
   );

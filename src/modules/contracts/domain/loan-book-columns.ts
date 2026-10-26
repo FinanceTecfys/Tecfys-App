@@ -52,8 +52,8 @@ export function toLoanBookTableRow(source: LoanBookTableSource): LoanBookTableRo
 }
 
 export interface LoanBookColumn {
+  /** Also the key of the column's header in the catalogue: loanBook.columns.<key>. */
   key: string;
-  label: string;
   /** Shown until the user chooses otherwise: today's table. */
   default: boolean;
   /** Always shown: the link into the contract. */
@@ -62,35 +62,35 @@ export interface LoanBookColumn {
 
 /** In table order: an optional column appears next to the ones it relates to. */
 export const LOAN_BOOK_COLUMNS = [
-  { key: "contractNumber", label: "Contrato", default: true, locked: true },
-  { key: "loanBookRef", label: "Ref. Loan book", default: false },
-  { key: "client", label: "Cliente", default: true },
-  { key: "cif", label: "CIF", default: false },
-  { key: "country", label: "País", default: true },
-  { key: "distributor", label: "Distribuidor", default: true },
-  { key: "assetType", label: "Tipo de activo", default: true },
-  { key: "assetCluster", label: "Grupo de activo", default: false },
-  { key: "contractType", label: "Tipo de contrato", default: false },
-  { key: "rating", label: "Rating", default: false },
-  { key: "signingDate", label: "Firma", default: true },
-  { key: "durationMonths", label: "Meses", default: true },
-  { key: "extensionMonths", label: "Ext.", default: true },
-  { key: "elapsedMonths", label: "Meses transcurridos", default: false },
-  { key: "realMonths", label: "Meses reales", default: false },
-  { key: "installment", label: "Cuota", default: true },
-  { key: "cost", label: "Coste", default: true },
-  { key: "purchaseValue", label: "Valor de compra", default: false },
-  { key: "expoAdjustment", label: "Ajuste expo", default: false },
-  { key: "residualValue", label: "Valor residual", default: false },
-  { key: "expectedAnnualIrr", label: "Expected IRR", default: true },
-  { key: "status", label: "Estado", default: true },
-  { key: "cancelDate", label: "Cancelación", default: true },
-  { key: "additionalStatus", label: "Estado adicional", default: true },
-  { key: "settlementAmount", label: "Liquidación", default: false },
-  { key: "outstanding", label: "Principal pendiente", default: true },
-  { key: "defaultAmount", label: "Default", default: true },
-  { key: "trancheLender", label: "Tramo / lender", default: false },
-  { key: "hasGuarantor", label: "Avalista", default: false },
+  { key: "contractNumber", default: true, locked: true },
+  { key: "loanBookRef", default: false },
+  { key: "client", default: true },
+  { key: "cif", default: false },
+  { key: "country", default: true },
+  { key: "distributor", default: true },
+  { key: "assetType", default: true },
+  { key: "assetCluster", default: false },
+  { key: "contractType", default: false },
+  { key: "rating", default: false },
+  { key: "signingDate", default: true },
+  { key: "durationMonths", default: true },
+  { key: "extensionMonths", default: true },
+  { key: "elapsedMonths", default: false },
+  { key: "realMonths", default: false },
+  { key: "installment", default: true },
+  { key: "cost", default: true },
+  { key: "purchaseValue", default: false },
+  { key: "expoAdjustment", default: false },
+  { key: "residualValue", default: false },
+  { key: "expectedAnnualIrr", default: true },
+  { key: "status", default: true },
+  { key: "cancelDate", default: true },
+  { key: "additionalStatus", default: true },
+  { key: "settlementAmount", default: false },
+  { key: "outstanding", default: true },
+  { key: "defaultAmount", default: true },
+  { key: "trancheLender", default: false },
+  { key: "hasGuarantor", default: false },
 ] as const satisfies readonly LoanBookColumn[];
 
 export type LoanBookColumnKey = (typeof LOAN_BOOK_COLUMNS)[number]["key"];

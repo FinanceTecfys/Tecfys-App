@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireRole } from "@/lib/supabase/auth";
 import { ScoringWizard } from "@/modules/scoring/components/scoring-wizard";
@@ -6,17 +8,17 @@ import { EMPTY_FINANCIALS } from "@/modules/scoring/domain/financials";
 import { previewScore, sectorNames } from "@/modules/scoring/domain/preview";
 import { isInformaConfigured } from "@/modules/scoring/informa/server";
 
-export const metadata = { title: "Nuevo scoring" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("scoring.new"))("title") };
+}
 
 export default async function NewScoringPage() {
   await requireRole("scoring.run");
   const criteria = await getActiveCriteria();
+  const t = await getTranslations("scoring.new");
   return (
     <>
-      <PageHeader
-        title="Nuevo scoring"
-        description={`Modelo de scoring ${criteria.version ? `v${criteria.version}` : "por defecto"}: ratios ponderados, rating AAA–C y opinión de crédito.`}
-      />
+      <PageHeader title={t("title")} description={criteria.version ? t("descriptionVersion", { version: criteria.version }) : t("descriptionDefault")} />
       {/* The model stays here, on the server: the wizard only receives sector names and computed results. */}
       <ScoringWizard
         sectors={sectorNames(criteria.config)}

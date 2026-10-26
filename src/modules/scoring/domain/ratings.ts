@@ -23,10 +23,3 @@ export type RatioKey =
   | "financialProfit"
   | "paymentPeriod"
   | "collectionPeriod";
-
-export const DECISION_LABELS: Record<Decision, string> = {
-  auto: "Aprobado automático",
-  limited: "Aprobado con límites",
-  manual: "Revisión manual",
-  reject: "Rechazado",
-};

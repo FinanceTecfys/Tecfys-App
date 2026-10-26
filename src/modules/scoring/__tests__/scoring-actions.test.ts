@@ -23,6 +23,10 @@ vi.mock("next/navigation", () => ({
     throw new Error(`NEXT_REDIRECT ${url}`);
   },
 }));
+// A message is its key: what the action would look up in the catalogue.
+vi.mock("next-intl/server", () => ({
+  getTranslations: async (namespace?: string) => Object.assign((key: string) => (namespace ? `${namespace}.${key}` : key), { has: () => true }),
+}));
 vi.mock("@/lib/supabase/auth", () => ({
   requireRole: vi.fn(async (capability: string) => {
     state.capabilities.push(capability);
@@ -186,7 +190,7 @@ describe("previewScoring", () => {
 
   it("scores the empty form, and refuses values that are not numbers", async () => {
     expect((await previewScoring(EMPTY_FINANCIALS)).ok).toBe(true);
-    expect(await previewScoring({ ...company(), totalRevenue: Number.NaN })).toEqual({ ok: false, error: "Hay datos financieros no válidos" });
+    expect(await previewScoring({ ...company(), totalRevenue: Number.NaN })).toEqual({ ok: false, error: "scoring.errors.invalidFinancials" });
     expect((await previewScoring({ ...company(), equity: "900000" } as unknown as Financials)).ok).toBe(false);
   });
 
@@ -252,7 +256,7 @@ describe("createScoring: ownership of the linked Informa report", () => {
     for (const foreign of [OTHERS_REPORT, STAFF_REPORT]) {
       const { redirected, result } = await link(foreign);
       expect(redirected).toBeNull();
-      expect(result).toEqual({ ok: false, error: "Informe de Informa no encontrado" });
+      expect(result).toEqual({ ok: false, error: "scoring.errors.reportNotFound" });
     }
     expect(state.writes).toEqual([]);
     expect(state.tables.scorings).toEqual([]);
@@ -269,7 +273,7 @@ describe("createScoring: ownership of the linked Informa report", () => {
     }
     state.user = PARTNER;
     state.writes = [];
-    expect((await link(LEGACY_REPORT)).result).toEqual({ ok: false, error: "Informe de Informa no encontrado" });
+    expect((await link(LEGACY_REPORT)).result).toEqual({ ok: false, error: "scoring.errors.reportNotFound" });
     expect(state.writes).toEqual([]);
   });
 
@@ -289,7 +293,7 @@ describe("createScoring: ownership of the linked Informa report", () => {
       state.user = user;
       state.writes = [];
       for (const bad of ["3f2504e0-4f89-41d3-9a0c-0305e82c3301", "not-a-uuid", `${OWN_REPORT}' or 1=1`]) {
-        expect((await link(bad)).result, `${user.role} ${bad}`).toEqual({ ok: false, error: "Informe de Informa no encontrado" });
+        expect((await link(bad)).result, `${user.role} ${bad}`).toEqual({ ok: false, error: "scoring.errors.reportNotFound" });
       }
       expect(state.writes).toEqual([]);
     }
@@ -308,7 +312,7 @@ describe("createScoring: ownership of the linked Informa report", () => {
   it("still validates the financials first", async () => {
     state.user = PARTNER;
     const { result } = await save({ financials: company({ cif: "", name: "" }), informaReportId: OTHERS_REPORT });
-    expect(result).toMatchObject({ ok: false, error: "Revisa los datos marcados", fieldErrors: { cif: "CIF obligatorio", name: "Razón social obligatoria" } });
+    expect(result).toMatchObject({ ok: false, error: "common.errors.reviewFields", fieldErrors: { cif: "validation.scoring.cifRequired", name: "validation.scoring.nameRequired" } });
   });
 });
 
@@ -325,7 +329,7 @@ describe("a report belongs to whoever created it", () => {
     // Linking goes by uuid; the in-memory ids are not uuids, so check the scope rule on the stored row directly.
     state.user = OTHER_PARTNER;
     created.id = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
-    expect((await save({ financials: company(), informaReportId: created.id as string })).result).toEqual({ ok: false, error: "Informe de Informa no encontrado" });
+    expect((await save({ financials: company(), informaReportId: created.id as string })).result).toEqual({ ok: false, error: "scoring.errors.reportNotFound" });
     state.user = PARTNER;
     expect((await save({ financials: company(), informaReportId: created.id as string })).redirected).toMatch(/^\/scoring\//);
   });

@@ -1,12 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { inputClass, Label } from "@/components/ui/field";
 import { signIn } from "../actions";
 import type { SignInState } from "../domain/sign-in";
 
 export function LoginForm({ next }: { next?: string }) {
+  const t = useTranslations("auth.login");
   const [state, action, pending] = useActionState<SignInState, FormData>(signIn, { error: null, email: "" });
   const invalid = state.error !== null;
 
@@ -14,7 +16,7 @@ export function LoginForm({ next }: { next?: string }) {
     <form action={action} className="space-y-4" noValidate>
       {next && <input type="hidden" name="next" value={next} />}
       <div>
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t("email")}</Label>
         <input
           id="email"
           name="email"
@@ -30,7 +32,7 @@ export function LoginForm({ next }: { next?: string }) {
         />
       </div>
       <div>
-        <Label htmlFor="password">Contraseña</Label>
+        <Label htmlFor="password">{t("password")}</Label>
         <input
           id="password"
           name="password"
@@ -42,11 +44,12 @@ export function LoginForm({ next }: { next?: string }) {
           className={inputClass}
         />
       </div>
+      {/* The server action answers with the message already in the active language. */}
       <p id="login-error" role="alert" aria-live="assertive" className="min-h-4 text-sm text-red-300">
         {state.error}
       </p>
       <Button type="submit" disabled={pending} className="w-full">
-        {pending ? "Entrando…" : "Entrar"}
+        {pending ? t("submitting") : t("submit")}
       </Button>
     </form>
   );

@@ -4,8 +4,9 @@ const money = z.number().finite().nullable();
 
 /** Company identity + latest-year financials used by the scoring engine. */
 export const financialsSchema = z.object({
-  cif: z.string().trim().min(1, "CIF obligatorio"),
-  name: z.string().trim().min(1, "Razón social obligatoria"),
+  // Messages are keys of the catalogue; the server action translates them.
+  cif: z.string().trim().min(1, "validation.scoring.cifRequired"),
+  name: z.string().trim().min(1, "validation.scoring.nameRequired"),
   country: z.string().default("ES"),
   sector: z.string().nullable(),
   cnae: z.string().nullable(),
@@ -71,26 +72,12 @@ export const EMPTY_FINANCIALS: Financials = {
   paymentPeriodDays: null,
 };
 
-/** Numeric fields editable in the financials form, grouped for display. */
-export const FINANCIAL_FIELDS = {
-  "Cuenta de resultados": [
-    ["totalRevenue", "Ventas"],
-    ["grossMargin", "Margen bruto"],
-    ["procurement", "Aprovisionamientos"],
-    ["ebitda", "EBITDA"],
-    ["adjustedEbitda", "EBITDA ajustado"],
-    ["ebit", "EBIT"],
-    ["netResult", "Resultado neto"],
-    ["financialExpenses", "Gastos financieros"],
-  ],
-  "Balance": [
-    ["nonCurrentAssets", "Activo no corriente"],
-    ["currentAssets", "Activo corriente"],
-    ["equity", "Patrimonio neto"],
-    ["nonCurrentLiabilities", "Pasivo no corriente"],
-    ["currentLiabilities", "Pasivo corriente"],
-    ["receivables", "Clientes"],
-    ["payables", "Proveedores"],
-    ["shareCapital", "Capital social"],
-  ],
-} as const satisfies Record<string, readonly (readonly [keyof Financials, string])[]>;
+/**
+ * Numeric fields editable in the financials form, grouped for display. The
+ * group and field names are messages: scoring.fieldGroups.<group> and
+ * scoring.fields.<field>.
+ */
+export const FINANCIAL_FIELDS = [
+  { group: "pnl", fields: ["totalRevenue", "grossMargin", "procurement", "ebitda", "adjustedEbitda", "ebit", "netResult", "financialExpenses"] },
+  { group: "balance", fields: ["nonCurrentAssets", "currentAssets", "equity", "nonCurrentLiabilities", "currentLiabilities", "receivables", "payables", "shareCapital"] },
+] as const satisfies readonly { group: string; fields: readonly (keyof Financials)[] }[];

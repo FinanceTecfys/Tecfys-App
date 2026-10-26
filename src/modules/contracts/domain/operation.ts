@@ -1,7 +1,9 @@
 /**
  * "Nueva operación" input: identification (A), SEPA mandate (B) and economic
  * terms (C). One schema, used by the form for field errors and re-applied by
- * the server action, which is the only authority.
+ * the server action, which is the only authority. Every message is a key of
+ * the catalogue (validation.operation.*, validation.sepa.*) that the action
+ * translates before it reaches the form.
  */
 import { z } from "zod";
 import { deriveBic, IBAN_ERROR_MESSAGES, isValidBic, normalizeBic, normalizeIban, validateIban } from "./sepa";
@@ -15,36 +17,36 @@ export const operationSchema = z
     scoringId: z.uuid(),
 
     // A. Datos identificativos (snapshot on the contract)
-    clientName: text("Indica la razón social"),
-    clientCif: taxId("Indica el CIF/NIF"),
-    fiscalAddress: text("Indica la dirección fiscal"),
-    fiscalPostalCode: text("Indica el código postal").pipe(z.string().regex(/^[0-9A-Z -]{4,10}$/i, "Código postal no válido")),
-    fiscalCity: text("Indica la ciudad"),
+    clientName: text("validation.operation.clientName"),
+    clientCif: taxId("validation.operation.clientCif"),
+    fiscalAddress: text("validation.operation.fiscalAddress"),
+    fiscalPostalCode: text("validation.operation.fiscalPostalCode").pipe(z.string().regex(/^[0-9A-Z -]{4,10}$/i, "validation.operation.fiscalPostalCodeInvalid")),
+    fiscalCity: text("validation.operation.fiscalCity"),
     fiscalProvince: optionalText,
-    signatoryName: text("Indica el administrador / firmante"),
-    signatoryNif: taxId("Indica el DNI del firmante"),
+    signatoryName: text("validation.operation.signatoryName"),
+    signatoryNif: taxId("validation.operation.signatoryNif"),
     signatoryAddress: optionalText,
-    contactName: text("Indica la persona de contacto"),
+    contactName: text("validation.operation.contactName"),
     contactPhone: optionalText,
-    contactEmail: z.email("Email no válido"),
+    contactEmail: z.email("validation.operation.contactEmail"),
     deliverySameAsFiscal: z.boolean(),
     deliveryAddress: optionalText,
 
     // B. Orden de domiciliación SEPA
     sepaIban: z.string(),
-    sepaDebtorName: text("Indica el titular de la cuenta"),
+    sepaDebtorName: text("validation.operation.sepaDebtorName"),
     sepaBic: optionalText,
 
     // C. Condiciones económicas
     distributorId: z.uuid().nullable(),
-    assetTypeId: z.uuid({ error: "Selecciona el tipo de activo" }),
-    productDescription: text("Describe el producto").pipe(z.string().max(500, "Máximo 500 caracteres")),
+    assetTypeId: z.uuid({ error: "validation.operation.assetType" }),
+    productDescription: text("validation.operation.productDescription").pipe(z.string().max(500, "validation.operation.productDescriptionMax")),
     contractType: z.string().min(1),
-    signingDate: z.iso.date({ error: "Fecha no válida" }),
-    durationMonths: z.number().int().min(1, "Mínimo 1 mes").max(120, "Máximo 120 meses"),
-    installment: z.number().positive("La cuota debe ser positiva"),
-    residualValue: z.number().min(0, "No puede ser negativo").nullable(),
-    purchaseValue: z.number().positive("Indica el coste del equipo"),
+    signingDate: z.iso.date({ error: "validation.operation.signingDate" }),
+    durationMonths: z.number().int().min(1, "validation.operation.durationMin").max(120, "validation.operation.durationMax"),
+    installment: z.number().positive("validation.operation.installmentPositive"),
+    residualValue: z.number().min(0, "validation.operation.notNegative").nullable(),
+    purchaseValue: z.number().positive("validation.operation.purchaseValue"),
     quantity: z.number().int().min(1).default(1),
     hasGuarantor: z.boolean(),
     guarantorName: optionalText,
@@ -57,14 +59,14 @@ export const operationSchema = z
   .superRefine((v, ctx) => {
     const iban = validateIban(v.sepaIban);
     if (!iban.ok) ctx.addIssue({ code: "custom", path: ["sepaIban"], message: IBAN_ERROR_MESSAGES[iban.error] });
-    if (v.sepaBic && !isValidBic(v.sepaBic)) ctx.addIssue({ code: "custom", path: ["sepaBic"], message: "BIC no válido (8 u 11 caracteres)" });
-    if (!v.deliverySameAsFiscal && !v.deliveryAddress) ctx.addIssue({ code: "custom", path: ["deliveryAddress"], message: "Indica el domicilio de entrega" });
+    if (v.sepaBic && !isValidBic(v.sepaBic)) ctx.addIssue({ code: "custom", path: ["sepaBic"], message: "validation.operation.bicInvalid" });
+    if (!v.deliverySameAsFiscal && !v.deliveryAddress) ctx.addIssue({ code: "custom", path: ["deliveryAddress"], message: "validation.operation.deliveryAddress" });
     if (v.hasGuarantor) {
-      if (!v.guarantorName) ctx.addIssue({ code: "custom", path: ["guarantorName"], message: "Indica el avalista" });
-      if (!v.guarantorNif) ctx.addIssue({ code: "custom", path: ["guarantorNif"], message: "Indica el NIF del avalista" });
-      if (!v.guarantorAddress) ctx.addIssue({ code: "custom", path: ["guarantorAddress"], message: "Indica el domicilio del avalista" });
+      if (!v.guarantorName) ctx.addIssue({ code: "custom", path: ["guarantorName"], message: "validation.operation.guarantorName" });
+      if (!v.guarantorNif) ctx.addIssue({ code: "custom", path: ["guarantorNif"], message: "validation.operation.guarantorNif" });
+      if (!v.guarantorAddress) ctx.addIssue({ code: "custom", path: ["guarantorAddress"], message: "validation.operation.guarantorAddress" });
       if (v.guarantorRepresentative && !v.guarantorRepresentativeNif) {
-        ctx.addIssue({ code: "custom", path: ["guarantorRepresentativeNif"], message: "Indica el DNI del representante" });
+        ctx.addIssue({ code: "custom", path: ["guarantorRepresentativeNif"], message: "validation.operation.guarantorRepresentativeNif" });
       }
     }
   })

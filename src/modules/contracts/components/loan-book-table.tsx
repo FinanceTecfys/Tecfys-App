@@ -2,6 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td, Th } from "@/components/ui/table";
 import { fmtDate, fmtEur, fmtPct } from "@/lib/format";
@@ -24,7 +25,14 @@ interface Cell {
   mono?: boolean;
   className?: string | ((r: LoanBookTableRow) => string | undefined);
   title?: (r: LoanBookTableRow) => string | undefined;
-  render: (r: LoanBookTableRow) => React.ReactNode;
+  render: (r: LoanBookTableRow, text: CellText) => React.ReactNode;
+}
+
+/** The few words a cell shows besides the row's own data, in the active language. */
+interface CellText {
+  yes: string;
+  no: string;
+  notAvailable: string;
 }
 
 const dash = <span className="text-slate-600">—</span>;
@@ -60,7 +68,7 @@ const CELLS: Record<LoanBookColumnKey, Cell> = {
   purchaseValue: { right: true, mono: true, render: (r) => fmtEur(r.purchaseValue) },
   expoAdjustment: { right: true, mono: true, render: (r) => (r.expoAdjustment === 0 ? dash : fmtEur(r.expoAdjustment, 2)) },
   residualValue: { right: true, mono: true, render: (r) => money(r.residualValue, 2) },
-  expectedAnnualIrr: { right: true, mono: true, render: (r) => (r.expectedAnnualIrr === null ? "n/a" : fmtPct(r.expectedAnnualIrr, 1)) },
+  expectedAnnualIrr: { right: true, mono: true, render: (r, text) => (r.expectedAnnualIrr === null ? text.notAvailable : fmtPct(r.expectedAnnualIrr, 1)) },
   status: { render: (r) => (r.lifecycleStatus ? <LifecycleBadge status={r.lifecycleStatus} /> : <WorkflowBadge status={r.workflowStatus} />) },
   cancelDate: { render: (r) => fmtDate(r.cancelDate) },
   additionalStatus: {
@@ -75,7 +83,7 @@ const CELLS: Record<LoanBookColumnKey, Cell> = {
     render: (r) => (r.defaultAmount === null ? "—" : fmtEur(r.defaultAmount, 2)),
   },
   trancheLender: { className: "text-slate-400", render: (r) => text(r.trancheLender) },
-  hasGuarantor: { className: (r) => (r.hasGuarantor ? undefined : "text-slate-600"), render: (r) => (r.hasGuarantor ? "Sí" : "No") },
+  hasGuarantor: { className: (r) => (r.hasGuarantor ? undefined : "text-slate-600"), render: (r, text) => (r.hasGuarantor ? text.yes : text.no) },
 };
 
 // The choice lives in localStorage; a private window that refuses it still works for the session.
@@ -120,12 +128,19 @@ export function LoanBookTable({ rows, userId }: { rows: LoanBookTableRow[]; user
   const stored = useSyncExternalStore(subscribe, () => readStored(storageKey), () => null);
   const visible = useMemo(() => parseStoredColumns(stored), [stored]);
   const columns = LOAN_BOOK_COLUMNS.filter((c) => visible.includes(c.key));
+  const t = useTranslations("loanBook");
+  const tCommon = useTranslations("common");
+  const text: CellText = {
+    yes: tCommon("yes"),
+    no: tCommon("no"),
+    notAvailable: t("notAvailable"),
+  };
 
   return (
     <>
       <div className="flex justify-end border-b border-ink-700 px-4 py-2">
         <ColumnPicker
-          columns={LOAN_BOOK_COLUMNS}
+          columns={LOAN_BOOK_COLUMNS.map((c) => ({ ...c, label: t(`columns.${c.key}`) }))}
           visible={visible}
           onToggle={(key) => writeStored(storageKey, serializeColumns(toggleColumn(visible, key as LoanBookColumnKey)))}
           onReset={() => writeStored(storageKey, null)}
@@ -136,7 +151,7 @@ export function LoanBookTable({ rows, userId }: { rows: LoanBookTableRow[]; user
         <thead>
           <tr>
             {columns.map((c) => (
-              <Th key={c.key} right={CELLS[c.key].right}>{c.label}</Th>
+              <Th key={c.key} right={CELLS[c.key].right}>{t(`columns.${c.key}`)}</Th>
             ))}
           </tr>
         </thead>
@@ -148,7 +163,7 @@ export function LoanBookTable({ rows, userId }: { rows: LoanBookTableRow[]; user
                 const className = typeof cell.className === "function" ? cell.className(r) : cell.className;
                 return (
                   <Td key={c.key} right={cell.right} mono={cell.mono} title={cell.title?.(r)} className={cn(className)}>
-                    {cell.render(r)}
+                    {cell.render(r, text)}
                   </Td>
                 );
               })}

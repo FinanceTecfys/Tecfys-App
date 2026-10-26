@@ -95,8 +95,8 @@ describe("the scoring model stays on the server", () => {
     expect(reached).toEqual(expect.arrayContaining([
       "modules/scoring/components/score-breakdown.tsx",
       "modules/scoring/components/badges.tsx",
-      "modules/scoring/domain/ratings.ts",
       "modules/scoring/domain/financials.ts",
+      "i18n/client.ts",
     ]));
     // The server actions are called, not bundled.
     expect(reached).not.toContain("modules/scoring/actions.ts");
@@ -123,7 +123,7 @@ describe("the scoring model stays on the server", () => {
   it("the result vocabulary shared with the browser holds no model values", () => {
     const ratings = read(path.join(SRC, "modules/scoring/domain/ratings.ts"));
     const code = ratings.replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(code).toContain("DECISION_LABELS");
+    expect(code).toContain("RATINGS");
     expect(code).not.toMatch(/weights|tiers|scoreTable|scoreBuckets|prudence\s*:|decisionRules|sectorRating\s*:/);
     expect(valueImports(ratings)).toEqual([]);
   });

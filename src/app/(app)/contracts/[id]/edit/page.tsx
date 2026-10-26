@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
@@ -12,13 +14,17 @@ import { clientExposure, contractAssetQuantity, getContract } from "@/modules/co
 import { identityFromOperationInput, isEditableDraft, operationInputFromContract } from "@/modules/contracts/domain/operation";
 import { getScoring } from "@/modules/scoring/data";
 
-export const metadata = { title: "Editar operación" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("contract.edit"))("metaTitle") };
+}
 
 /** Reopen a DRAFT in the operation form, pre-filled with what was saved. */
 export default async function EditOperationPage({ params }: PageProps<"/contracts/[id]/edit">) {
   const user = await requireRole("operation.create");
   const scope = dataScopeFor(user);
   const { id } = await params;
+  const t = await getTranslations("contract.edit");
+  const tDetail = await getTranslations("contract.detail");
   if (!z.uuid().safeParse(id).success) notFound();
 
   // Another partner's draft reads as missing, same as a wrong id.
@@ -27,16 +33,14 @@ export default async function EditOperationPage({ params }: PageProps<"/contract
 
   const back = (
     <div className="mt-4">
-      <ButtonLink href={`/contracts/${contract.id}`} variant="secondary">Volver al contrato</ButtonLink>
+      <ButtonLink href={`/contracts/${contract.id}`} variant="secondary">{t("back")}</ButtonLink>
     </div>
   );
   if (!isEditableDraft(contract.workflow_status)) {
     return (
       <>
-        <PageHeader title={`Contrato ${contract.contract_number}`} />
-        <Alert tone="warning" title="Este contrato ya no se puede editar">
-          Solo se editan los contratos en borrador. Uno enviado a firma o firmado conserva las condiciones con las que se firmó.
-        </Alert>
+        <PageHeader title={tDetail("title", { number: contract.contract_number })} />
+        <Alert tone="warning" title={t("lockedTitle")}>{t("lockedBody")}</Alert>
         {back}
       </>
     );
@@ -45,10 +49,8 @@ export default async function EditOperationPage({ params }: PageProps<"/contract
   if (!scoring?.company) {
     return (
       <>
-        <PageHeader title={`Contrato ${contract.contract_number}`} />
-        <Alert tone="warning" title="Borrador sin scoring de origen">
-          La operación se edita sobre el scoring del que nació, y este borrador no tiene uno accesible.
-        </Alert>
+        <PageHeader title={tDetail("title", { number: contract.contract_number })} />
+        <Alert tone="warning" title={t("noScoringTitle")}>{t("noScoringBody")}</Alert>
         {back}
       </>
     );
@@ -70,9 +72,9 @@ export default async function EditOperationPage({ params }: PageProps<"/contract
   return (
     <>
       <PageHeader
-        title={`Editar borrador ${contract.contract_number}`}
-        description={`${scoring.company.name} · scoring ${scoring.rating}. Cambia cualquier dato; al guardar se recalculan el calendario y la expected IRR.`}
-        actions={<ButtonLink href={`/contracts/${contract.id}`} variant="secondary">Cancelar</ButtonLink>}
+        title={t("title", { number: contract.contract_number })}
+        description={t("description", { company: scoring.company.name, rating: scoring.rating })}
+        actions={<ButtonLink href={`/contracts/${contract.id}`} variant="secondary">{(await getTranslations("common.actions"))("cancel")}</ButtonLink>}
       />
       <OperationForm
         scoring={{

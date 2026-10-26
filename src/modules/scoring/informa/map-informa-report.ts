@@ -35,6 +35,7 @@
  * Every coded field is { valor, tablaDecodificacion, literal }; the literal
  * sent by Informa is used as-is (no local decoding tables).
  */
+import { type AppMessage, msg } from "@/i18n/message";
 import { EMPTY_FINANCIALS, type Financials } from "../domain/financials";
 import { cnaeToSector } from "./cnae";
 import { missingFinancials } from "./parse-informa-text";
@@ -87,7 +88,8 @@ export interface InformaReportMapping {
   reportType: string | null;
   balance: InformaBalanceInfo | null;
   /** Things the analyst should double-check (no balances, old balance, odd unit...). */
-  warnings: string[];
+  /** Things the analyst should check, as messages of the catalogue (scoring.informa.warnings.*). */
+  warnings: AppMessage[];
 }
 
 // --- tolerant readers: the report is external input, any node may be missing ---
@@ -209,7 +211,7 @@ export function mapInformaReport(report: unknown, today = new Date()): InformaRe
   const dg = at(ic, "datosGenerales");
   const dir = at(ic, "direcciones", "direccionActual");
   const actividad = at(ic, "actividad");
-  const warnings: string[] = [];
+  const warnings: AppMessage[] = [];
 
   const reportType = str(at(report, "productoSolicitado"));
   const cnae2009 = str(at(actividad, "campoCodificadoCnae2009", "valor"));
@@ -265,7 +267,7 @@ export function mapInformaReport(report: unknown, today = new Date()): InformaRe
 
   if (!balance) {
     warnings.push(
-      `Informa no tiene balances de esta empresa${reportType ? ` (ha devuelto ${reportType.replace(/_/g, " ")})` : ""}: introduce las cifras a mano o usa el PDF`,
+      reportType ? msg("scoring.informa.warnings.noBalance", { report: reportType.replace(/_/g, " ") }) : msg("scoring.informa.warnings.noBalancePlain"),
     );
   } else {
     const head = obj(balance.cabeceraBalance) ?? {};
@@ -283,9 +285,9 @@ export function mapInformaReport(report: unknown, today = new Date()): InformaRe
     const months = num(head.duracionMeses);
     balanceInfo = { year, closingDate, months, template: str(at(head, "campoCodificadoTipoPlantilla", "literal")), unit };
 
-    if (unit && !/euro/i.test(unit)) warnings.push(`El balance está en "${unit}": revisa la conversión a euros`);
-    if (months !== null && months !== 12) warnings.push(`El último ejercicio dura ${months} meses: las cifras de resultados no son anuales`);
-    if (year !== null && year < today.getUTCFullYear() - 2) warnings.push(`El último balance disponible en Informa es de ${year}`);
+    if (unit && !/euro/i.test(unit)) warnings.push(msg("scoring.informa.warnings.unit", { unit }));
+    if (months !== null && months !== 12) warnings.push(msg("scoring.informa.warnings.months", { months }));
+    if (year !== null && year < today.getUTCFullYear() - 2) warnings.push(msg("scoring.informa.warnings.oldBalance", { year }));
 
     const revenue = line("40100");
     const procurement = line("40400");

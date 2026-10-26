@@ -35,7 +35,12 @@ export interface HoldedInvoiceRecord {
 
 export type MapResult = { ok: true; record: HoldedInvoiceRecord } | { ok: false; error: string };
 
-/** Holded export header labels (sheet "Holded", row 5), in order, with the field each fills. */
+/**
+ * Holded export header labels (sheet "Holded", row 5), in order, with the field each fills.
+ * They are Holded's own headers, matched when its Excel is imported - not UI text: the ERP table
+ * names its columns from the catalogue (erp.columns.<key>).
+ */
+/* i18n-exempt-start: column headers of the Holded Excel export, matched on import */
 export const HOLDED_COLUMNS = [
   { label: "Date", key: "date", kind: "date" },
   { label: "Num", key: "num", kind: "text" },
@@ -60,6 +65,7 @@ export const HOLDED_COLUMNS = [
   { label: "Digital signature", key: "digital_signature", kind: "text" },
   { label: "SII", key: "sii", kind: "text" },
 ] as const satisfies readonly { label: string; key: keyof HoldedInvoiceRecord; kind: "date" | "text" | "money" }[];
+/* i18n-exempt-end */
 
 export type HoldedColumn = (typeof HOLDED_COLUMNS)[number];
 

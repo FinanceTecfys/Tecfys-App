@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
+import { getTranslate } from "@/i18n/server";
 import { FileDown, Pencil } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { ContractDocuments } from "@/modules/contracts/components/contract-docum
 import { ScheduleTable } from "@/modules/contracts/components/schedule-table";
 import { draftSourceFromContract, getContract, listAttachments, toContractInput } from "@/modules/contracts/data";
 import { attachmentSlots } from "@/modules/contracts/domain/attachments";
+import { findStatus } from "@/modules/contracts/domain/cancellation";
 import { cityLine } from "@/modules/contracts/domain/contract-template";
 import { monthKeyOfDate } from "@/modules/contracts/domain/month-key";
 import { isEditableDraft } from "@/modules/contracts/domain/operation";
@@ -36,9 +39,13 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   if (!contract) notFound();
   const [stored, lifecycleInput] = await Promise.all([listAttachments(contract.id), contractLifecycleInput(contract)]);
   const lifecycle = lifecycleOf(lifecycleInput);
+  const lifecycleLabel = (await getTranslate())(lifecycle.label);
   // Always the four slots, in a fixed order: a download when stored, an upload when missing.
-  const documents = attachmentSlots(stored).map(({ kind, label, attachment }) => ({ kind, label, fileName: attachment?.file_name ?? null }));
+  const documents = attachmentSlots(stored).map(({ kind, attachment }) => ({ kind, fileName: attachment?.file_name ?? null }));
 
+  const t = await getTranslations("contract.detail");
+  const tCommon = await getTranslations("common");
+  const tStatuses = await getTranslations("contract.additionalStatuses");
   const today = new Date();
   const schedule = buildSchedule(toContractInput(contract), today);
   const todayKey = monthKeyOfDate(today);
@@ -53,38 +60,40 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
     ? `${contract.fiscal_address}, ${cityLine(contract.fiscal_postal_code ?? "", contract.fiscal_city ?? "", contract.fiscal_province)}`
     : null;
   const identification: [string, React.ReactNode][] = [
-    ["Razón social", contract.client_name ?? "—"],
-    ["CIF / NIF", contract.client_cif ?? "—"],
-    ["Domicilio fiscal", fiscalLine ?? "—"],
-    ["Firmante", contract.signatory_name ? `${contract.signatory_name}${contract.signatory_nif ? ` (${contract.signatory_nif})` : ""}` : "—"],
-    ["Contacto", [contract.contact_name, contract.contact_phone, contract.contact_email].filter(Boolean).join(" · ") || "—"],
-    ["Domicilio de entrega", contract.delivery_same_as_fiscal ? "Mismo que dirección fiscal" : (contract.delivery_address ?? "—")],
-    ["Producto", contract.product_description ?? "—"],
+    [t("companyName"), contract.client_name ?? "—"],
+    [t("taxId"), contract.client_cif ?? "—"],
+    [t("fiscalAddress"), fiscalLine ?? "—"],
+    [t("signatory"), contract.signatory_name ? `${contract.signatory_name}${contract.signatory_nif ? ` (${contract.signatory_nif})` : ""}` : "—"],
+    [t("contact"), [contract.contact_name, contract.contact_phone, contract.contact_email].filter(Boolean).join(" · ") || "—"],
+    [t("deliveryAddress"), contract.delivery_same_as_fiscal ? t("sameAsFiscal") : (contract.delivery_address ?? "—")],
+    [t("product"), contract.product_description ?? "—"],
   ];
 
+  const knownStatus = findStatus(contract.additional_status);
   const terms: [string, React.ReactNode][] = [
-    ["Cliente", contract.company ? <span key="c">{contract.company.name} <span className="num text-slate-500">{contract.company.cif}</span></span> : "—"],
-    ["Distribuidor", contract.distributor?.name ?? "Directo"],
-    ["Tipo de activo", contract.asset_type?.name ?? "—"],
-    ["Tipo de contrato", contract.contract_type],
-    ["Fecha de firma", fmtDate(contract.signing_date)],
-    ["Duración", `${contract.duration_months} meses`],
-    ["Cuota mensual", fmtEur(Number(contract.installment), 2)],
-    ["Valor residual", contract.residual_value === null ? "—" : fmtEur(Number(contract.residual_value), 2)],
-    ["Coste del equipo", fmtEur(schedule.assetBase, 2)],
-    ["Avalista", contract.has_guarantor ? `${contract.guarantor_name ?? "Sí"}${contract.guarantor_nif ? ` (${contract.guarantor_nif})` : ""}` : "No"],
-    ["Fecha de cancelación", fmtDate(contract.cancel_date)],
-    ["Estado adicional", contract.additional_status ?? "—"],
-    ["Importe de liquidación", contract.settlement_amount === null ? "—" : fmtEur(Number(contract.settlement_amount), 2)],
-    ["País", contract.country ?? "—"],
-    ["Ref. Loan book", contract.loan_book_ref ?? "—"],
-    ["Tramo / lender", contract.tranche_lender ?? "—"],
+    [t("client"), contract.company ? <span key="c">{contract.company.name} <span className="num text-slate-500">{contract.company.cif}</span></span> : "—"],
+    [t("distributor"), contract.distributor?.name ?? tCommon("direct")],
+    [t("assetType"), contract.asset_type?.name ?? "—"],
+    [t("contractType"), contract.contract_type],
+    [t("signingDate"), fmtDate(contract.signing_date)],
+    [t("duration"), tCommon("months", { count: contract.duration_months })],
+    [t("installment"), fmtEur(Number(contract.installment), 2)],
+    [t("residual"), contract.residual_value === null ? "—" : fmtEur(Number(contract.residual_value), 2)],
+    [t("cost"), fmtEur(schedule.assetBase, 2)],
+    [t("guarantor"), contract.has_guarantor ? `${contract.guarantor_name ?? tCommon("yes")}${contract.guarantor_nif ? ` (${contract.guarantor_nif})` : ""}` : tCommon("no")],
+    [t("cancelDate"), fmtDate(contract.cancel_date)],
+    // A status the app knows reads in the user's language; an imported one it does not know is shown as stored.
+    [t("additionalStatus"), knownStatus ? tStatuses(`${knownStatus.key}.label`) : (contract.additional_status ?? "—")],
+    [t("settlement"), contract.settlement_amount === null ? "—" : fmtEur(Number(contract.settlement_amount), 2)],
+    [t("country"), contract.country ?? "—"],
+    [t("loanBookRef"), contract.loan_book_ref ?? "—"],
+    [t("tranche"), contract.tranche_lender ?? "—"],
   ];
 
   return (
     <>
       <PageHeader
-        title={`Contrato ${contract.contract_number}`}
+        title={t("title", { number: contract.contract_number })}
         description={
           <span className="inline-flex items-center gap-2">
             {contract.company?.name} · <WorkflowBadge status={contract.workflow_status} />
@@ -94,33 +103,33 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
         actions={
           canEdit && (
             <ButtonLink href={`/contracts/${contract.id}/edit`} variant="secondary">
-              <Pencil className="h-4 w-4" aria-hidden /> Editar
+              <Pencil className="h-4 w-4" aria-hidden /> {t("edit")}
             </ButtonLink>
           )
         }
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
-        <Stat label="Expected IRR" value={fmtPct(schedule.expectedAnnualIrr)} hint={`${fmtPct(schedule.expectedMonthlyIrr, 4)} mensual`} accent />
-        <Stat label="Principal pendiente" value={signed ? fmtEur(Math.abs(outstanding) < 0.005 ? 0 : outstanding) : "—"} hint="a cierre del mes en curso" />
-        <Stat label="Facturado hasta hoy" value={signed ? fmtEur(collected) : "—"} hint={`de ${fmtEur(schedule.totals.installments)} contratados`} />
+        <Stat label={t("expectedIrr")} value={fmtPct(schedule.expectedAnnualIrr)} hint={t("monthly", { rate: fmtPct(schedule.expectedMonthlyIrr, 4) })} accent />
+        <Stat label={t("outstanding")} value={signed ? fmtEur(Math.abs(outstanding) < 0.005 ? 0 : outstanding) : "—"} hint={t("outstandingHint")} />
+        <Stat label={t("billed")} value={signed ? fmtEur(collected) : "—"} hint={t("billedHint", { total: fmtEur(schedule.totals.installments) })} />
         <Stat
-          label="Resultado principal"
+          label={t("principalResult")}
           value={fmtEur(schedule.principalResult)}
-          hint={schedule.writeOff > 0.005 ? `Default: ${fmtEur(schedule.writeOff)} dado de baja` : "Recupera el coste del activo"}
+          hint={schedule.writeOff > 0.005 ? t("defaultHint", { amount: fmtEur(schedule.writeOff) }) : t("recoversHint")}
         />
       </div>
 
-      <Card title="Ciclo de vida" subtitle={lifecycle.label} className="mb-6">
+      <Card title={t("lifecycleTitle")} subtitle={lifecycleLabel} className="mb-6">
         <LifecycleStepper lifecycle={lifecycle} className="mx-auto max-w-3xl" />
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-        <Card title="Calendario de amortización" subtitle={`${schedule.paymentHorizon} cuotas · amortiza en ${schedule.amortizationMonths} meses${schedule.billingStartKey > schedule.signingKey ? " · factura desde el mes siguiente a la firma" : ""}`}>
+        <Card title={t("scheduleTitle")} subtitle={`${t("scheduleSubtitle", { installments: schedule.paymentHorizon, months: schedule.amortizationMonths })}${schedule.billingStartKey > schedule.signingKey ? t("scheduleLag") : ""}`}>
           <ScheduleTable schedule={schedule} currentKey={todayKey} collapsedRows={signed ? undefined : 13} />
         </Card>
         <div className="space-y-6">
-          <Card title="Condiciones">
+          <Card title={t("termsTitle")}>
             <dl className="space-y-2 text-sm">
               {terms.map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-4">
@@ -131,7 +140,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
             </dl>
           </Card>
           {contract.client_name && (
-            <Card title="Datos identificativos">
+            <Card title={t("identityTitle")}>
               <dl className="space-y-2 text-sm">
                 {identification.map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-4">
@@ -143,14 +152,14 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
             </Card>
           )}
           {mandate && (
-            <Card title="Orden de domiciliación SEPA">
+            <Card title={t("sepaTitle")}>
               <dl className="space-y-2 text-sm">
                 {[
-                  ["Referencia", mandate.mandate_reference],
-                  ["Deudor", mandate.debtor_name],
+                  [t("sepaReference"), mandate.mandate_reference],
+                  [t("sepaDebtor"), mandate.debtor_name],
                   ["IBAN", formatIban(mandate.iban)],
                   ["BIC", mandate.bic ?? "—"],
-                  ["Tipo de pago", mandate.recurrent ? "Recurrente" : "Único"],
+                  [t("sepaPaymentType"), mandate.recurrent ? t("sepaRecurrent") : t("sepaOneOff")],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-4">
                     <dt className="text-slate-400">{label}</dt>
@@ -166,14 +175,14 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               className="flex items-center justify-center gap-2 rounded-md border border-mint-500/50 px-3.5 py-2 text-sm font-semibold text-mint-400 transition hover:bg-mint-500/10"
             >
               <FileDown className="h-4 w-4" aria-hidden />
-              {signed ? "Descargar contrato (.docx)" : "Descargar contrato borrador (.docx)"}
+              {signed ? t("downloadContract") : t("downloadDraft")}
             </a>
           )}
-          <Card title="Documentos del contrato" subtitle="Privados: solo se descargan desde esta ficha">
+          <Card title={t("documentsTitle")} subtitle={t("documentsSubtitle")}>
             <ContractDocuments contractId={contract.id} slots={documents} />
           </Card>
           {signed && canManage && (
-            <Card title="Gestión del contrato" subtitle="Cancelación, estado y liquidación">
+            <Card title={t("manageTitle")} subtitle={t("manageSubtitle")}>
               <CancellationForm
                 contractId={contract.id}
                 cancelDate={contract.cancel_date}
@@ -184,28 +193,26 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
             </Card>
           )}
           {!signed && (
-            <Card title="Firma" subtitle="Signaturit">
+            <Card title={t("signatureTitle")} subtitle="Signaturit">
               <div className="space-y-4">
-                <Alert tone="info" title="Firma electrónica en preparación">
-                  {signatureProvider.isConfigured()
-                    ? "Credenciales de Signaturit configuradas; falta la plantilla del contrato."
-                    : "El envío automático a Signaturit llegará en una próxima rama. Mientras tanto, revisa el borrador descargado, fírmalo fuera de la plataforma y márcalo como firmado para que entre en el loan book."}
+                <Alert tone="info" title={t("signaturePendingTitle")}>
+                  {signatureProvider.isConfigured() ? t("signatureConfigured") : t("signatureManual")}
                 </Alert>
                 {canManage ? (
                   <form action={markContractSigned} className="space-y-3">
                     <input type="hidden" name="id" value={contract.id} />
-                    <Field label="Fecha de firma" name="signingDate" type="date" defaultValue={contract.signing_date} required />
-                    <Button type="submit" className="w-full">Marcar como firmado</Button>
+                    <Field label={t("signingDate")} name="signingDate" type="date" defaultValue={contract.signing_date} required />
+                    <Button type="submit" className="w-full">{t("markSigned")}</Button>
                   </form>
                 ) : (
-                  <p className="text-xs text-slate-400">Tecfys marcará el contrato como firmado cuando reciba la copia firmada.</p>
+                  <p className="text-xs text-slate-400">{t("signedByTecfys")}</p>
                 )}
               </div>
             </Card>
           )}
           {contract.scoring_id && (
             <p className="text-xs text-slate-500">
-              <Link href={`/scoring/${contract.scoring_id}`} className="hover:text-mint-400">Ver scoring de origen →</Link>
+              <Link href={`/scoring/${contract.scoring_id}`} className="hover:text-mint-400">{t("sourceScoring")}</Link>
             </p>
           )}
           {contract.notes && <p className="text-xs text-slate-500">{contract.notes}</p>}

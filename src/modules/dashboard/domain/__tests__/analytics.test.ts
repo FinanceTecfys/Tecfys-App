@@ -122,13 +122,13 @@ describe("group-by aggregations", () => {
   it("groups by asset cluster, country and partner, case-insensitively", () => {
     // Ties (25 vs 25) break alphabetically, so the order is deterministic.
     expect(groupOutstanding(rows, "assetCluster").map((s) => [s.label, s.amount])).toEqual([
-      ["Laptops", 150], ["Sin informar", 25], ["TV", 25],
+      ["Laptops", 150], ["common.noValue", 25], ["TV", 25],
     ]);
     expect(groupOutstanding(rows, "country").map((s) => [s.label, s.amount])).toEqual([
-      ["ES", 125], ["PT", 50], ["Sin informar", 25],
+      ["ES", 125], ["PT", 50], ["common.noValue", 25],
     ]);
     expect(groupOutstanding(rows, "distributor").map((s) => [s.label, s.amount])).toEqual([
-      ["Nicton", 125], ["Acquanima", 50], ["Sin informar", 25],
+      ["Nicton", 125], ["Acquanima", 50], ["common.noValue", 25],
     ]);
     expect(groupOutstanding(rows, "country")[0].share).toBeCloseTo(125 / 200, 10);
   });
@@ -137,7 +137,7 @@ describe("group-by aggregations", () => {
     const many = Array.from({ length: 10 }, (_, i) => row({ id: `${i}`, country: `C${i}`, outstanding: 10 - i }));
     const grouped = groupOutstanding(many, "country", { limit: 3 });
     expect(grouped).toHaveLength(4);
-    expect(grouped.at(-1)).toMatchObject({ label: "Otros", count: 7 });
+    expect(grouped.at(-1)).toMatchObject({ label: "common.others", count: 7 });
     expect(grouped.reduce((s, g) => s + g.amount, 0)).toBe(55);
     expect(grouped.reduce((s, g) => s + g.share, 0)).toBeCloseTo(1, 10);
   });

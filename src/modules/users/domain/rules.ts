@@ -29,13 +29,14 @@ const OK: RuleResult = { ok: true };
 const deny = (error: string): RuleResult => ({ ok: false, error });
 
 export const USER_RULE_ERRORS = {
-  notAllowed: "No tienes permiso para gestionar usuarios",
-  owner: "El owner no se puede modificar, desactivar, eliminar ni duplicar",
-  adminsOnlyByOwner: "Solo el owner puede invitar, modificar o eliminar administradores",
-  self: "No puedes cambiar tu propio rol, ni desactivar o eliminar tu usuario",
-  distributorRequired: "Selecciona el distribuidor que representa el partner",
-  distributorOnlyForPartners: "Solo un partner se vincula a un distribuidor",
-  noProfile: "El usuario todavía no tiene rol asignado",
+  // Keys of the message catalogue (errors.users.*): the server action translates them.
+  notAllowed: "errors.users.notAllowed",
+  owner: "errors.users.owner",
+  adminsOnlyByOwner: "errors.users.adminsOnlyByOwner",
+  self: "errors.users.self",
+  distributorRequired: "errors.users.distributorRequired",
+  distributorOnlyForPartners: "errors.users.distributorOnlyForPartners",
+  noProfile: "errors.users.noProfile",
 } as const;
 
 /** The roles an actor may give to a user. Never owner: the single owner is seeded, not assigned. */
@@ -119,12 +120,12 @@ export const isInvitePending = (user: { invited_at?: string | null; email_confir
   Boolean(user.invited_at) && !user.email_confirmed_at;
 
 const assignmentShape = {
-  role: z.enum(ROLES, { error: "Selecciona un rol" }),
+  role: z.enum(ROLES, { error: "validation.users.role" }),
   distributorId: z.union([z.uuid(), z.literal(""), z.null()]).optional().transform((v) => v || null),
 };
 
 export const inviteUserSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email("Email no válido")),
+  email: z.string().trim().toLowerCase().pipe(z.email("validation.users.email")),
   ...assignmentShape,
 });
 export type InviteUserInput = z.input<typeof inviteUserSchema>;

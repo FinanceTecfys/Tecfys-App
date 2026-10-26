@@ -1,4 +1,6 @@
+import { useTranslations } from "next-intl";
 import { Ban, Check, Minus } from "lucide-react";
+import { useTranslate } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { type Lifecycle, type LifecycleStep, STEP_STATE_LABELS, type StepState } from "../domain/lifecycle";
 
@@ -50,12 +52,15 @@ function Marker({ step, index, size }: { step: LifecycleStep; index: number; siz
   );
 }
 
-const describe = (step: LifecycleStep) => `${step.label}: ${STEP_STATE_LABELS[step.state]}. ${step.hint}`;
 
 export function LifecycleStepper({ lifecycle, variant = "full", className }: { lifecycle: Lifecycle; variant?: "full" | "compact"; className?: string }) {
   const compact = variant === "compact";
+  const t = useTranslations("pipeline.lifecycle");
+  // The lifecycle carries message keys (labels, hints, states): they are translated here.
+  const translate = useTranslate();
+  const describe = (step: LifecycleStep) => t("describe", { step: translate(step.label), state: translate(STEP_STATE_LABELS[step.state]), hint: translate(step.hint) });
   return (
-    <ol aria-label={`Ciclo de vida: ${lifecycle.label}`} className={cn("flex", compact ? "items-center" : "items-start", className)}>
+    <ol aria-label={t("ariaLabel", { label: translate(lifecycle.label) })} className={cn("flex", compact ? "items-center" : "items-start", className)}>
       {lifecycle.steps.map((step, i) => (
         <li key={step.key} aria-current={step.key === lifecycle.stage ? "step" : undefined} className={cn("flex", compact ? "items-center" : "min-w-0 items-start", !compact && i > 0 && "flex-1")}>
           {i > 0 && (
@@ -81,14 +86,14 @@ export function LifecycleStepper({ lifecycle, variant = "full", className }: { l
               <span className="sr-only">{describe(step)}</span>
             ) : (
               <>
-                <span className={cn("text-[11px] leading-tight", LABEL[step.state])}>{step.label}</span>
-                <span className="sr-only">{STEP_STATE_LABELS[step.state]}.</span>
+                <span className={cn("text-[11px] leading-tight", LABEL[step.state])}>{translate(step.label)}</span>
+                <span className="sr-only">{translate(STEP_STATE_LABELS[step.state])}.</span>
                 <span
                   role="tooltip"
                   className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 hidden w-48 -translate-x-1/2 rounded-md border border-ink-600 bg-ink-800 px-2.5 py-1.5 text-left text-[11px] leading-snug text-slate-200 shadow-lg group-hover:block group-focus-visible:block"
                 >
-                  <span className="block font-semibold text-slate-100">{STEP_STATE_LABELS[step.state]}</span>
-                  {step.hint}
+                  <span className="block font-semibold text-slate-100">{translate(STEP_STATE_LABELS[step.state])}</span>
+                  {translate(step.hint)}
                 </span>
               </>
             )}

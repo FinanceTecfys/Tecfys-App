@@ -136,7 +136,7 @@ describe("mapInformaReport - missing and partial data", () => {
     expect(m.balance).toBeNull();
     expect(m.financials).toMatchObject({ cif: "A00000000", totalRevenue: null, ebitda: null, equity: null, referenceYear: null, shareCapital: 500_000 });
     expect(m.missing).toEqual(["totalRevenue", "netResult", "ebitda", "nonCurrentAssets", "currentAssets", "equity", "nonCurrentLiabilities", "currentLiabilities"]);
-    expect(m.warnings).toEqual(["Informa no tiene balances de esta empresa (ha devuelto informe comercial): introduce las cifras a mano o usa el PDF"]);
+    expect(m.warnings).toEqual([{ key: "scoring.informa.warnings.noBalance", values: { report: "informe comercial" } }]);
   });
 
   it("maps a balance-only report (no P&L) and treats absent balance masses as zero", () => {
@@ -179,8 +179,8 @@ describe("mapInformaReport - missing and partial data", () => {
     const m = mapInformaReport(r, new Date(Date.UTC(2027, 0, 15)));
     expect(m.financials.referenceYear).toBe(2023);
     expect(m.warnings).toEqual([
-      "El último ejercicio dura 6 meses: las cifras de resultados no son anuales",
-      "El último balance disponible en Informa es de 2023",
+      { key: "scoring.informa.warnings.months", values: { months: 6 } },
+      { key: "scoring.informa.warnings.oldBalance", values: { year: 2023 } },
     ]);
   });
 

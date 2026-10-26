@@ -1,0 +1,1301 @@
+{
+  "common": {
+    "brand": {
+      "tagline": "Renting platform",
+      "description": "Scoring, originación y loan book de renting"
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Administrador",
+      "sales": "Comercial",
+      "partner": "Partner"
+    },
+    "actions": {
+      "add": "Añadir",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "back": "Volver",
+      "apply": "Aplicar",
+      "edit": "Editar",
+      "download": "Descargar",
+      "delete": "Eliminar",
+      "confirm": "Confirmar",
+      "clearFilters": "Quitar filtros",
+      "search": "Buscar"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "noPermission": "Sin permiso",
+    "yes": "Sí",
+    "no": "No",
+    "pagination": {
+      "ariaLabel": "Paginación",
+      "show": "Mostrar",
+      "perPage": "por página",
+      "rowsPerPage": "Filas por página",
+      "previous": "Página anterior",
+      "next": "Página siguiente",
+      "page": "Página {page}",
+      "currentPage": "Página {page}, actual",
+      "range": "{from}–{to} de {total}",
+      "pageOf": "Página {page} de {pages}",
+      "previousShort": "Anterior",
+      "nextShort": "Siguiente"
+    },
+    "errors": {
+      "reviewFields": "Revisa los datos marcados",
+      "fieldsWithError": "{count, plural, one {# campo con error} other {# campos con error}} en las secciones de la izquierda."
+    },
+    "noValue": "Sin informar",
+    "months": "{count, plural, one {# mes} other {# meses}}",
+    "direct": "Directo",
+    "others": "Otros"
+  },
+  "nav": {
+    "ariaLabel": "Principal",
+    "dashboard": "Dashboard",
+    "scoring": "Scoring",
+    "newOperation": "Nueva operación",
+    "pipeline": "Pipeline",
+    "loanBook": "Loan book",
+    "portfolio": "Cartera / Waterfall",
+    "erp": "ERP",
+    "settings": "Configuración",
+    "signOut": "Cerrar sesión",
+    "environment": "v0.1 · entorno local"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "email": "Email",
+      "password": "Contraseña",
+      "submit": "Entrar",
+      "submitting": "Entrando…",
+      "noAccessTitle": "Usuario sin acceso",
+      "noAccessBody": "Tu usuario no tiene un rol activo en la plataforma. Pide acceso a un administrador de Tecfys.",
+      "errors": {
+        "invalid": "Email o contraseña incorrectos.",
+        "rateLimited": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+        "unavailable": "No se pudo iniciar sesión. Inténtalo de nuevo más tarde."
+      }
+    },
+    "setPassword": {
+      "metaTitle": "Crear contraseña",
+      "titleInvite": "Crea tu contraseña",
+      "titleRecovery": "Nueva contraseña",
+      "intro": "Elige la contraseña con la que entrarás en la plataforma a partir de ahora.",
+      "invalidLinkTitle": "Enlace no válido",
+      "goToLogin": "Ir a iniciar sesión",
+      "newPassword": "Nueva contraseña",
+      "hint": "Mínimo {min} caracteres.",
+      "confirm": "Repite la contraseña",
+      "submit": "Guardar contraseña y entrar",
+      "submitting": "Guardando…",
+      "errors": {
+        "tooShort": "La contraseña necesita al menos {min} caracteres.",
+        "tooLong": "La contraseña no puede superar {max} caracteres.",
+        "mismatch": "Las dos contraseñas no coinciden.",
+        "invalidLink": "El enlace no es válido, ya se ha usado o ha caducado. Pide a un administrador de Tecfys que te envíe una invitación nueva.",
+        "weak": "Supabase ha rechazado la contraseña por débil. Prueba con una más larga o más variada.",
+        "rateLimited": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
+        "unavailable": "No se pudo guardar la contraseña. Inténtalo de nuevo."
+      }
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "description": "Usuarios y roles, catálogos de originación, modelo de scoring vigente y conexiones con el ERP e Informa.",
+    "descriptionPersonal": "Tus preferencias de idioma y de apariencia en la plataforma.",
+    "tabsAriaLabel": "Secciones de configuración",
+    "tabs": {
+      "users": "Usuarios y roles",
+      "distributors": "Distribuidores",
+      "assets": "Tipos de activo",
+      "scoring": "Modelo de scoring",
+      "apis": "APIs",
+      "preferences": "Preferencias"
+    },
+    "users": {
+      "title": "Usuarios",
+      "subtitle": "{count, plural, one {# cuenta} other {# cuentas}} · el rol decide qué puede ver y hacer cada usuario",
+      "noPermission": "Tu rol no puede gestionar usuarios."
+    },
+    "distributors": {
+      "title": "Distribuidores",
+      "subtitle": "{count, plural, one {# registrado} other {# registrados}}",
+      "name": "Nombre",
+      "cif": "CIF",
+      "status": "Estado",
+      "newLabel": "Nuevo distribuidor",
+      "email": "Email"
+    },
+    "assets": {
+      "title": "Tipos de activo",
+      "subtitle": "Cada tipo pertenece a un grupo del Loan book",
+      "type": "Tipo",
+      "cluster": "Grupo",
+      "status": "Estado",
+      "newLabel": "Nuevo tipo de activo",
+      "clusterLabel": "Grupo (cluster del Loan book)",
+      "contractTypesTitle": "Tipos de contrato",
+      "code": "Código",
+      "descriptionColumn": "Descripción",
+      "billingLag": "Desfase facturación",
+      "billingLagValue": "{months, plural, one {+# mes} other {+# meses}}"
+    },
+    "scoringModel": {
+      "readOnlyTitle": "Solo lectura",
+      "readOnlyBody": "Este es el modelo de scoring vigente. La edición de pesos, tramos y reglas de decisión llegará en una rama posterior.",
+      "title": "Modelo de scoring",
+      "version": "Versión {version}",
+      "defaultVersion": "Modelo por defecto (sin versión guardada)",
+      "ratio": "Ratio",
+      "weight": "Peso",
+      "formula": "Fórmula",
+      "prudence": "prudencia {value}"
+    },
+    "apis": {
+      "holdedTitle": "Holded / ERP",
+      "holdedSubtitle": "Conexión con la API v2 de Holded para sincronizar las ventas en ERP",
+      "informaTitle": "Informa",
+      "informaSubtitle": "API v2 de Informa D&B: informe por CIF para el scoring"
+    },
+    "catalog": {
+      "errors": {
+        "nameTooShort": "Nombre demasiado corto",
+        "emailInvalid": "Email no válido",
+        "clusterRequired": "Selecciona un grupo",
+        "distributorExists": "Ya existe un distribuidor con ese nombre",
+        "assetTypeExists": "Ya existe un tipo de activo con ese nombre"
+      }
+    },
+    "informa": {
+      "apiUrl": "URL de la API (INFORMA_API_URL)",
+      "urlNotAllowed": "No permitida: debe ser https y de un dominio informa.es",
+      "username": "Usuario (INFORMA_USERNAME)",
+      "password": "Contraseña (INFORMA_PASSWORD)",
+      "configuredM": "configurado",
+      "configuredF": "configurada",
+      "notConfigured": "sin configurar",
+      "session": "Sesión",
+      "sessionAuto": "automática (POST /login)",
+      "help": "Configura el usuario y la contraseña del portal de Informa en el entorno del servidor (.env.local): nunca se guardan en la base de datos ni llegan al navegador. La aplicación obtiene la sesión sola con POST /login y la renueva cuando caduca (código 10005). La prueba inicia sesión y consulta la empresa de demostración A00000000.",
+      "test": "Probar conexión",
+      "testing": "Probando…",
+      "testOk": "Conexión correcta ({ms} ms)",
+      "testOkTitle": "Informa responde",
+      "testKoTitle": "No se pudo conectar"
+    }
+  },
+  "preferences": {
+    "title": "Preferencias",
+    "subtitle": "Se guardan en tu usuario y te siguen en cualquier navegador",
+    "language": {
+      "label": "Idioma",
+      "hint": "Idioma de la interfaz. Los importes, números y fechas mantienen siempre el formato español (1.234,56 € · dd/mm/aaaa)."
+    },
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    },
+    "theme": {
+      "label": "Modo de color",
+      "hint": "El modo Azul / Blanco se guarda ya en tu usuario; su paleta llegará en una próxima versión y hasta entonces se muestra el modo Green."
+    },
+    "themes": {
+      "green": "Green",
+      "blue": "Azul / Blanco"
+    },
+    "save": "Guardar preferencias",
+    "saving": "Guardando…",
+    "saved": "Preferencias guardadas.",
+    "errors": {
+      "invalid": "Preferencias no válidas",
+      "notSaved": "No se pudieron guardar las preferencias"
+    }
+  },
+  "scoring": {
+    "decisions": {
+      "auto": "Aprobado automático",
+      "limited": "Aprobado con límites",
+      "manual": "Revisión manual",
+      "reject": "Rechazado"
+    },
+    "ratios": {
+      "guarantee": {
+        "label": "Garantía (colateral)",
+        "formula": "Activo total / Pasivo total"
+      },
+      "solvency": {
+        "label": "Solvencia",
+        "formula": "Activo corriente / Pasivo corriente"
+      },
+      "indebtedness": {
+        "label": "Endeudamiento",
+        "formula": "Pasivo total / Patrimonio neto"
+      },
+      "netMargin": {
+        "label": "Margen neto",
+        "formula": "Resultado neto / Ventas"
+      },
+      "sectorialRisk": {
+        "label": "Riesgo sectorial",
+        "formula": "Sector → rating"
+      },
+      "maturity": {
+        "label": "Antigüedad (años)",
+        "formula": "Años desde la constitución"
+      },
+      "economicProfit": {
+        "label": "Rentabilidad económica (ROA)",
+        "formula": "Resultado neto / Activo total"
+      },
+      "financialProfit": {
+        "label": "Rentabilidad financiera (ROE)",
+        "formula": "Resultado neto / Patrimonio neto"
+      },
+      "paymentPeriod": {
+        "label": "Periodo medio de pago (días)",
+        "formula": "(Proveedores / Aprovisionamientos) × 365"
+      },
+      "collectionPeriod": {
+        "label": "Periodo medio de cobro (días)",
+        "formula": "(Clientes / Ventas) × 365"
+      }
+    },
+    "statuses": {
+      "approved": "Aprobado",
+      "pending_review": "Pendiente de revisión",
+      "rejected": "Rechazado"
+    },
+    "list": {
+      "title": "Scoring de clientes",
+      "description": "Primer paso de toda operación: sin scoring aprobado no se puede originar un contrato.",
+      "new": "Nuevo scoring",
+      "empty": "Todavía no hay scorings. Empieza subiendo un informe de Informa.",
+      "date": "Fecha",
+      "company": "Empresa",
+      "cif": "CIF",
+      "score": "Puntuación",
+      "rating": "Rating",
+      "decision": "Decisión",
+      "status": "Estado",
+      "creditOpinion": "Opinión de crédito"
+    },
+    "new": {
+      "title": "Nuevo scoring",
+      "descriptionVersion": "Modelo de scoring v{version}: ratios ponderados, rating AAA–C y opinión de crédito.",
+      "descriptionDefault": "Modelo de scoring por defecto: ratios ponderados, rating AAA–C y opinión de crédito."
+    },
+    "detail": {
+      "fallbackTitle": "Scoring",
+      "noSector": "sector sin informar",
+      "scoringOf": "scoring del {date}",
+      "createOperation": "Crear operación",
+      "score": "Puntuación",
+      "rating": "Rating",
+      "creditOpinion": "Opinión de crédito",
+      "creditOpinionHint": "EBITDA ajustado × {prudence} %",
+      "status": "Estado",
+      "breakdown": "Desglose del scoring",
+      "reviewTitle": "Revisión manual",
+      "reviewSubtitle": "El rating exige decisión del comité",
+      "pendingTitle": "Pendiente de revisión",
+      "pendingBody": "El rating exige una decisión del comité de Tecfys antes de poder originar la operación.",
+      "rejectedTitle": "Scoring rechazado",
+      "rejectedBody": "No se puede originar una operación para este cliente con este scoring.",
+      "informaTitle": "Indicadores Informa",
+      "informaRating": "Nota Informa",
+      "informaCreditOpinion": "Opinión de crédito Informa",
+      "liquidityScore": "Score liquidez",
+      "resilience": "Resiliencia",
+      "referenceYear": "Ejercicio de referencia",
+      "figuresTitle": "Principales magnitudes",
+      "revenue": "Ventas",
+      "ebitda": "EBITDA",
+      "netResult": "Resultado neto",
+      "equity": "Patrimonio neto",
+      "totalLiabilities": "Pasivo total",
+      "backToList": "← Volver al listado"
+    },
+    "review": {
+      "note": "Motivo de la decisión",
+      "placeholder": "Ej. avalista con patrimonio suficiente, experiencia previa con el cliente…",
+      "approve": "Aprobar",
+      "reject": "Rechazar"
+    },
+    "breakdownTable": {
+      "ratio": "Ratio",
+      "value": "Valor",
+      "rating": "Rating",
+      "score": "Nota",
+      "weight": "Peso",
+      "contribution": "Aporta",
+      "noData": "sin dato",
+      "days": "{value} d",
+      "years": "{value} años"
+    },
+    "wizard": {
+      "sourcePdf": "Datos extraídos del informe de Informa (PDF)",
+      "sourceApi": "Datos obtenidos de la API de Informa",
+      "sourceManual": "Alta manual",
+      "apiTitle": "Buscar en Informa por CIF",
+      "apiSubtitle": "Informe en vivo desde la API de Informa: último balance y estado de la empresa",
+      "apiHint": "Cada consulta puede facturarse en Informa",
+      "apiNotConfigured": "Sin configurar: añade INFORMA_USERNAME e INFORMA_PASSWORD a .env.local",
+      "apiSearch": "Buscar en Informa",
+      "apiSearching": "Consultando Informa…",
+      "pdfTitle": "Informe de Informa (PDF)",
+      "pdfSubtitle": "Se extraen los estados financieros del último ejercicio",
+      "pdfPick": "Selecciona o arrastra el PDF de Informa",
+      "pdfMax": "Máx. 20 MB",
+      "pdfProcess": "Procesar informe",
+      "pdfProcessing": "Procesando informe…",
+      "manualTitle": "Alta manual",
+      "manualSubtitle": "Sin informe: introduce los datos a mano",
+      "manualBody": "Útil para empresas sin informe disponible o para ajustar un caso concreto. El scoring aplica el mismo modelo y queda registrado como alta manual.",
+      "manualStart": "Introducir datos",
+      "reportErrorTitle": "No se pudo obtener el informe",
+      "reviewInforma": "Revisa el informe de Informa",
+      "missingTitle": "Datos no encontrados en el informe",
+      "missingBody": "Revisa y completa: {fields}. Un ratio sin dato puntúa C.",
+      "companyTitle": "Empresa",
+      "selectPlaceholder": "— Selecciona —",
+      "years": "años",
+      "adminNifHint": "No viene en Informa",
+      "addressTitle": "Domicilio fiscal y contacto",
+      "addressSubtitle": "Se trasladan a la operación y al contrato; todos editables",
+      "fiscalYear": "Ejercicio {year}",
+      "breakdownTitle": "Desglose del scoring",
+      "updating": "Actualizando…",
+      "resultTitle": "Resultado",
+      "score": "Puntuación",
+      "outOfTen": "sobre 10",
+      "adjustedEbitda": "EBITDA ajustado",
+      "prudence": "Prudencia",
+      "creditOpinion": "Opinión de crédito",
+      "previewFailed": "{error}. El scoring se recalcula al guardar.",
+      "save": "Guardar scoring",
+      "saving": "Guardando…"
+    },
+    "fieldGroups": {
+      "pnl": "Cuenta de resultados",
+      "balance": "Balance"
+    },
+    "fields": {
+      "cif": "CIF",
+      "name": "Razón social",
+      "sector": "Sector",
+      "cnae": "CNAE",
+      "maturityYears": "Antigüedad",
+      "employees": "Empleados",
+      "adminName": "Administrador",
+      "adminNif": "DNI del administrador",
+      "address": "Dirección",
+      "fiscalPostalCode": "Código postal",
+      "fiscalCity": "Ciudad",
+      "fiscalProvince": "Provincia",
+      "phone": "Teléfono",
+      "email": "Email",
+      "totalRevenue": "Ventas",
+      "grossMargin": "Margen bruto",
+      "procurement": "Aprovisionamientos",
+      "ebitda": "EBITDA",
+      "adjustedEbitda": "EBITDA ajustado",
+      "ebit": "EBIT",
+      "netResult": "Resultado neto",
+      "financialExpenses": "Gastos financieros",
+      "nonCurrentAssets": "Activo no corriente",
+      "currentAssets": "Activo corriente",
+      "equity": "Patrimonio neto",
+      "nonCurrentLiabilities": "Pasivo no corriente",
+      "currentLiabilities": "Pasivo corriente",
+      "receivables": "Clientes",
+      "payables": "Proveedores",
+      "shareCapital": "Capital social"
+    },
+    "informa": {
+      "status": {
+        "alertTitle": "Empresa en situación especial: {detail}",
+        "warningTitle": "Incidencia registral: {detail}",
+        "reviewStatus": "revisar estado",
+        "unknownTitle": "Informa no indica el estado de la empresa",
+        "okTitle": "Empresa activa según Informa",
+        "line": "Estado Informa: {code}{since}.",
+        "lifeCode": "código de vida {code}",
+        "noLifeCode": "sin código de vida",
+        "subcode": "subcódigo",
+        "since": " desde {date}",
+        "ratingInforma": "Rating Informa {value}",
+        "failureProbability": "probabilidad de fallo {value} %",
+        "creditOpinion": "opinión de crédito {value}",
+        "liquidityScore": "score de liquidez {value}",
+        "informative": "(informativo: el scoring usa el modelo Tecfys)"
+      },
+      "warnings": {
+        "noBalance": "Informa no tiene balances de esta empresa (ha devuelto {report}): introduce las cifras a mano o usa el PDF",
+        "unit": "El balance está en \"{unit}\": revisa la conversión a euros",
+        "months": "El último ejercicio dura {months} meses: las cifras de resultados no son anuales",
+        "oldBalance": "El último balance disponible en Informa es de {year}",
+        "noBalancePlain": "Informa no tiene balances de esta empresa: introduce las cifras a mano o usa el PDF"
+      },
+      "errors": {
+        "notConfiguredUrl": "INFORMA_API_URL debe ser https y de un dominio informa.es",
+        "notConfiguredEnv": "Falta {missing} en el entorno del servidor (.env.local)",
+        "code10000": "Informa no puede validar el usuario ahora mismo (Sistema de Gestión Comercial caído). Inténtalo más tarde",
+        "code10001": "Informa rechaza las credenciales: usuario o sesión no válidos. Revisa INFORMA_USERNAME e INFORMA_PASSWORD",
+        "code10002": "El usuario de Informa no tiene permiso para el producto INFORME_MAYOR",
+        "code10003": "La contraseña del usuario de Informa ha caducado: hay que cambiarla en Informa",
+        "code10005": "La sesión de Informa ha caducado y la renovación automática (POST /login) no lo ha resuelto: revisa INFORMA_USERNAME / INFORMA_PASSWORD o contacta con soporte de Informa",
+        "code10006": "Error de comunicación interna en Informa",
+        "code11000": "La fuente de datos de Informa no está disponible. Inténtalo más tarde",
+        "code11001": "Informa no tiene disponible el informe para este CIF",
+        "code11002": "El informe de esta empresa no cumple los requisitos mínimos definidos en Informa",
+        "code11003": "El CIF no existe en la base de datos de Informa",
+        "code11005": "Empresa bloqueada temporalmente en Informa por actualización de datos. Inténtalo más tarde",
+        "code12000": "Informa rechaza los parámetros de la petición",
+        "code12001": "Error interno del servidor de Informa",
+        "status400": "Informa rechaza los parámetros de la petición",
+        "status401": "Informa rechaza las credenciales o el usuario no tiene permiso para el producto",
+        "status403": "Informa deniega el acceso",
+        "status404": "Informa no encuentra la empresa o el informe no está disponible para ella",
+        "status429": "Informa ha limitado las peticiones. Espera unos segundos y vuelve a intentarlo",
+        "status500": "Error interno del servidor de Informa",
+        "status503": "El servicio de Informa no está disponible. Inténtalo más tarde",
+        "generic": "No se pudo completar la consulta a Informa",
+        "withCode": "{message} (código {code})",
+        "withStatus": "{message} (HTTP {status})"
+      }
+    },
+    "errors": {
+      "cifInvalid": "CIF no válido: 9 caracteres, p. ej. B12345678",
+      "pdfMissing": "Selecciona un PDF de Informa",
+      "notPdf": "El fichero no es un PDF",
+      "pdfTooLarge": "El PDF supera 20 MB",
+      "pdfUnreadable": "No se pudo leer el PDF (¿está protegido o escaneado?)",
+      "pdfNotInforma": "El PDF no parece un informe de Informa: no se encontró CIF, razón social ni ventas",
+      "invalidFinancials": "Hay datos financieros no válidos",
+      "previewFailed": "No se pudo calcular la vista previa",
+      "reportNotFound": "Informe de Informa no encontrado"
+    }
+  },
+  "validation": {
+    "scoring": {
+      "cifRequired": "CIF obligatorio",
+      "nameRequired": "Razón social obligatoria",
+      "reviewNote": "Explica el motivo de la decisión"
+    },
+    "operation": {
+      "clientName": "Indica la razón social",
+      "clientCif": "Indica el CIF/NIF",
+      "fiscalAddress": "Indica la dirección fiscal",
+      "fiscalPostalCode": "Indica el código postal",
+      "fiscalPostalCodeInvalid": "Código postal no válido",
+      "fiscalCity": "Indica la ciudad",
+      "signatoryName": "Indica el administrador / firmante",
+      "signatoryNif": "Indica el DNI del firmante",
+      "contactName": "Indica la persona de contacto",
+      "contactEmail": "Email no válido",
+      "sepaDebtorName": "Indica el titular de la cuenta",
+      "assetType": "Selecciona el tipo de activo",
+      "productDescription": "Describe el producto",
+      "productDescriptionMax": "Máximo 500 caracteres",
+      "signingDate": "Fecha no válida",
+      "durationMin": "Mínimo 1 mes",
+      "durationMax": "Máximo 120 meses",
+      "installmentPositive": "La cuota debe ser positiva",
+      "notNegative": "No puede ser negativo",
+      "purchaseValue": "Indica el coste del equipo",
+      "bicInvalid": "BIC no válido (8 u 11 caracteres)",
+      "deliveryAddress": "Indica el domicilio de entrega",
+      "guarantorName": "Indica el avalista",
+      "guarantorNif": "Indica el NIF del avalista",
+      "guarantorAddress": "Indica el domicilio del avalista",
+      "guarantorRepresentativeNif": "Indica el DNI del representante"
+    },
+    "sepa": {
+      "empty": "Indica el IBAN",
+      "format": "Formato de IBAN no válido",
+      "country": "País no admitido en SEPA",
+      "length": "Longitud incorrecta para el país",
+      "checksum": "Dígitos de control del IBAN incorrectos",
+      "national_check": "Dígitos de control de la cuenta (CCC) incorrectos"
+    },
+    "attachment": {
+      "empty": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: el fichero está vacío",
+      "tooLarge": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: supera el máximo de 8 MB",
+      "type": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: solo se admiten PDF, JPG, PNG o WEBP",
+      "invalidFile": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: fichero no válido",
+      "selectFile": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: selecciona un fichero",
+      "slotTaken": "{kind, select, id_document {DNI / NIE del firmante} bank_certificate {Certificado bancario} contract {Contrato firmado} other {Anexo / otro documento}}: el contrato ya tiene este documento",
+      "invalidDocument": "Documento no válido"
+    },
+    "cancellation": {
+      "dateForStatus": "Indica la fecha de cancelación para fijar un estado",
+      "unknownStatus": "Estado no reconocido",
+      "notNegative": "No puede ser negativo",
+      "noSettlement": "Este estado no admite importe de liquidación",
+      "beforeSigning": "Anterior a la fecha de firma"
+    },
+    "erp": {
+      "holdedUrl": "La URL debe ser https y de un dominio holded.com",
+      "wholeDays": "Días enteros",
+      "min0": "Mínimo 0",
+      "max365": "Máximo 365"
+    },
+    "users": {
+      "role": "Selecciona un rol",
+      "email": "Email no válido"
+    }
+  },
+  "contract": {
+    "lifecycle": {
+      "Active": "Activo",
+      "On Track": "En plazo",
+      "Extended": "Extendido",
+      "Finished": "Finalizado"
+    },
+    "workflow": {
+      "draft": "Borrador",
+      "pending_signature": "Pendiente de firma",
+      "signed": "Firmado",
+      "cancelled": "Anulado"
+    },
+    "additionalStatuses": {
+      "fc": {
+        "label": "FC · Finalización de contrato",
+        "description": "El contrato llega a término y el cliente ha pagado todas las cuotas."
+      },
+      "gesico": {
+        "label": "Gesico · Demanda",
+        "description": "Impago (habitualmente DPD+90) reclamado por la agencia: no se cobra el residual y el principal pendiente pasa a default."
+      },
+      "cap": {
+        "label": "CAP · Cancelación anticipada partner",
+        "description": "El partner avalista liquida el contrato anticipadamente."
+      },
+      "cac": {
+        "label": "CAC · Cancelación anticipada cliente",
+        "description": "El cliente liquida anticipadamente toda la deuda."
+      },
+      "capClaim": {
+        "label": "CAP (Reclamación)",
+        "description": "Cancelación anticipada por el partner tras reclamación."
+      },
+      "cs": {
+        "label": "CS",
+        "description": "Valor heredado del Loan book; admite importe de liquidación."
+      },
+      "partial": {
+        "label": "Cancelación parcial",
+        "description": "Valor heredado del Loan book; admite importe de liquidación."
+      },
+      "cat": {
+        "label": "CAT",
+        "description": "Valor heredado del Loan book."
+      },
+      "catClaim": {
+        "label": "CAT (Reclamación)",
+        "description": "Valor heredado del Loan book."
+      },
+      "b2c": {
+        "label": "B2C",
+        "description": "Valor heredado del Loan book; excluido del ratio de pérdida en el Summary."
+      },
+      "nictonCobro": {
+        "label": "Nicton Cobro",
+        "description": "Valor heredado del Loan book."
+      },
+      "legacySuffix": "{label} (heredado)"
+    },
+    "detail": {
+      "title": "Contrato {number}",
+      "edit": "Editar",
+      "expectedIrr": "Expected IRR",
+      "monthly": "{rate} mensual",
+      "outstanding": "Principal pendiente",
+      "outstandingHint": "a cierre del mes en curso",
+      "billed": "Facturado hasta hoy",
+      "billedHint": "de {total} contratados",
+      "principalResult": "Resultado principal",
+      "defaultHint": "Default: {amount} dado de baja",
+      "recoversHint": "Recupera el coste del activo",
+      "lifecycleTitle": "Ciclo de vida",
+      "scheduleTitle": "Calendario de amortización",
+      "scheduleSubtitle": "{installments, plural, one {# cuota} other {# cuotas}} · amortiza en {months, plural, one {# mes} other {# meses}}",
+      "scheduleLag": " · factura desde el mes siguiente a la firma",
+      "termsTitle": "Condiciones",
+      "client": "Cliente",
+      "distributor": "Distribuidor",
+      "assetType": "Tipo de activo",
+      "contractType": "Tipo de contrato",
+      "signingDate": "Fecha de firma",
+      "duration": "Duración",
+      "installment": "Cuota mensual",
+      "residual": "Valor residual",
+      "cost": "Coste del equipo",
+      "guarantor": "Avalista",
+      "cancelDate": "Fecha de cancelación",
+      "additionalStatus": "Estado adicional",
+      "settlement": "Importe de liquidación",
+      "country": "País",
+      "loanBookRef": "Ref. Loan book",
+      "tranche": "Tramo / lender",
+      "identityTitle": "Datos identificativos",
+      "companyName": "Razón social",
+      "taxId": "CIF / NIF",
+      "fiscalAddress": "Domicilio fiscal",
+      "signatory": "Firmante",
+      "contact": "Contacto",
+      "deliveryAddress": "Domicilio de entrega",
+      "sameAsFiscal": "Mismo que dirección fiscal",
+      "product": "Producto",
+      "sepaTitle": "Orden de domiciliación SEPA",
+      "sepaReference": "Referencia",
+      "sepaDebtor": "Deudor",
+      "sepaPaymentType": "Tipo de pago",
+      "sepaRecurrent": "Recurrente",
+      "sepaOneOff": "Único",
+      "downloadContract": "Descargar contrato (.docx)",
+      "downloadDraft": "Descargar contrato borrador (.docx)",
+      "documentsTitle": "Documentos del contrato",
+      "documentsSubtitle": "Privados: solo se descargan desde esta ficha",
+      "manageTitle": "Gestión del contrato",
+      "manageSubtitle": "Cancelación, estado y liquidación",
+      "signatureTitle": "Firma",
+      "signaturePendingTitle": "Firma electrónica en preparación",
+      "signatureConfigured": "Credenciales de Signaturit configuradas; falta la plantilla del contrato.",
+      "signatureManual": "El envío automático a Signaturit llegará en una próxima rama. Mientras tanto, revisa el borrador descargado, fírmalo fuera de la plataforma y márcalo como firmado para que entre en el loan book.",
+      "markSigned": "Marcar como firmado",
+      "signedByTecfys": "Tecfys marcará el contrato como firmado cuando reciba la copia firmada.",
+      "sourceScoring": "Ver scoring de origen →"
+    },
+    "documents": {
+      "kinds": {
+        "id_document": "DNI / NIE del firmante",
+        "bank_certificate": "Certificado bancario",
+        "contract": "Contrato firmado",
+        "extra": "Anexo / otro documento"
+      },
+      "download": "Descargar",
+      "upload": "Subir documento",
+      "uploadAria": "Subir {document}",
+      "uploading": "Subiendo…",
+      "limits": "PDF o imagen, máx. 8 MB por documento.",
+      "attach": "Adjuntar",
+      "replace": "Sustituir",
+      "replaceAria": "Sustituir {document}",
+      "remove": "Quitar",
+      "removeAria": "Quitar {document}",
+      "optionalHint": "PDF o imagen, máx. 8 MB · opcional",
+      "tooLargeHint": "Supera el máximo de 8 MB",
+      "uploadFailed": "{document}: no se pudo subir el fichero"
+    },
+    "cancellation": {
+      "imported": "Estado importado del Loan book: {status}. Se mantiene salvo que elijas otro.",
+      "cancelDate": "Fecha de cancelación",
+      "cancelDateHint": "Vacío = el contrato sigue vivo hasta su término",
+      "additionalStatus": "Estado adicional",
+      "noStatus": "— Sin estado —",
+      "settlement": "Importe cobrado en la liquidación",
+      "settlementHint": "Sustituye al valor residual en el mes de liquidación. Principal pendiente hoy: {outstanding}",
+      "saved": "Cancelación guardada: el loan book y la cartera se han recalculado.",
+      "save": "Guardar cancelación",
+      "saving": "Guardando…"
+    },
+    "edit": {
+      "metaTitle": "Editar operación",
+      "back": "Volver al contrato",
+      "lockedTitle": "Este contrato ya no se puede editar",
+      "lockedBody": "Solo se editan los contratos en borrador. Uno enviado a firma o firmado conserva las condiciones con las que se firmó.",
+      "noScoringTitle": "Borrador sin scoring de origen",
+      "noScoringBody": "La operación se edita sobre el scoring del que nació, y este borrador no tiene uno accesible.",
+      "title": "Editar borrador {number}",
+      "description": "{company} · scoring {rating}. Cambia cualquier dato; al guardar se recalculan el calendario y la expected IRR."
+    },
+    "lifecycleSteps": {
+      "scoring": "Scoring",
+      "operation": "Operación (borrador)",
+      "signature": "Enviado a firma",
+      "signed": "Firmado · loan book"
+    }
+  },
+  "loanBook": {
+    "description": "Todos los contratos de renting. Estado, IRR, extensión y principal pendiente calculados a día de hoy.",
+    "descriptionAsOf": "Todos los contratos de renting. Estado, IRR, extensión y principal pendiente calculados a {date}.",
+    "signedContracts": "Contratos firmados",
+    "live": "{count} vivos",
+    "outstanding": "Principal pendiente",
+    "drafts": "Borradores / pendientes de firma",
+    "asOfChip": "Cartera a {date}",
+    "viewToday": "Ver a día de hoy",
+    "count": "{count, plural, one {# contrato} other {# contratos}}",
+    "pending": "pendiente",
+    "defaultWord": "default",
+    "filters": {
+      "searchPlaceholder": "Buscar por cliente, CIF, nº contrato, distribuidor, país…",
+      "search": "Buscar",
+      "status": "Estado",
+      "allStatuses": "Todos los estados",
+      "client": "Cliente",
+      "allClients": "Todos los clientes",
+      "country": "País",
+      "allCountries": "Todos los países",
+      "distributor": "Distribuidor",
+      "allDistributors": "Todos los distribuidores",
+      "cluster": "Grupo de activo",
+      "allClusters": "Todos los grupos de activo",
+      "others": "{label}: Otros ({count})",
+      "removeFilter": "Quitar filtro: {label}",
+      "size": "Tamaño por principal pendiente",
+      "allSizes": "Todos los tamaños",
+      "sizeOption": "Pendiente {range}",
+      "defaultIn": "Default en",
+      "defaultInAria": "Default en el mes",
+      "sortBy": "Ordenar por",
+      "onlyPending": "Solo con principal pendiente"
+    },
+    "statusFilter": {
+      "Active": "Activos",
+      "On Track": "En plazo",
+      "Extended": "Extendidos",
+      "Finished": "Finalizados",
+      "draft": "Borradores"
+    },
+    "sorts": {
+      "signing_desc": "Firma (recientes primero)",
+      "signing_asc": "Firma (antiguos primero)",
+      "client": "Cliente (A-Z)",
+      "outstanding_desc": "Principal pendiente (mayor primero)",
+      "cost_desc": "Coste (mayor primero)",
+      "default_desc": "Default (mayor primero)",
+      "cancel_desc": "Cancelación (recientes primero)"
+    },
+    "columns": {
+      "contractNumber": "Contrato",
+      "loanBookRef": "Ref. Loan book",
+      "client": "Cliente",
+      "cif": "CIF",
+      "country": "País",
+      "distributor": "Distribuidor",
+      "assetType": "Tipo de activo",
+      "assetCluster": "Grupo de activo",
+      "contractType": "Tipo de contrato",
+      "rating": "Rating",
+      "signingDate": "Firma",
+      "durationMonths": "Meses",
+      "extensionMonths": "Ext.",
+      "elapsedMonths": "Meses transcurridos",
+      "realMonths": "Meses reales",
+      "installment": "Cuota",
+      "cost": "Coste",
+      "purchaseValue": "Valor de compra",
+      "expoAdjustment": "Ajuste expo",
+      "residualValue": "Valor residual",
+      "expectedAnnualIrr": "Expected IRR",
+      "status": "Estado",
+      "cancelDate": "Cancelación",
+      "additionalStatus": "Estado adicional",
+      "settlementAmount": "Liquidación",
+      "outstanding": "Principal pendiente",
+      "defaultAmount": "Default",
+      "trancheLender": "Tramo / lender",
+      "hasGuarantor": "Avalista"
+    },
+    "columnPicker": {
+      "button": "Columnas",
+      "choose": "Elegir columnas",
+      "visible": "Columnas visibles",
+      "savedHere": "Se guarda en este navegador",
+      "reset": "Restablecer"
+    },
+    "notAvailable": "n/a"
+  },
+  "operation": {
+    "metaTitle": "Nueva operación",
+    "title": "Nueva operación",
+    "pickDescription": "Toda operación parte de un scoring aprobado. Elige el scoring del cliente.",
+    "newScoring": "Nuevo scoring",
+    "noApproved": "No hay scorings aprobados. Empieza por un nuevo scoring.",
+    "pickDate": "Fecha",
+    "pickCompany": "Empresa",
+    "pickCif": "CIF",
+    "pickRating": "Rating",
+    "pickCreditOpinion": "Opinión de crédito",
+    "pickCreate": "Crear operación",
+    "notApprovedTitle": "El scoring no está aprobado",
+    "notApprovedBody": "Solo se pueden originar operaciones sobre un scoring aprobado.",
+    "viewScoring": "Ver scoring",
+    "description": "{company} · scoring {rating} aprobado. Datos identificativos, orden SEPA y condiciones económicas; al crear el borrador se genera el contrato en Word.",
+    "identity": {
+      "title": "A · Datos identificativos",
+      "subtitle": "Traídos del scoring; se congelan en el contrato al crear el borrador",
+      "clientName": "Razón social",
+      "clientCif": "CIF / NIF",
+      "fiscalAddress": "Dirección fiscal",
+      "fiscalPostalCode": "Código postal",
+      "fiscalCity": "Ciudad",
+      "fiscalProvince": "Provincia",
+      "signatoryName": "Administrador / firmante",
+      "signatoryNif": "DNI del firmante",
+      "signatoryNifHint": "No viene en Informa",
+      "signatoryAddress": "Domicilio del firmante",
+      "signatoryAddressHint": "Opcional: si se deja vacío no aparece en el contrato",
+      "contactName": "Contacto para notificaciones",
+      "contactPhone": "Teléfono",
+      "contactEmail": "Email",
+      "delivery": "Domicilio de entrega",
+      "sameAsFiscal": "Mismo que dirección fiscal",
+      "deliveryPlaceholder": "Calle, número, código postal y ciudad"
+    },
+    "sepa": {
+      "title": "B · Orden de domiciliación SEPA",
+      "subtitle": "Adeudo directo recurrente a favor de TecfysPay S.L.",
+      "iban": "IBAN",
+      "ibanValid": "IBAN válido",
+      "bic": "BIC",
+      "bicDerived": "Deducido del IBAN",
+      "bicOptional": "Opcional para cuentas españolas",
+      "bicCountryMismatch": "El país del BIC no coincide con el del IBAN",
+      "debtor": "Nombre del deudor (titular de la cuenta)",
+      "note": "La dirección del deudor es la dirección fiscal (sección A). La referencia de la orden será el número de contrato."
+    },
+    "product": {
+      "title": "C · Producto y origen",
+      "distributor": "Distribuidor",
+      "distributorPlaceholder": "— Directo / sin distribuidor —",
+      "assetType": "Tipo de activo",
+      "clusterAria": "Grupo del activo",
+      "clusterOption": "Grupo: {cluster}",
+      "description": "Descripción del producto",
+      "descriptionPlaceholder": "Ej. 12 portátiles ASUS ExpertBook B1, 16 GB RAM, con cargador y funda",
+      "descriptionHint": "Aparece literalmente en las Condiciones Particulares del contrato",
+      "quantity": "Unidades"
+    },
+    "terms": {
+      "title": "C · Condiciones económicas",
+      "purchaseValue": "Coste del equipo",
+      "purchaseValueHint": "Valor de compra (sin IVA)",
+      "duration": "Duración",
+      "months": "meses",
+      "residual": "Valor residual",
+      "residualHint": "Opcional; se factura el mes siguiente a la última cuota",
+      "installment": "Cuota mensual",
+      "targetIrr": "Calcular cuota para una IRR objetivo",
+      "targetIrrPlaceholder": "Ej. 25",
+      "perYear": "% anual",
+      "calculate": "Calcular",
+      "contractType": "Tipo de contrato",
+      "signingDate": "Fecha de firma"
+    },
+    "guarantees": {
+      "title": "C · Garantías",
+      "hasGuarantor": "Operación con avalista",
+      "name": "Nombre del avalista",
+      "nif": "NIF / CIF del avalista",
+      "address": "Domicilio del avalista",
+      "representative": "Representante (si el avalista es una empresa)",
+      "representativeNif": "DNI del representante",
+      "notes": "Notas internas"
+    },
+    "schedule": {
+      "title": "Calendario previsto",
+      "lagSubtitle": "Renting F: la facturación empieza el mes siguiente a la firma",
+      "number": "#",
+      "month": "Mes",
+      "installment": "Cuota",
+      "principal": "Principal",
+      "interest": "Interés",
+      "outstanding": "Principal pendiente",
+      "residualTag": "valor residual",
+      "residualShort": "RV",
+      "moreMonths": "… {count, plural, one {# mes más} other {# meses más}}",
+      "total": "Total",
+      "showAll": "Ver todas ({count})",
+      "showLess": "Ver menos"
+    },
+    "panel": {
+      "title": "Expected IRR",
+      "monthly": "{rate} mensual",
+      "enterTerms": "Introduce coste, duración y cuota",
+      "flows": "Flujos: −{cost} · {months} × {installment}",
+      "flowsResidual": " · +{residual} residual",
+      "residualInIrr": " (el residual entra en la IRR: las cuotas no cubren el coste)",
+      "receivable": "Total a cobrar",
+      "interest": "Interés total",
+      "principal": "Principal",
+      "client": "Cliente",
+      "creditOpinion": "Opinión de crédito",
+      "currentExposure": "Riesgo vivo actual",
+      "exposureAfter": "Riesgo tras la operación",
+      "overLimitTitle": "Supera la opinión de crédito",
+      "overLimitBody": "El riesgo total con el cliente excede el límite del scoring. Requiere aprobación del comité.",
+      "noRecoveryTitle": "La operación no recupera el coste",
+      "noRecoveryBody": "Cuotas + residual por debajo del coste del equipo.",
+      "create": "Crear contrato borrador",
+      "creating": "Creando contrato…",
+      "saveChanges": "Guardar cambios",
+      "savingChanges": "Guardando cambios…",
+      "editNote": "Al guardar, el calendario y la expected IRR del borrador {number} se recalculan con estas condiciones. Los documentos se gestionan en la ficha del contrato."
+    },
+    "catalog": {
+      "select": "— Selecciona —",
+      "name": "Nombre",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "create": "Crear: {label}"
+    }
+  },
+  "errors": {
+    "contract": {
+      "notFound": "Contrato no encontrado",
+      "scoringNotFound": "Scoring no encontrado",
+      "scoringNotApproved": "El scoring no está aprobado",
+      "attachmentNotStored": "No se pudo guardar el adjunto: {detail}",
+      "documentNotStored": "No se pudo guardar el documento: {detail}",
+      "notCreated": "El contrato se creó pero no se pudo leer su número; búscalo en el loan book",
+      "onlyDraftEditable": "Solo se puede editar un contrato en borrador",
+      "scoringMismatch": "El scoring no corresponde a este contrato",
+      "noLongerDraft": "El contrato ya no está en borrador",
+      "onlySignedCancellable": "Solo se puede cancelar un contrato firmado"
+    },
+    "users": {
+      "notAllowed": "No tienes permiso para gestionar usuarios",
+      "owner": "El owner no se puede modificar, desactivar, eliminar ni duplicar",
+      "adminsOnlyByOwner": "Solo el owner puede invitar, modificar o eliminar administradores",
+      "self": "No puedes cambiar tu propio rol, ni desactivar o eliminar tu usuario",
+      "distributorRequired": "Selecciona el distribuidor que representa el partner",
+      "distributorOnlyForPartners": "Solo un partner se vincula a un distribuidor",
+      "noProfile": "El usuario todavía no tiene rol asignado",
+      "emailExists": "Ya existe un usuario con ese email",
+      "inviteFailed": "No se pudo enviar la invitación",
+      "distributorMissing": "El distribuidor no existe",
+      "userOrDistributorMissing": "El usuario o el distribuidor no existe",
+      "invalidData": "Datos no válidos",
+      "userMissing": "El usuario no existe",
+      "cannotDelete": "El usuario no se puede eliminar",
+      "accountNotDeleted": "Se quitó el rol, pero no se pudo eliminar la cuenta: {detail}"
+    }
+  },
+  "dashboard": {
+    "description": "Cartera a {date} · {period} ({from} – {to})",
+    "newScoring": "Nuevo scoring",
+    "period": {
+      "label": "Periodo",
+      "last12": "Últimos 12 meses",
+      "last24": "Últimos 2 años",
+      "custom": "Rango personalizado",
+      "from": "Desde",
+      "to": "Hasta"
+    },
+    "kpi": {
+      "outstanding": "Principal pendiente",
+      "liveContracts": "{count} contratos vivos",
+      "irr": "IRR anualizada ponderada",
+      "irrHint": "por valor del activo, contratos vivos",
+      "periodDefault": "Default del periodo",
+      "cumulative": "acumulado {amount}",
+      "top5": "Concentración top 5",
+      "top5Hint": "del principal pendiente"
+    },
+    "sections": {
+      "concentration": "Concentración",
+      "distribution": "Distribución",
+      "monthly": "Evolución mensual",
+      "activity": "Actividad"
+    },
+    "charts": {
+      "topClients": "Top 20 clientes por principal pendiente",
+      "topClientsSubtitle": "{month} · {share} del total en los 5 primeros",
+      "bySize": "Principal pendiente por tamaño de operación",
+      "bySizeSubtitle": "Tramos por saldo pendiente de cada contrato",
+      "byAsset": "Principal pendiente por tipo de activo",
+      "byCountry": "Principal pendiente por país",
+      "byPartner": "Principal pendiente por partner",
+      "irr": "IRR anualizada ponderada",
+      "irrSubtitle": "IRR esperada de los contratos vivos, ponderada por valor del activo y anualizada",
+      "lossRate": "Loss rate acumulado",
+      "lossRateSubtitle": "Default acumulado sobre principal originado (Summary fila 45)",
+      "monthlyDefault": "Default mensual",
+      "monthlyDefaultSubtitle": "Principal no recuperado dado de baja en el mes (Summary fila 22)",
+      "outstanding": "Principal pendiente",
+      "contracts": "{count, plural, one {# contrato} other {# contratos}}",
+      "center": "pendiente",
+      "monthDefault": "Default del mes",
+      "viewContracts": "Ver contratos: {label}",
+      "empty": "Sin datos en el periodo seleccionado.",
+      "rate": "Tasa",
+      "amount": "Importe"
+    },
+    "activity": {
+      "lastScorings": "Últimos scorings",
+      "viewAll": "Ver todos",
+      "noScorings": "Sin scorings todavía.",
+      "signingPipeline": "Pipeline de firma",
+      "signingPipelineSubtitle": "Contratos en borrador o pendientes de firma",
+      "noPending": "No hay operaciones pendientes.",
+      "expected": "Cobros previstos",
+      "expectedSubtitle": "Próximos 6 meses, cartera firmada",
+      "month": "Mes",
+      "installments": "Cuotas",
+      "interest": "Interés",
+      "principal": "Principal"
+    }
+  },
+  "pipeline": {
+    "description": "Actividad de originación de partners y equipo: cada scoring, la operación que generó y en qué punto de su ciclo de vida está.",
+    "text": {
+      "noPartner": "Sin partner",
+      "deletedUser": "Usuario eliminado",
+      "userWithoutEmail": "Usuario sin email"
+    },
+    "statusLabels": {
+      "approved": "Aprobado",
+      "pending_review": "Revisión manual",
+      "rejected": "Rechazado"
+    },
+    "kpi": {
+      "scorings": "Scorings",
+      "pendingReview": "{count} pendientes de revisión manual",
+      "approvalRate": "Tasa de aprobación",
+      "approvalHint": "{approved} aprobados · {rate} rechazados ({rejected})",
+      "operations": "Operaciones creadas",
+      "operationsHint": "{signed} firmadas · {rate} de los aprobados con operación",
+      "activePartners": "Partners activos",
+      "activeHint": "con actividad en los últimos {days} días"
+    },
+    "charts": {
+      "byPartner": "Scorings por partner",
+      "byPartnerSubtitle": "Volumen por quien originó el scoring",
+      "byStatus": "Aprobación vs rechazo",
+      "byStatusSubtitle": "Resultado de los scorings",
+      "recent": "Actividad reciente",
+      "recentSubtitle": "Scorings por semana, últimas {weeks} semanas",
+      "measure": "Scorings",
+      "weekMeasure": "Scorings de la semana",
+      "center": "scorings"
+    },
+    "summary": {
+      "title": "Resumen por partner",
+      "empty": "Sin actividad con estos filtros.",
+      "partner": "Partner",
+      "scorings": "Scorings",
+      "approved": "Aprobados",
+      "review": "Revisión",
+      "rejected": "Rechazados",
+      "approvalRate": "Tasa de aprobación",
+      "operations": "Operaciones",
+      "signed": "Firmadas",
+      "lastActivity": "Última actividad"
+    },
+    "filters": {
+      "records": "{count, plural, one {# registro} other {# registros}}",
+      "searchPlaceholder": "Buscar por empresa o CIF…",
+      "search": "Buscar empresa",
+      "partner": "Partner",
+      "allPartners": "Todos los partners",
+      "distributor": "Distribuidor",
+      "allDistributors": "Todos los distribuidores",
+      "status": "Estado del scoring",
+      "allStatuses": "Todos los estados"
+    },
+    "table": {
+      "noMatch": "Ningún registro coincide con los filtros.",
+      "empty": "Todavía no hay scorings.",
+      "date": "Fecha",
+      "partner": "Partner",
+      "company": "Empresa",
+      "sector": "Sector",
+      "score": "Puntuación",
+      "rating": "Rating",
+      "status": "Estado",
+      "operation": "Operación",
+      "lifecycle": "Ciclo de vida"
+    },
+    "lifecycle": {
+      "ariaLabel": "Ciclo de vida: {label}",
+      "describe": "{step}: {state}. {hint}",
+      "states": {
+        "done": "Completado",
+        "current": "En curso",
+        "pending": "Pendiente",
+        "unavailable": "No disponible",
+        "stopped": "Detenido"
+      },
+      "labels": {
+        "rejected": "Rechazado",
+        "approvedNoOperation": "Aprobado · sin operación",
+        "pendingReview": "Pendiente de revisión",
+        "notStarted": "Sin iniciar",
+        "signed": "Firmado · en loan book",
+        "sentToSignature": "Enviado a firma",
+        "cancelled": "Anulado",
+        "draft": "Borrador · pendiente de firma"
+      },
+      "hints": {
+        "noScoring": "Sin scoring",
+        "operationNotCreated": "Operación aún no creada",
+        "signatureFuture": "La firma electrónica (Signaturit) aún no está integrada",
+        "pendingSignature": "Pendiente de firma",
+        "scoringRejected": "Scoring rechazado: no se puede originar la operación",
+        "naScoringRejected": "No aplica: scoring rechazado",
+        "scoringApproved": "Scoring aprobado: falta crear la operación",
+        "scoringPendingReview": "Scoring pendiente de revisión manual",
+        "importedNoScoring": "Sin scoring en la plataforma (contrato importado)",
+        "scoringDone": "Scoring realizado",
+        "operationCreated": "Operación creada",
+        "sentToSignature": "Enviado a firma electrónica",
+        "signedOutside": "Firmado fuera de la plataforma (sin envío a firma electrónica)",
+        "contractSigned": "Contrato firmado: en el loan book",
+        "awaitingClient": "Enviado a firma: pendiente de que firme el cliente",
+        "operationCancelled": "Operación anulada",
+        "naOperationCancelled": "No aplica: operación anulada",
+        "sentBeforeCancel": "Se envió a firma electrónica antes de anularse",
+        "draftCreated": "Borrador creado: pendiente de firma"
+      }
+    }
+  },
+  "portfolio": {
+    "title": "Cartera / Waterfall",
+    "description": "Réplica de la pestaña Summary del Borrowing Base: cobros, originación, default y roll-forward del principal pendiente.",
+    "asOf": "Fecha de cálculo",
+    "recalculate": "Recalcular",
+    "kpi": {
+      "outstanding": "Principal pendiente {month}",
+      "collections12": "Cobros últimos 12 meses",
+      "defaults12": "Default últimos 12 meses",
+      "cumulative": "acumulado {amount}",
+      "lossRate": "Loss rate acumulado",
+      "lossRateHint": "default / principal originado"
+    },
+    "summaryTitle": "Summary {year}",
+    "summarySubtitle": "{count} contratos firmados · control de cuadre máx. {diff} €",
+    "year": "Año",
+    "concept": "Concepto",
+    "row": "fila {ref}",
+    "rows": {
+      "installments": "Cuotas facturadas",
+      "interest": "Interés",
+      "principal": "Principal cobrado",
+      "newContracts": "Nuevos contratos",
+      "newPrincipal": "Principal originado",
+      "newInterest": "Interés de los nuevos contratos",
+      "openingPrincipal": "Principal pendiente — apertura",
+      "defaults": "Default DPD+90 (baja de principal)",
+      "closingPrincipal": "Principal pendiente — cierre",
+      "closingInterest": "Interés pendiente — cierre",
+      "liveContracts": "Contratos vivos",
+      "weightedIrr": "IRR anualizada ponderada",
+      "cumulativeDefaults": "Default acumulado",
+      "cumulativeLossRate": "Loss rate acumulado (s/ originado)",
+      "reconciliation": "Control: roll-forward − contratos"
+    }
+  },
+  "erp": {
+    "title": "ERP · Holded",
+    "description": "Facturas de venta y abonos sincronizados desde Holded, con las mismas columnas que su exportación de ventas.",
+    "syncTitle": "Sincronización",
+    "searchPlaceholder": "Buscar por nº, cliente, descripción o tag…",
+    "status": "Estado",
+    "allStatuses": "Todos los estados",
+    "documents": "{count} documentos",
+    "noMatch": "Ningún documento coincide con la búsqueda.",
+    "empty": "Sin documentos: sincroniza con Holded o importa su Excel.",
+    "columns": {
+      "date": "Fecha",
+      "num": "Nº",
+      "operation_date": "Fecha de operación",
+      "due_date": "Vencimiento",
+      "client": "Cliente",
+      "description": "Descripción",
+      "tags": "Tags",
+      "account": "Cuenta",
+      "payment_method": "Forma de pago",
+      "project": "Proyecto",
+      "subtotal": "Subtotal",
+      "vat": "IVA",
+      "withholding": "Retención",
+      "employees": "Empleados",
+      "equivalence_surcharge": "Rec. de eq.",
+      "total": "Total",
+      "collected": "Cobrado",
+      "pending": "Pendiente",
+      "status": "Estado",
+      "collected_date": "Fecha de cobro",
+      "digital_signature": "Firma digital",
+      "sii": "SII"
+    },
+    "sync": {
+      "fetched": "Leídas",
+      "created": "Creadas",
+      "updated": "Actualizadas",
+      "skipped": "Sin cambios",
+      "invalid": "Descartadas",
+      "notices": "{count, plural, one {# aviso} other {# avisos}}",
+      "run": "Sincronizar con Holded",
+      "running": "Sincronizando…",
+      "lastSync": "Última sincronización:",
+      "lastImport": "Última importación (Excel):",
+      "withError": " · con error",
+      "inProgress": " · en curso",
+      "never": "Todavía no se ha sincronizado.",
+      "notConfiguredTitle": "API de Holded sin configurar",
+      "notConfiguredBody": "Añade HOLDED_API_KEY al entorno del servidor (.env.local) y reinicia. Mientras tanto puedes cargar el Excel de Holded con",
+      "failedTitle": "La sincronización ha fallado"
+    },
+    "settings": {
+      "apiKey": "API key:",
+      "configured": "configurada en el servidor (HOLDED_API_KEY)",
+      "notConfigured": "sin configurar: añade HOLDED_API_KEY a .env.local",
+      "keyNote": ". La clave nunca se guarda en la base de datos ni llega al navegador.",
+      "baseUrl": "URL base de la API",
+      "lookback": "Días de solape",
+      "lookbackHint": "Re-lectura en cada sincronización incremental",
+      "creditNotes": "Incluir facturas rectificativas (abonos)",
+      "saved": "Configuración guardada",
+      "test": "Probar conexión",
+      "testing": "Probando…",
+      "testOk": "Conexión correcta ({ms} ms)",
+      "testOkTitle": "Holded responde",
+      "testKoTitle": "No se pudo conectar"
+    },
+    "errors": {
+      "noKey": "Falta HOLDED_API_KEY en el entorno del servidor (.env.local)"
+    }
+  },
+  "users": {
+    "inviteEmail": "Email del nuevo usuario",
+    "role": "Rol",
+    "distributor": "Distribuidor",
+    "selectPlaceholder": "— Selecciona —",
+    "invite": "Invitar",
+    "inviting": "Enviando…",
+    "inviteSent": "Invitación enviada.",
+    "inviteHelp": "El usuario recibe un email con un enlace para crear su propia contraseña; el rol queda asignado desde ahora.",
+    "confirmDeleteAria": "Confirmar la eliminación de {user}",
+    "confirmDelete": "¿Eliminar definitivamente a {user}? Pierde el acceso y su cuenta se borra; los scorings y operaciones que creó se conservan.",
+    "deleting": "Eliminando…",
+    "confirmYes": "Sí, eliminar",
+    "roleOf": "Rol de {user}",
+    "noAccess": "Sin acceso",
+    "distributorOf": "Distribuidor de {user}",
+    "distributorPlaceholder": "— Distribuidor —",
+    "deactivate": "Desactivar",
+    "reactivate": "Reactivar",
+    "deleteAria": "Eliminar a {user}",
+    "deactivated": "Desactivado",
+    "invitePending": "Invitación pendiente",
+    "email": "Email",
+    "status": "Estado",
+    "manage": "Gestión",
+    "you": "(tú)",
+    "notices": {
+      "resent": "Invitación reenviada. El rol que ya tenía asignado no cambia.",
+      "sentTo": "Invitación enviada a {email}.",
+      "deleted": "Usuario {email} eliminado."
+    }
+  }
+}

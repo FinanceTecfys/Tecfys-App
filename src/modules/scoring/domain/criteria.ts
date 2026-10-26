@@ -15,7 +15,7 @@ import type { Decision, Rating, RatioKey } from "./ratings";
 
 // The result vocabulary lives in ratings.ts (safe for client components);
 // re-exported here for the server-side code that works with the model.
-export { DECISION_LABELS, RATINGS } from "./ratings";
+export { RATINGS } from "./ratings";
 export type { Decision, Rating, RatioKey } from "./ratings";
 
 export interface RatioDefinition {
@@ -41,6 +41,10 @@ export interface ScoringCriteria {
 const scores = (aaa: number, aa: number, a: number, bbb: number, bb: number, ccc: number, cc: number, c: number): Record<Rating, number> =>
   ({ AAA: aaa, AA: aa, A: a, BBB: bbb, BB: bb, CCC: ccc, CC: cc, C: c });
 
+// The `label` and `formula` of each ratio below are part of the model as it is stored (and
+// snapshotted with every scoring), written in the base language. The screens do not print them:
+// they name a ratio from the message catalogue by its key (scoring.ratios.<key>).
+/* i18n-exempt-start: ratio names stored with the scoring model */
 export const DEFAULT_CRITERIA: ScoringCriteria = {
   weights: {
     guarantee: 0.32, solvency: 0.27, indebtedness: 0.2, netMargin: 0.05,
@@ -122,3 +126,4 @@ export const DEFAULT_CRITERIA: ScoringCriteria = {
     "Other": "BBB",
   },
 };
+/* i18n-exempt-end */

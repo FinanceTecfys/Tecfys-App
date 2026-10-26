@@ -84,7 +84,8 @@ Cuatro roles, de más a menos privilegios. La matriz vive en un único módulo p
 | | owner | admin | sales | partner |
 |---|---|---|---|---|
 | Dashboard, loan book, waterfall, pipeline | sí | sí | sí | no |
-| ERP, Configuración, modelo de scoring | sí | sí | no | no |
+| ERP, pestañas de administración de Configuración, modelo de scoring | sí | sí | no | no |
+| Configuración → Preferencias (idioma y modo de color propios) | sí | sí | sí | sí |
 | Ejecutar scoring, crear operación | sí | sí | sí | sí (solo ve lo que él creó) |
 | Ver nota y peso de cada ratio en el desglose de un scoring | sí | sí | sí | no |
 | Revisión manual de un scoring, marcar firmado, cancelar | sí | sí | no | no |
@@ -150,6 +151,46 @@ En **producción** Supabase no entrega correo a terceros con su servidor por def
 SMTP (p. ej. Resend) en *Authentication → Emails → SMTP Settings*, poner la URL de la app en *Authentication → URL
 Configuration → Site URL* y pegar `supabase/templates/invite.html` y `recovery.html` en *Authentication → Email
 Templates* (los proyectos alojados no leen esos ficheros). Nada de eso se configura desde este repo.
+
+## Idioma y preferencias (i18n)
+
+La interfaz está en **español (idioma base) e inglés**, con [`next-intl`](https://next-intl.dev) **sin rutas por idioma**: el
+idioma no va en la URL, es una preferencia del usuario guardada en `profiles.language` (por defecto `es`).
+
+- Los textos viven en `src/i18n/messages/es.json` (fuente) y `en.json`, por espacios de nombres (`nav`, `auth`,
+  `settings`, `preferences`, `scoring`…). El tipo de las claves sale de `es.json`: una clave inexistente no compila, y un
+  test falla si a `en.json` le falta o le sobra una clave, pierde un marcador `{…}` o se queda en español.
+- El idioma se resuelve en el servidor (`src/i18n/request.ts` → `resolveLocale`): preferencia del usuario → cookie
+  `tecfys_lang` del navegador (solo para `/login` y `/auth/set-password`, donde aún no hay usuario) → español. Llega a los
+  Server Components (`getTranslations`), a los componentes cliente (`useTranslations`, vía `NextIntlClientProvider` en el
+  layout raíz) y a las Server Actions, que devuelven sus mensajes ya traducidos.
+- **Los números, importes y fechas son siempre `es-ES`** (1.234,56 € · dd/mm/aaaa) en los dos idiomas (`src/lib/format.ts`).
+  Los exports Excel / PDF, el contrato `.docx` y los correos siguen en español.
+- **Configuración → Preferencias** (última pestaña) guarda idioma y modo de color en el perfil. `/settings` está abierto a
+  todos los roles, pero cada pestaña tiene su capacidad (`modules/settings/domain/tabs.ts`): owner y admin ven todas;
+  comercial y partner solo **Preferencias**, aunque pidan otra por URL.
+- **Modo de color**: `profiles.theme` (`green` por defecto, o `blue`) llega a `<html data-theme>`. La paleta azul / blanca
+  **aún no existe**: el bloque `[data-theme="blue"]` de `src/app/globals.css` está vacío y hoy se ve el tema verde.
+
+Toda la interfaz está traducida: no queda texto de usuario escrito en los componentes. Un test recorre **todo** `src/`
+y falla si encuentra español fuera de los catálogos, o una clave escrita en el código que no existe. Quedan en español a
+propósito, y el test los lista con su motivo: el contrato `.docx` y sus cláusulas, los correos de Supabase, los exports
+Excel / PDF, las etiquetas con las que se leen el PDF de Informa y el Excel de Holded, los nombres de ratio guardados con el
+modelo de scoring y los códigos de estado adicional del Loan book. Los datos guardados (razones sociales, estados importados,
+estados de Holded) se muestran tal cual.
+
+Los mensajes que nacen en código puro (reglas, esquemas zod, ciclo de vida) son **claves** del catálogo
+(`validation.*`, `errors.*`…); la Server Action o el componente los traduce al idioma activo (`src/i18n/server.ts`,
+`src/i18n/client.ts`). Las abreviaturas de mes (`ene-26`) forman parte del formato de fecha y no cambian con el idioma.
+
+**Añadir un idioma**: (1) su código en `LOCALES` (`src/i18n/config.ts`); (2) una migración que lo admita en el check
+`profiles_language_check`; (3) `src/i18n/messages/<código>.json` con todas las claves de `es.json`; (4) su nombre en
+`preferences.languages` de cada fichero de mensajes. El selector, la resolución y los tests lo recogen solos.
+
+**Añadir el tema azul / blanco**: rellenar el bloque `[data-theme="blue"]` de `globals.css` con los valores de los tokens
+`--color-ink-*`, `--color-mint-*` y `--color-paper` (y `color-scheme: light`). Además, los componentes usan la escala fija
+`slate-*` de Tailwind para el texto sobre fondo oscuro, que ese bloque no puede redefinir: un tema claro exige pasar esos
+grises a tokens. Nada más cambia: ni componentes de preferencias, ni acciones, ni migraciones.
 
 ## Motor del loan book = Borrowing Base
 

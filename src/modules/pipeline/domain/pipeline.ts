@@ -64,16 +64,26 @@ export interface Originator {
 }
 
 export const NO_PARTNER_KEY = "none";
-export const NO_PARTNER_LABEL = "Sin partner";
+export const NO_PARTNER_LABEL = "pipeline.text.noPartner";
 
-const NO_ORIGINATOR: Originator = { kind: "none", key: NO_PARTNER_KEY, name: NO_PARTNER_LABEL, distributorId: null, distributorName: null };
+/**
+ * The names given to creators that are not a known user. By default they are
+ * the keys of their messages (pipeline.text.*); the page passes them already
+ * translated, so the names sort and filter in the user's language.
+ */
+export interface PipelineText {
+  noPartner: string;
+  deletedUser: string;
+  userWithoutEmail: string;
+}
+export const PIPELINE_TEXT: PipelineText = { noPartner: NO_PARTNER_LABEL, deletedUser: "pipeline.text.deletedUser", userWithoutEmail: "pipeline.text.userWithoutEmail" };
 
 /** Who created a record. Never throws: a null or unknown creator resolves to a placeholder. */
-export function resolveOriginator(createdBy: string | null | undefined, users: ReadonlyMap<string, PipelineUser>): Originator {
-  if (!createdBy) return NO_ORIGINATOR;
+export function resolveOriginator(createdBy: string | null | undefined, users: ReadonlyMap<string, PipelineUser>, text: PipelineText = PIPELINE_TEXT): Originator {
+  if (!createdBy) return { kind: "none", key: NO_PARTNER_KEY, name: text.noPartner, distributorId: null, distributorName: null };
   const user = users.get(createdBy);
-  if (!user) return { kind: "unknown", key: createdBy, name: "Usuario eliminado", distributorId: null, distributorName: null };
-  const name = user.email ?? "Usuario sin email";
+  if (!user) return { kind: "unknown", key: createdBy, name: text.deletedUser, distributorId: null, distributorName: null };
+  const name = user.email ?? text.userWithoutEmail;
   if (user.role === "partner") {
     return { kind: "partner", key: user.id, name, distributorId: user.distributor?.id ?? null, distributorName: user.distributor?.name ?? null };
   }
@@ -89,9 +99,9 @@ export type ScoringStatus = (typeof SCORING_STATUSES)[number];
 export const isScoringStatus = (v: unknown): v is ScoringStatus => typeof v === "string" && (SCORING_STATUSES as readonly string[]).includes(v);
 
 export const SCORING_STATUS_LABELS: Record<ScoringStatus, string> = {
-  approved: "Aprobado",
-  pending_review: "Revisión manual",
-  rejected: "Rechazado",
+  approved: "pipeline.statusLabels.approved",
+  pending_review: "pipeline.statusLabels.pending_review",
+  rejected: "pipeline.statusLabels.rejected",
 };
 
 /** One line of the pipeline: a scoring, with one of the operations created from it (if any). */
@@ -119,14 +129,14 @@ export interface PipelineRow {
  * One row per scoring; a scoring with several operations gets one row per
  * operation. Newest activity first.
  */
-export function buildPipelineRows(scorings: readonly PipelineScoring[], contracts: readonly PipelineContract[], users: readonly PipelineUser[]): PipelineRow[] {
+export function buildPipelineRows(scorings: readonly PipelineScoring[], contracts: readonly PipelineContract[], users: readonly PipelineUser[], text: PipelineText = PIPELINE_TEXT): PipelineRow[] {
   const directory = new Map(users.map((u) => [u.id, u]));
   const byScoring = new Map<string, PipelineContract[]>();
   for (const c of contracts) byScoring.set(c.scoringId, [...(byScoring.get(c.scoringId) ?? []), c]);
 
   const rows: PipelineRow[] = [];
   for (const s of scorings) {
-    const originator = resolveOriginator(s.createdBy, directory);
+    const originator = resolveOriginator(s.createdBy, directory, text);
     const base = {
       scoringId: s.id,
       originator,

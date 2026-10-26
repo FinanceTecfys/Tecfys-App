@@ -20,6 +20,7 @@ const EXPECTED: Record<Capability, [boolean, boolean, boolean, boolean]> = {
   "contract.view": [true, true, true, true],
   "contract.manage": [true, true, false, false],
   "settings.access": [true, true, false, false],
+  "preferences.manage": [true, true, true, true],
   "records.viewAll": [true, true, true, false],
   "users.manage": [true, true, false, false],
   "admins.manage": [true, false, false, false],
@@ -48,9 +49,14 @@ describe("can (role x capability)", () => {
     expect(can("owner", "admins.manage")).toBe(true);
   });
 
-  it("a partner only runs scoring and creates operations", () => {
+  it("a partner only runs scoring, creates operations and sets its own preferences", () => {
     const allowed = CAPABILITIES.filter((c) => can("partner", c)).sort();
-    expect(allowed).toEqual(["contract.view", "operation.create", "scoring.run", "scoring.view"]);
+    expect(allowed).toEqual(["contract.view", "operation.create", "preferences.manage", "scoring.run", "scoring.view"]);
+  });
+
+  it("every role sets its own preferences, but the administration of Settings stays with owner and admin", () => {
+    for (const role of ROLES) expect(can(role, "preferences.manage"), role).toBe(true);
+    for (const role of ["sales", "partner"] as const) expect(can(role, "settings.access"), role).toBe(false);
   });
 
   it("the pipeline is for owner, admin and sales; a partner never sees the other partners' activity", () => {
@@ -90,7 +96,9 @@ describe("route allow-list", () => {
     ["/pipeline/", [true, true, true, false]],
     ["/pipeline/anything", [true, true, false, false]],
     ["/erp", [true, true, false, false]],
-    ["/settings", [true, true, false, false]],
+    // Open to every role: each one only gets the tabs it may use (settings tabs test).
+    ["/settings", [true, true, true, true]],
+    ["/settings/", [true, true, true, true]],
     ["/scoring", [true, true, true, true]],
     ["/scoring/new", [true, true, true, true]],
     [`/scoring/${ID}`, [true, true, true, true]],
@@ -116,8 +124,10 @@ describe("route allow-list", () => {
     });
   }
 
-  it("denies a partner the dashboard, loan book, waterfall, ERP and settings", () => {
-    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/pipeline", "/erp", "/settings"]) expect(canAccessPath("partner", p), p).toBe(false);
+  it("denies a partner the dashboard, loan book, waterfall and ERP; Settings it may open, for its preferences", () => {
+    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/pipeline", "/erp", "/settings/users"]) expect(canAccessPath("partner", p), p).toBe(false);
+    expect(canAccessPath("partner", "/settings")).toBe(true);
+    expect(routeCapability("/settings")).toBe("preferences.manage");
   });
 
   it("maps the specific routes before the generic ones", () => {

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { Translate } from "@/i18n/message";
+import { fieldErrorsOf, getTranslate } from "@/i18n/server";
 import { dataScopeFor } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
@@ -14,18 +16,39 @@ import { previewScore, type ScoringPreview } from "./domain/preview";
 import { extractInformaText } from "./informa/extract-pdf-text";
 import { parseInformaText } from "./informa/parse-informa-text";
 import { type InformaReportMapping, mapInformaReport, normalizeCif } from "./informa/map-informa-report";
+import { InformaApiError } from "./informa/api-client";
 import { appInformaClient, informaConfigStatus, isInformaConfigured } from "./informa/server";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
-const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const INFORMA_ERRORS = "scoring.informa.errors";
+
+/**
+ * What the user is told when Informa fails, in their language. The API client
+ * keeps its own technical message for the logs; here the text comes from the
+ * catalogue by Informa's response code, else by the HTTP status, else a generic
+ * line - so nothing untranslated reaches the screen.
+ */
+function informaErrorMessage(e: unknown, translate: Translate): string {
+  const known = (key: string) => {
+    const text = translate(key);
+    return text === key ? null : text;
+  };
+  if (!(e instanceof InformaApiError)) return translate(`${INFORMA_ERRORS}.generic`);
+  const byCode = e.code !== null ? known(`${INFORMA_ERRORS}.code${e.code}`) : null;
+  const byStatus = e.status !== null ? known(`${INFORMA_ERRORS}.status${e.status}`) : null;
+  const message = byCode ?? byStatus ?? translate(`${INFORMA_ERRORS}.generic`);
+  if (e.code !== null) return translate(`${INFORMA_ERRORS}.withCode`, { message, code: e.code });
+  if (e.status !== null) return translate(`${INFORMA_ERRORS}.withStatus`, { message, status: e.status });
+  return message;
+}
 
 /** Which server env entry is missing or wrong - names only, never values. */
-function informaNotConfigured(): string {
+function informaNotConfigured(translate: Translate): string {
   const s = informaConfigStatus();
-  if (!s.baseUrlAllowed) return "INFORMA_API_URL debe ser https y de un dominio informa.es";
-  const missing = [!s.hasUsername && "INFORMA_USERNAME", !s.hasPassword && "INFORMA_PASSWORD"].filter(Boolean).join(" y ");
-  return `Falta ${missing} en el entorno del servidor (.env.local)`;
+  if (!s.baseUrlAllowed) return translate(`${INFORMA_ERRORS}.notConfiguredUrl`);
+  const missing = [!s.hasUsername && "INFORMA_USERNAME", !s.hasPassword && "INFORMA_PASSWORD"].filter(Boolean).join(" + ");
+  return translate(`${INFORMA_ERRORS}.notConfiguredEnv`, { missing });
 }
 
 export type FetchInformaResult =
@@ -40,15 +63,16 @@ export type FetchInformaResult =
  */
 export async function fetchInformaReport(cifInput: string): Promise<FetchInformaResult> {
   const user = await requireRole("scoring.run");
+  const translate = await getTranslate();
   const cif = normalizeCif(String(cifInput ?? ""));
-  if (!cif) return { ok: false, error: "CIF no válido: 9 caracteres, p. ej. B12345678" };
-  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
+  if (!cif) return { ok: false, error: translate("scoring.errors.cifInvalid") };
+  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured(translate) };
 
   let report: unknown;
   try {
     report = await appInformaClient().getReport(cif);
   } catch (e) {
-    return { ok: false, error: errorMessage(e) };
+    return { ok: false, error: informaErrorMessage(e, translate) };
   }
   const { reportType, ...mapping } = mapInformaReport(report);
   if (!mapping.financials.cif) mapping.financials.cif = cif;
@@ -72,13 +96,14 @@ export async function fetchInformaReport(cifInput: string): Promise<FetchInforma
 /** "Probar conexión": a fresh POST /login, then the demo company's report (A00000000). Secrets never leave the server. */
 export async function testInformaConnection(): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
   await requireRole("settings.access");
-  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured() };
+  const translate = await getTranslate();
+  if (!isInformaConfigured()) return { ok: false, error: informaNotConfigured(translate) };
   try {
     const started = Date.now();
     await appInformaClient().ping();
     return { ok: true, ms: Date.now() - started };
   } catch (e) {
-    return { ok: false, error: errorMessage(e) };
+    return { ok: false, error: informaErrorMessage(e, translate) };
   }
 }
 
@@ -89,21 +114,22 @@ export type ParsePdfResult =
 /** Parse an Informa PDF, keep the original in storage and the parse in informa_reports, owned by whoever uploaded it. */
 export async function parseInformaPdf(formData: FormData): Promise<ParsePdfResult> {
   const user = await requireRole("scoring.run");
+  const translate = await getTranslate();
   const file = formData.get("pdf");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Selecciona un PDF de Informa" };
-  if (file.type && file.type !== "application/pdf") return { ok: false, error: "El fichero no es un PDF" };
-  if (file.size > MAX_PDF_BYTES) return { ok: false, error: "El PDF supera 20 MB" };
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: translate("scoring.errors.pdfMissing") };
+  if (file.type && file.type !== "application/pdf") return { ok: false, error: translate("scoring.errors.notPdf") };
+  if (file.size > MAX_PDF_BYTES) return { ok: false, error: translate("scoring.errors.pdfTooLarge") };
 
   const buffer = await file.arrayBuffer();
   let text: string;
   try {
     text = await extractInformaText(buffer.slice(0));
   } catch {
-    return { ok: false, error: "No se pudo leer el PDF (¿está protegido o escaneado?)" };
+    return { ok: false, error: translate("scoring.errors.pdfUnreadable") };
   }
   const { financials, missing } = parseInformaText(text);
   if (!financials.cif && !financials.name && financials.totalRevenue === null) {
-    return { ok: false, error: "El PDF no parece un informe de Informa: no se encontró CIF, razón social ni ventas" };
+    return { ok: false, error: translate("scoring.errors.pdfNotInforma") };
   }
 
   const storagePath = `${crypto.randomUUID()}.pdf`;
@@ -138,7 +164,7 @@ export type PreviewScoringResult = { ok: true; preview: ScoringPreview } | { ok:
 export async function previewScoring(financials: Financials): Promise<PreviewScoringResult> {
   await requireRole("scoring.run");
   const parsed = previewFinancialsSchema.safeParse(financials);
-  if (!parsed.success) return { ok: false, error: "Hay datos financieros no válidos" };
+  if (!parsed.success) return { ok: false, error: (await getTranslate())("scoring.errors.invalidFinancials") };
   const criteria = await getActiveCriteria();
   return { ok: true, preview: previewScore(parsed.data, criteria.config) };
 }
@@ -153,18 +179,16 @@ export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Reco
  */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
   const user = await requireRole("scoring.run");
+  const translate = await getTranslate();
   const parsed = financialsSchema.safeParse(input.financials);
-  if (!parsed.success) {
-    const fieldErrors = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]));
-    return { ok: false, error: "Revisa los datos marcados", fieldErrors };
-  }
+  if (!parsed.success) return { ok: false, error: translate("common.errors.reviewFields"), fieldErrors: fieldErrorsOf(parsed.error, translate) };
   const f = { ...parsed.data, cif: parsed.data.cif.replace(/[\s.-]/g, "").toUpperCase() };
 
   let reportId: string | null = null;
   if (input.informaReportId) {
     const id = z.uuid().safeParse(input.informaReportId);
     const report = id.success ? await getInformaReport(id.data, dataScopeFor(user)) : null;
-    if (!report) return { ok: false, error: "Informe de Informa no encontrado" };
+    if (!report) return { ok: false, error: translate("scoring.errors.reportNotFound") };
     reportId = report.id;
   }
 
@@ -231,14 +255,14 @@ export async function createScoring(input: { financials: Financials; informaRepo
 const reviewSchema = z.object({
   id: z.uuid(),
   status: z.enum(["approved", "rejected"]),
-  note: z.string().trim().min(3, "Explica el motivo de la decisión"),
+  note: z.string().trim().min(3, "validation.scoring.reviewNote"),
 });
 
 /** Manual committee decision on a scoring pending review (owner / admin). */
 export async function reviewScoring(_prev: { error?: string } | null, formData: FormData): Promise<{ error?: string } | null> {
   await requireRole("scoring.review");
   const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: (await getTranslate())(parsed.error.issues[0].message) };
   const { id, status, note } = parsed.data;
   const { error } = await db()
     .from("scorings")

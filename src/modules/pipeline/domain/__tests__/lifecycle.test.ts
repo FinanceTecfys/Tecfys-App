@@ -22,7 +22,7 @@ describe("scoring only (no operation yet)", () => {
     const l = lifecycleOf({ scoringStatus: "pending_review", contract: null });
     expect(l.stage).toBe("scoring");
     expect(l.outcome).toBe("in_progress");
-    expect(l.label).toBe("Pendiente de revisión");
+    expect(l.label).toBe("pipeline.lifecycle.labels.pendingReview");
     expect(states(l)).toEqual({ scoring: "current", operation: "pending", signature: "unavailable", signed: "pending" });
   });
 
@@ -30,16 +30,16 @@ describe("scoring only (no operation yet)", () => {
     const l = lifecycleOf({ scoringStatus: "approved", contract: null });
     expect(l.stage).toBe("scoring");
     expect(l.outcome).toBe("in_progress");
-    expect(l.label).toBe("Aprobado · sin operación");
+    expect(l.label).toBe("pipeline.lifecycle.labels.approvedNoOperation");
     expect(states(l)).toEqual({ scoring: "current", operation: "pending", signature: "unavailable", signed: "pending" });
-    expect(l.steps[0].hint).toMatch(/falta crear la operación/);
+    expect(l.steps[0].hint).toBe("pipeline.lifecycle.hints.scoringApproved");
   });
 
   it("rejected: the deal stops at scoring", () => {
     const l = lifecycleOf({ scoringStatus: "rejected", contract: null });
     expect(l.stage).toBe("scoring");
     expect(l.outcome).toBe("rejected");
-    expect(l.label).toBe("Rechazado");
+    expect(l.label).toBe("pipeline.lifecycle.labels.rejected");
     expect(states(l)).toEqual({ scoring: "stopped", operation: "pending", signature: "unavailable", signed: "pending" });
   });
 });
@@ -49,7 +49,7 @@ describe("operation created", () => {
     const l = lifecycleOf({ scoringStatus: "approved", contract: contract("draft") });
     expect(l.stage).toBe("operation");
     expect(l.outcome).toBe("in_progress");
-    expect(l.label).toBe("Borrador · pendiente de firma");
+    expect(l.label).toBe("pipeline.lifecycle.labels.draft");
     expect(states(l)).toEqual({ scoring: "done", operation: "current", signature: "unavailable", signed: "pending" });
   });
 
@@ -64,9 +64,9 @@ describe("operation created", () => {
     const l = lifecycleOf({ scoringStatus: "approved", contract: contract("signed") });
     expect(l.stage).toBe("signed");
     expect(l.outcome).toBe("completed");
-    expect(l.label).toBe("Firmado · en loan book");
+    expect(l.label).toBe("pipeline.lifecycle.labels.signed");
     expect(states(l)).toEqual({ scoring: "done", operation: "done", signature: "unavailable", signed: "done" });
-    expect(l.steps[2].hint).toMatch(/fuera de la plataforma/);
+    expect(l.steps[2].hint).toBe("pipeline.lifecycle.hints.signedOutside");
   });
 
   it("signed after a real signature request: every step done", () => {
@@ -79,7 +79,7 @@ describe("operation created", () => {
     const l = lifecycleOf({ scoringStatus: "approved", contract: contract("cancelled") });
     expect(l.stage).toBe("operation");
     expect(l.outcome).toBe("cancelled");
-    expect(l.label).toBe("Anulado");
+    expect(l.label).toBe("pipeline.lifecycle.labels.cancelled");
     expect(states(l)).toEqual({ scoring: "done", operation: "stopped", signature: "unavailable", signed: "pending" });
     expect(states(lifecycleOf({ scoringStatus: "approved", contract: contract("cancelled", true) })).signature).toBe("done");
   });
@@ -98,7 +98,7 @@ describe("edge cases", () => {
     expect(states(l)).toEqual({ scoring: "unavailable", operation: "done", signature: "unavailable", signed: "done" });
     expect(l.stage).toBe("signed");
     expect(l.outcome).toBe("completed");
-    expect(l.steps[0].hint).toMatch(/importado/);
+    expect(l.steps[0].hint).toBe("pipeline.lifecycle.hints.importedNoScoring");
   });
 
   it("the contract decides once it exists, whatever the scoring says now", () => {

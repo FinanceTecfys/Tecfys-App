@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
+import { getTranslate } from "@/i18n/server";
 import { Card } from "@/components/ui/card";
 import { FilterBar, FilterCell, filterSubmitClass } from "@/components/ui/filter-bar";
 import { inputClass } from "@/components/ui/field";
@@ -20,7 +22,6 @@ import {
   pipelineFilterOptions,
   pipelineSearch,
   pipelineTotals,
-  SCORING_STATUS_LABELS,
   SCORING_STATUSES,
   type ScoringStatus,
   scoringsByPartner,
@@ -54,10 +55,13 @@ const int = (n: number) => n.toLocaleString("es-ES");
 export default async function PipelinePage({ searchParams }: PageProps<"/pipeline">) {
   await requireRole("pipeline.view");
   const query = parsePipelineQuery(await searchParams);
+  const t = await getTranslations("pipeline");
+  const tCommon = await getTranslations("common");
+  const translate = await getTranslate();
   const now = new Date();
 
   const { scorings, contracts, users } = await loadPipeline();
-  const all = buildPipelineRows(scorings, contracts, users);
+  const all = buildPipelineRows(scorings, contracts, users, { noPartner: t("text.noPartner"), deletedUser: t("text.deletedUser"), userWithoutEmail: t("text.userWithoutEmail") });
   const options = pipelineFilterOptions(all);
   const rows = filterPipeline(all, query);
   const filtering = hasPipelineFilters(query);
@@ -67,6 +71,7 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
   const byPartner = scoringsByPartner(rows).map((s) => ({ ...s, href: `/pipeline?${pipelineSearch(query, { partner: s.key, page: 1 })}` }));
   const byStatus = scoringsByStatus(rows).map((s) => ({
     ...s,
+    label: t(`statusLabels.${s.key as ScoringStatus}`),
     color: STATUS_COLOR[s.key as ScoringStatus],
     href: `/pipeline?${pipelineSearch(query, { status: s.key as ScoringStatus, page: 1 })}`,
   }));
@@ -81,45 +86,45 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
     <>
       <PageHeader
         title="Pipeline"
-        description="Actividad de originación de partners y equipo: cada scoring, la operación que generó y en qué punto de su ciclo de vida está."
+        description={t("description")}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Stat interactive label="Scorings" value={int(totals.scorings)} hint={`${int(totals.pendingReview)} pendientes de revisión manual`} accent />
-        <Stat interactive label="Tasa de aprobación" value={fmtPct(totals.approvalRate, 1)} hint={`${int(totals.approved)} aprobados · ${fmtPct(totals.rejectionRate, 1)} rechazados (${int(totals.rejected)})`} />
-        <Stat interactive label="Operaciones creadas" value={int(totals.operations)} hint={`${int(totals.signed)} firmadas · ${fmtPct(totals.conversionRate, 0)} de los aprobados con operación`} />
-        <Stat interactive label="Partners activos" value={int(activePartners(rows, now, ACTIVE_DAYS))} hint={`con actividad en los últimos ${ACTIVE_DAYS} días`} />
+        <Stat interactive label={t("kpi.scorings")} value={int(totals.scorings)} hint={t("kpi.pendingReview", { count: int(totals.pendingReview) })} accent />
+        <Stat interactive label={t("kpi.approvalRate")} value={fmtPct(totals.approvalRate, 1)} hint={t("kpi.approvalHint", { approved: int(totals.approved), rate: fmtPct(totals.rejectionRate, 1), rejected: int(totals.rejected) })} />
+        <Stat interactive label={t("kpi.operations")} value={int(totals.operations)} hint={t("kpi.operationsHint", { signed: int(totals.signed), rate: fmtPct(totals.conversionRate, 0) })} />
+        <Stat interactive label={t("kpi.activePartners")} value={int(activePartners(rows, now, ACTIVE_DAYS))} hint={t("kpi.activeHint", { days: ACTIVE_DAYS })} />
       </div>
 
       <div className="mb-6 grid gap-6 xl:grid-cols-3">
-        <Card title="Scorings por partner" subtitle="Volumen por quien originó el scoring">
-          <RankedBarChart data={byPartner} unit="count" measure="Scorings" height={Math.max(160, byPartner.length * 30 + 40)} />
+        <Card title={t("charts.byPartner")} subtitle={t("charts.byPartnerSubtitle")}>
+          <RankedBarChart data={byPartner} unit="count" measure={t("charts.measure")} height={Math.max(160, byPartner.length * 30 + 40)} />
         </Card>
-        <Card title="Aprobación vs rechazo" subtitle="Resultado de los scorings">
-          <DonutChart data={byStatus} total={totals.scorings} unit="count" centerLabel="scorings" />
+        <Card title={t("charts.byStatus")} subtitle={t("charts.byStatusSubtitle")}>
+          <DonutChart data={byStatus} total={totals.scorings} unit="count" centerLabel={t("charts.center")} />
         </Card>
-        <Card title="Actividad reciente" subtitle={`Scorings por semana, últimas ${WEEKS} semanas`}>
-          <MonthlyBarChart data={weekly.map((w) => ({ label: w.label, value: w.scorings }))} unit="count" measure="Scorings de la semana" tone="neutral" height={210} />
+        <Card title={t("charts.recent")} subtitle={t("charts.recentSubtitle", { weeks: WEEKS })}>
+          <MonthlyBarChart data={weekly.map((w) => ({ label: w.label, value: w.scorings }))} unit="count" measure={t("charts.weekMeasure")} tone="neutral" height={210} />
         </Card>
       </div>
 
-      <Card title="Resumen por partner" className="mb-6" bodyClassName="p-0">
+      <Card title={t("summary.title")} className="mb-6" bodyClassName="p-0">
         {partners.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-400">Sin actividad con estos filtros.</p>
+          <p className="px-5 py-8 text-center text-sm text-slate-400">{t("summary.empty")}</p>
         ) : (
           <div className="max-h-80 overflow-y-auto">
             <Table>
               <thead>
                 <tr>
-                  <Th>Partner</Th>
-                  <Th right>Scorings</Th>
-                  <Th right>Aprobados</Th>
-                  <Th right>Revisión</Th>
-                  <Th right>Rechazados</Th>
-                  <Th right>Tasa de aprobación</Th>
-                  <Th right>Operaciones</Th>
-                  <Th right>Firmadas</Th>
-                  <Th>Última actividad</Th>
+                  <Th>{t("summary.partner")}</Th>
+                  <Th right>{t("summary.scorings")}</Th>
+                  <Th right>{t("summary.approved")}</Th>
+                  <Th right>{t("summary.review")}</Th>
+                  <Th right>{t("summary.rejected")}</Th>
+                  <Th right>{t("summary.approvalRate")}</Th>
+                  <Th right>{t("summary.operations")}</Th>
+                  <Th right>{t("summary.signed")}</Th>
+                  <Th>{t("summary.lastActivity")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -148,51 +153,51 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
 
       <Card bodyClassName="p-0">
         <FilterBar
-          summary={<span>{int(rows.length)} {rows.length === 1 ? "registro" : "registros"}</span>}
+          summary={<span>{t("filters.records", { count: rows.length })}</span>}
           actions={
             <>
-              {filtering && <Link href="/pipeline" className="text-xs text-slate-400 hover:text-mint-400">Quitar filtros</Link>}
-              <button className={filterSubmitClass}>Aplicar</button>
+              {filtering && <Link href="/pipeline" className="text-xs text-slate-400 hover:text-mint-400">{tCommon("actions.clearFilters")}</Link>}
+              <button className={filterSubmitClass}>{tCommon("actions.apply")}</button>
             </>
           }
         >
           <FilterCell wide>
-            <input name="q" defaultValue={query.q} placeholder="Buscar por empresa o CIF…" className={inputClass} aria-label="Buscar empresa" />
+            <input name="q" defaultValue={query.q} placeholder={t("filters.searchPlaceholder")} className={inputClass} aria-label={t("filters.search")} />
           </FilterCell>
           <FilterCell wide>
-            <select name="partner" defaultValue={query.partner ?? ""} className={inputClass} aria-label="Partner">
-              <option value="">Todos los partners</option>
+            <select name="partner" defaultValue={query.partner ?? ""} className={inputClass} aria-label={t("filters.partner")}>
+              <option value="">{t("filters.allPartners")}</option>
               {options.partner.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </FilterCell>
           <FilterCell>
-            <select name="distributor" defaultValue={query.distributor ?? ""} className={inputClass} aria-label="Distribuidor">
-              <option value="">Todos los distribuidores</option>
+            <select name="distributor" defaultValue={query.distributor ?? ""} className={inputClass} aria-label={t("filters.distributor")}>
+              <option value="">{t("filters.allDistributors")}</option>
               {options.distributor.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </FilterCell>
           <FilterCell>
-            <select name="status" defaultValue={query.status ?? ""} className={inputClass} aria-label="Estado del scoring">
-              <option value="">Todos los estados</option>
-              {SCORING_STATUSES.map((s) => <option key={s} value={s}>{SCORING_STATUS_LABELS[s]}</option>)}
+            <select name="status" defaultValue={query.status ?? ""} className={inputClass} aria-label={t("filters.status")}>
+              <option value="">{t("filters.allStatuses")}</option>
+              {SCORING_STATUSES.map((s) => <option key={s} value={s}>{t(`statusLabels.${s}`)}</option>)}
             </select>
           </FilterCell>
         </FilterBar>
         {rows.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-slate-400">{filtering ? "Ningún registro coincide con los filtros." : "Todavía no hay scorings."}</p>
+          <p className="px-5 py-10 text-center text-sm text-slate-400">{filtering ? t("table.noMatch") : t("table.empty")}</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>Fecha</Th>
-                <Th>Partner</Th>
-                <Th>Empresa</Th>
-                <Th>Sector</Th>
-                <Th right>Puntuación</Th>
-                <Th>Rating</Th>
-                <Th>Estado</Th>
-                <Th>Operación</Th>
-                <Th>Ciclo de vida</Th>
+                <Th>{t("table.date")}</Th>
+                <Th>{t("table.partner")}</Th>
+                <Th>{t("table.company")}</Th>
+                <Th>{t("table.sector")}</Th>
+                <Th right>{t("table.score")}</Th>
+                <Th>{t("table.rating")}</Th>
+                <Th>{t("table.status")}</Th>
+                <Th>{t("table.operation")}</Th>
+                <Th>{t("table.lifecycle")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -222,18 +227,18 @@ export default async function PipelinePage({ searchParams }: PageProps<"/pipelin
                   </Td>
                   <Td>
                     <LifecycleStepper lifecycle={r.lifecycle} variant="compact" />
-                    <span className={`mt-1 block text-xs ${r.lifecycle.outcome === "rejected" || r.lifecycle.outcome === "cancelled" ? "text-red-300" : "text-slate-400"}`}>{r.lifecycle.label}</span>
+                    <span className={`mt-1 block text-xs ${r.lifecycle.outcome === "rejected" || r.lifecycle.outcome === "cancelled" ? "text-red-300" : "text-slate-400"}`}>{translate(r.lifecycle.label)}</span>
                   </Td>
                 </tr>
               ))}
             </tbody>
           </Table>
         )}
-        <nav className="flex items-center justify-between p-4 text-sm text-slate-400" aria-label="Paginación">
-          <span>Página {page} de {pages}</span>
+        <nav className="flex items-center justify-between p-4 text-sm text-slate-400" aria-label={tCommon("pagination.ariaLabel")}>
+          <span>{tCommon("pagination.pageOf", { page, pages })}</span>
           <div className="flex gap-2">
-            {page > 1 && <Link href={pageHref(page - 1)} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Anterior</Link>}
-            {page < pages && <Link href={pageHref(page + 1)} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">Siguiente</Link>}
+            {page > 1 && <Link href={pageHref(page - 1)} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">{tCommon("pagination.previousShort")}</Link>}
+            {page < pages && <Link href={pageHref(page + 1)} className="rounded-md border border-ink-600 px-3 py-1 hover:border-mint-500/60">{tCommon("pagination.nextShort")}</Link>}
           </div>
         </nav>
       </Card>

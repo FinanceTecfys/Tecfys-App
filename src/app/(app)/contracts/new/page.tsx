@@ -1,5 +1,7 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,12 +18,15 @@ import { identityFromCompany } from "@/modules/contracts/domain/operation";
 import { RatingBadge } from "@/modules/scoring/components/badges";
 import { getScoring, listScorings } from "@/modules/scoring/data";
 
-export const metadata = { title: "Nueva operación" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("operation"))("metaTitle") };
+}
 
 export default async function NewOperationPage({ searchParams }: PageProps<"/contracts/new">) {
   const user = await requireRole("operation.create");
   const scope = dataScopeFor(user);
   const { scoringId } = await searchParams;
+  const t = await getTranslations("operation");
 
   // Without a scoring: choose one of the approved scorings the user can reach.
   if (typeof scoringId !== "string") {
@@ -29,16 +34,16 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
     return (
       <>
         <PageHeader
-          title="Nueva operación"
-          description="Toda operación parte de un scoring aprobado. Elige el scoring del cliente."
-          actions={<ButtonLink href="/scoring/new" variant="secondary">Nuevo scoring</ButtonLink>}
+          title={t("title")}
+          description={t("pickDescription")}
+          actions={<ButtonLink href="/scoring/new" variant="secondary">{t("newScoring")}</ButtonLink>}
         />
         <Card bodyClassName="p-0">
           {approved.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-slate-400">No hay scorings aprobados. Empieza por un nuevo scoring.</p>
+            <p className="px-5 py-10 text-center text-sm text-slate-400">{t("noApproved")}</p>
           ) : (
             <Table>
-              <thead><tr><Th>Fecha</Th><Th>Empresa</Th><Th>CIF</Th><Th>Rating</Th><Th right>Opinión de crédito</Th><Th /></tr></thead>
+              <thead><tr><Th>{t("pickDate")}</Th><Th>{t("pickCompany")}</Th><Th>{t("pickCif")}</Th><Th>{t("pickRating")}</Th><Th right>{t("pickCreditOpinion")}</Th><Th /></tr></thead>
               <tbody>
                 {approved.map((s) => (
                   <tr key={s.id} className="hover:bg-ink-800/50">
@@ -48,7 +53,7 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
                     <Td><RatingBadge rating={s.rating} /></Td>
                     <Td right mono>{fmtEur(Number(s.credit_opinion))}</Td>
                     <Td right>
-                      <Link href={`/contracts/new?scoringId=${s.id}`} className="text-sm font-medium text-mint-400 hover:underline">Crear operación</Link>
+                      <Link href={`/contracts/new?scoringId=${s.id}`} className="text-sm font-medium text-mint-400 hover:underline">{t("pickCreate")}</Link>
                     </Td>
                   </tr>
                 ))}
@@ -66,12 +71,10 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
   if (scoring.status !== "approved") {
     return (
       <>
-        <PageHeader title="Nueva operación" />
-        <Alert tone="warning" title="El scoring no está aprobado">
-          Solo se pueden originar operaciones sobre un scoring aprobado.
-        </Alert>
+        <PageHeader title={t("title")} />
+        <Alert tone="warning" title={t("notApprovedTitle")}>{t("notApprovedBody")}</Alert>
         <div className="mt-4">
-          <ButtonLink href={`/scoring/${scoring.id}`} variant="secondary">Ver scoring</ButtonLink>
+          <ButtonLink href={`/scoring/${scoring.id}`} variant="secondary">{t("viewScoring")}</ButtonLink>
         </div>
       </>
     );
@@ -90,8 +93,8 @@ export default async function NewOperationPage({ searchParams }: PageProps<"/con
   return (
     <>
       <PageHeader
-        title="Nueva operación"
-        description={`${scoring.company.name} · scoring ${scoring.rating} aprobado. Datos identificativos, orden SEPA y condiciones económicas; al crear el borrador se genera el contrato en Word.`}
+        title={t("title")}
+        description={t("description", { company: scoring.company.name, rating: scoring.rating })}
       />
       <OperationForm
         scoring={{

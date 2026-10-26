@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Plus } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,34 +15,33 @@ export const metadata = { title: "Scoring" };
 
 export default async function ScoringListPage() {
   const scorings = await listScorings(dataScopeFor(await requireRole("scoring.view")));
+  const t = await getTranslations("scoring.list");
   return (
     <>
       <PageHeader
-        title="Scoring de clientes"
-        description="Primer paso de toda operación: sin scoring aprobado no se puede originar un contrato."
+        title={t("title")}
+        description={t("description")}
         actions={
           <ButtonLink href="/scoring/new">
-            <Plus className="h-4 w-4" aria-hidden /> Nuevo scoring
+            <Plus className="h-4 w-4" aria-hidden /> {t("new")}
           </ButtonLink>
         }
       />
       <Card bodyClassName="p-0">
         {scorings.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-slate-400">
-            Todavía no hay scorings. Empieza subiendo un informe de Informa.
-          </p>
+          <p className="px-5 py-10 text-center text-sm text-slate-400">{t("empty")}</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>Fecha</Th>
-                <Th>Empresa</Th>
-                <Th>CIF</Th>
-                <Th right>Puntuación</Th>
-                <Th>Rating</Th>
-                <Th>Decisión</Th>
-                <Th>Estado</Th>
-                <Th right>Opinión de crédito</Th>
+                <Th>{t("date")}</Th>
+                <Th>{t("company")}</Th>
+                <Th>{t("cif")}</Th>
+                <Th right>{t("score")}</Th>
+                <Th>{t("rating")}</Th>
+                <Th>{t("decision")}</Th>
+                <Th>{t("status")}</Th>
+                <Th right>{t("creditOpinion")}</Th>
               </tr>
             </thead>
             <tbody>

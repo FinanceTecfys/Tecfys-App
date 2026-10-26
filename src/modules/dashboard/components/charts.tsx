@@ -15,6 +15,7 @@
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Bar,
   BarChart,
@@ -91,7 +92,8 @@ const compactEur = (v: number) =>
   Math.abs(v) >= 1000 ? `${Math.round(v / 1000).toLocaleString("es-ES")}k` : Math.round(v).toLocaleString("es-ES");
 
 /** Horizontal bars: one nominal dimension ranked by amount (no legend needed). */
-export function RankedBarChart({ data, height = 520, unit = "money", measure = "Principal pendiente" }: { data: DrillSlice[]; height?: number } & Measure) {
+export function RankedBarChart({ data, height = 520, unit = "money", measure }: { data: DrillSlice[]; height?: number } & Measure) {
+  const t = useTranslations("dashboard.charts");
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
@@ -101,7 +103,7 @@ export function RankedBarChart({ data, height = 520, unit = "money", measure = "
         <XAxis type="number" {...AXIS} tickFormatter={unit === "count" ? fmtCount : compactEur} allowDecimals={unit !== "count"} axisLine={false} />
         <YAxis type="category" dataKey="label" width={160} {...AXIS} axisLine={false} interval={0}
           tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 23)}…` : v)} />
-        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtAmount(Number(value), unit)} · ${fmtPct(slice(item).share, 1)}`, measure]} />
+        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtAmount(Number(value), unit)} · ${fmtPct(slice(item).share, 1)}`, measure ?? t("outstanding")]} />
         <Bar dataKey="amount" fill={CATEGORICAL[0]} radius={[0, 4, 4, 0]} maxBarSize={14} {...drill} />
       </BarChart>
     </ResponsiveContainer>
@@ -110,6 +112,7 @@ export function RankedBarChart({ data, height = 520, unit = "money", measure = "
 
 /** Vertical bars over an ordered dimension: size tiers take the ordinal ramp. */
 export function BucketBarChart({ data, height = 260 }: { data: DrillSlice[]; height?: number }) {
+  const t = useTranslations("dashboard.charts");
   const drill = useDrillDown(data);
   if (data.every((d) => d.amount === 0)) return <EmptyChart />;
   return (
@@ -118,7 +121,7 @@ export function BucketBarChart({ data, height = 260 }: { data: DrillSlice[]; hei
         <CartesianGrid {...GRID} />
         <XAxis dataKey="label" {...AXIS} axisLine={false} />
         <YAxis {...AXIS} tickFormatter={compactEur} axisLine={false} width={52} />
-        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtEur(Number(value))} · ${slice(item).count} contratos`, "Principal pendiente"]} />
+        <Tooltip {...TOOLTIP} formatter={(value, _name, item) => [`${fmtEur(Number(value))} · ${t("contracts", { count: slice(item).count })}`, t("outstanding")]} />
         <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56} {...drill}>
           {data.map((d, i) => (
             <Cell key={d.key} fill={ORDINAL[i % ORDINAL.length]} />
@@ -135,8 +138,9 @@ export function DonutChart({
   total,
   height = 210,
   unit = "money",
-  centerLabel = "pendiente",
+  centerLabel,
 }: { data: DrillSlice[]; total: number; height?: number; centerLabel?: string } & Pick<Measure, "unit">) {
+  const t = useTranslations("dashboard.charts");
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
@@ -154,7 +158,7 @@ export function DonutChart({
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="num text-sm font-semibold text-slate-100">{fmtAmount(total, unit)}</span>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500">{centerLabel}</span>
+          <span className="text-[10px] uppercase tracking-wider text-slate-500">{centerLabel ?? t("center")}</span>
         </div>
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5 text-xs">
@@ -169,7 +173,7 @@ export function DonutChart({
           );
           return d.href ? (
             <li key={d.key}>
-              <Link href={d.href} className="flex items-center gap-2 hover:[&>span]:text-mint-400" title={`Ver contratos: ${d.label}`}>{content}</Link>
+              <Link href={d.href} className="flex items-center gap-2 hover:[&>span]:text-mint-400" title={t("viewContracts", { label: d.label })}>{content}</Link>
             </li>
           ) : (
             <li key={d.key} className="flex items-center gap-2">{content}</li>
@@ -198,6 +202,7 @@ export function MonthlyLineChart({
   tone?: "mint" | "loss";
   height?: number;
 }) {
+  const t = useTranslations("dashboard.charts");
   if (data.length === 0) return <EmptyChart />;
   const color = tone === "mint" ? MINT : LOSS;
   const fmt = (v: number) => (format === "percent" ? fmtPct(v, 1) : fmtEur(v));
@@ -207,7 +212,7 @@ export function MonthlyLineChart({
         <CartesianGrid {...GRID} />
         <XAxis dataKey="label" {...AXIS} axisLine={false} minTickGap={16} />
         <YAxis {...AXIS} axisLine={false} width={58} tickFormatter={(v: number) => (format === "percent" ? `${(v * 100).toFixed(0)}%` : compactEur(v))} />
-        <Tooltip {...TOOLTIP} cursor={{ stroke: "#1a4530" }} formatter={(value) => [fmt(Number(value)), format === "percent" ? "Tasa" : "Importe"]} />
+        <Tooltip {...TOOLTIP} cursor={{ stroke: "#1a4530" }} formatter={(value) => [fmt(Number(value)), format === "percent" ? t("rate") : t("amount")]} />
         <Line type="monotone" dataKey="value" stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "#071a0f" }} connectNulls={false} />
       </LineChart>
     </ResponsiveContainer>
@@ -219,9 +224,10 @@ export function MonthlyBarChart({
   data,
   height = 240,
   unit = "money",
-  measure = "Default del mes",
+  measure,
   tone = "loss",
 }: { data: SeriesPoint[]; height?: number; tone?: "neutral" | "loss" } & Measure) {
+  const t = useTranslations("dashboard.charts");
   const drill = useDrillDown(data);
   if (data.length === 0) return <EmptyChart />;
   return (
@@ -230,7 +236,7 @@ export function MonthlyBarChart({
         <CartesianGrid {...GRID} />
         <XAxis dataKey="label" {...AXIS} axisLine={false} minTickGap={16} />
         <YAxis {...AXIS} axisLine={false} width={58} tickFormatter={unit === "count" ? fmtCount : compactEur} allowDecimals={unit !== "count"} />
-        <Tooltip {...TOOLTIP} formatter={(value) => [fmtAmount(Number(value), unit), measure]} />
+        <Tooltip {...TOOLTIP} formatter={(value) => [fmtAmount(Number(value), unit), measure ?? t("monthDefault")]} />
         <Bar dataKey="value" fill={tone === "neutral" ? NEUTRAL : LOSS} radius={[4, 4, 0, 0]} maxBarSize={28} {...drill} />
       </BarChart>
     </ResponsiveContainer>
@@ -238,5 +244,6 @@ export function MonthlyBarChart({
 }
 
 function EmptyChart() {
-  return <p className="py-10 text-center text-sm text-slate-500">Sin datos en el periodo seleccionado.</p>;
+  const t = useTranslations("dashboard.charts");
+  return <p className="py-10 text-center text-sm text-slate-500">{t("empty")}</p>;
 }

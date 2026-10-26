@@ -2,6 +2,9 @@
  * "Set your password" from an emailed link (invitation or recovery). Pure, so
  * the link parsing, the input rules and the messages are unit-tested.
  *
+ * A message is a key of the catalogue (auth.setPassword.errors.*); the server
+ * action translates it, with the password limits as values.
+ *
  * The email links to SET_PASSWORD_PATH?token_hash=...&type=invite (see
  * supabase/templates). Opening the link only shows the form: the token is
  * verified when the form is submitted, together with the new password, so a
@@ -38,14 +41,17 @@ export const passwordLinkPath = ({ tokenHash: hash, type }: PasswordLink): strin
   `${SET_PASSWORD_PATH}?${new URLSearchParams({ token_hash: hash, type })}`;
 
 export const SET_PASSWORD_MESSAGES = {
-  tooShort: `La contraseña necesita al menos ${MIN_PASSWORD_LENGTH} caracteres.`,
-  tooLong: `La contraseña no puede superar ${MAX_PASSWORD_LENGTH} caracteres.`,
-  mismatch: "Las dos contraseñas no coinciden.",
-  invalidLink: "El enlace no es válido, ya se ha usado o ha caducado. Pide a un administrador de Tecfys que te envíe una invitación nueva.",
-  weak: "Supabase ha rechazado la contraseña por débil. Prueba con una más larga o más variada.",
-  rateLimited: "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
-  unavailable: "No se pudo guardar la contraseña. Inténtalo de nuevo.",
+  tooShort: "auth.setPassword.errors.tooShort",
+  tooLong: "auth.setPassword.errors.tooLong",
+  mismatch: "auth.setPassword.errors.mismatch",
+  invalidLink: "auth.setPassword.errors.invalidLink",
+  weak: "auth.setPassword.errors.weak",
+  rateLimited: "auth.setPassword.errors.rateLimited",
+  unavailable: "auth.setPassword.errors.unavailable",
 } as const;
+
+/** The values those messages interpolate. */
+export const SET_PASSWORD_MESSAGE_VALUES = { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH } as const;
 
 export const setPasswordSchema = z
   .object({
@@ -85,6 +91,7 @@ export function updateErrorMessage(error: { status?: number; code?: string }): s
 }
 
 export interface SetPasswordState {
+  /** Already translated by the server action. */
   error: string | null;
   /** The token is spent and the session is open: the next submit must not verify again. */
   verified: boolean;

@@ -77,21 +77,21 @@ describe("authDecision by role", () => {
   const decide = (pathname: string, role: Role | null, search = "") => authDecision({ pathname, search, authenticated: true, role });
 
   it("sends a partner to /scoring/new from every route it cannot use, by direct URL", () => {
-    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/pipeline", "/pipeline?partner=x", "/erp", "/settings", "/unknown"]) {
+    for (const p of ["/", "/contracts", "/contracts/export", "/portfolio", "/pipeline", "/pipeline?partner=x", "/erp", "/settings/users", "/unknown"]) {
       const [pathname, search = ""] = p.split("?");
       expect(decide(pathname, "partner", search && `?${search}`), p).toEqual({ action: "redirect", location: "/scoring/new" });
     }
   });
 
   it("lets a partner run scoring and create operations", () => {
-    for (const p of ["/scoring", "/scoring/new", `/scoring/${ID}`, "/contracts/new", `/contracts/${ID}`, `/contracts/${ID}/draft`]) {
+    for (const p of ["/scoring", "/scoring/new", `/scoring/${ID}`, "/contracts/new", `/contracts/${ID}`, `/contracts/${ID}/draft`, "/settings"]) {
       expect(decide(p, "partner"), p).toEqual({ action: "next" });
     }
   });
 
-  it("sends sales to the dashboard from settings and ERP, and lets it into the rest", () => {
-    for (const p of ["/settings", "/erp"]) expect(decide(p, "sales"), p).toEqual({ action: "redirect", location: "/" });
-    for (const p of ["/", "/contracts", "/portfolio", "/pipeline", "/scoring/new", "/contracts/new"]) expect(decide(p, "sales"), p).toEqual({ action: "next" });
+  it("sends sales to the dashboard from ERP, and lets it into the rest - Settings included, for its preferences", () => {
+    for (const p of ["/erp", "/settings/users"]) expect(decide(p, "sales"), p).toEqual({ action: "redirect", location: "/" });
+    for (const p of ["/", "/contracts", "/portfolio", "/pipeline", "/scoring/new", "/contracts/new", "/settings"]) expect(decide(p, "sales"), p).toEqual({ action: "next" });
   });
 
   it("lets owner and admin through everywhere", () => {
@@ -108,9 +108,11 @@ describe("authDecision by role", () => {
   it("after login a role lands on `next` only if it may open it, else on its home", () => {
     expect(decide("/login", "partner")).toEqual({ action: "redirect", location: "/scoring/new" });
     expect(decide("/login", "partner", "?next=%2Fcontracts")).toEqual({ action: "redirect", location: "/scoring/new" });
-    expect(decide("/login", "partner", "?next=%2Fsettings")).toEqual({ action: "redirect", location: "/scoring/new" });
+    expect(decide("/login", "partner", "?next=%2Fsettings%3Ftab%3Dpreferences")).toEqual({ action: "redirect", location: "/settings?tab=preferences" });
+    expect(decide("/login", "partner", "?next=%2Ferp")).toEqual({ action: "redirect", location: "/scoring/new" });
     expect(decide("/login", "partner", `?next=%2Fscoring%2F${ID}`)).toEqual({ action: "redirect", location: `/scoring/${ID}` });
-    expect(decide("/login", "sales", "?next=%2Fsettings")).toEqual({ action: "redirect", location: "/" });
+    expect(decide("/login", "sales", "?next=%2Fsettings")).toEqual({ action: "redirect", location: "/settings" });
+    expect(decide("/login", "sales", "?next=%2Ferp")).toEqual({ action: "redirect", location: "/" });
     expect(decide("/login", "sales", "?next=%2Fcontracts%3Fq%3Dalfa")).toEqual({ action: "redirect", location: "/contracts?q=alfa" });
     expect(landingPath("partner", "https://evil.example")).toBe("/scoring/new");
     expect(landingPath("owner", null)).toBe("/");

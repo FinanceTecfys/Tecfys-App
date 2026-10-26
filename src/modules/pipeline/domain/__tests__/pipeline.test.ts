@@ -88,11 +88,11 @@ describe("resolveOriginator (created_by -> partner / distributor)", () => {
     for (const createdBy of [null, undefined, ""]) {
       expect(resolveOriginator(createdBy, dir)).toEqual({ kind: "none", key: NO_PARTNER_KEY, name: NO_PARTNER_LABEL, distributorId: null, distributorName: null });
     }
-    expect(resolveOriginator(null, new Map())).toMatchObject({ kind: "none", name: "Sin partner" });
+    expect(resolveOriginator(null, new Map())).toMatchObject({ kind: "none", name: "pipeline.text.noPartner" });
   });
 
   it("a creator that is no longer in the directory is shown as deleted", () => {
-    expect(resolveOriginator(GONE, dir)).toEqual({ kind: "unknown", key: GONE, name: "Usuario eliminado", distributorId: null, distributorName: null });
+    expect(resolveOriginator(GONE, dir)).toEqual({ kind: "unknown", key: GONE, name: "pipeline.text.deletedUser", distributorId: null, distributorName: null });
   });
 
   it("tolerates a partner with no distributor, a user with no email and one with no role", () => {
@@ -102,15 +102,15 @@ describe("resolveOriginator (created_by -> partner / distributor)", () => {
       ["c", { id: "c", email: "sin-rol@x.es", role: null, distributor: null }],
     ]);
     expect(resolveOriginator("a", odd)).toMatchObject({ kind: "partner", distributorName: null });
-    expect(resolveOriginator("b", odd)).toMatchObject({ kind: "internal", name: "Usuario sin email" });
+    expect(resolveOriginator("b", odd)).toMatchObject({ kind: "internal", name: "pipeline.text.userWithoutEmail" });
     expect(resolveOriginator("c", odd)).toMatchObject({ kind: "internal", name: "sin-rol@x.es" });
   });
 
   it("labels each kind for selects and charts", () => {
     expect(originatorLabel(resolveOriginator(P1, dir))).toBe("Alfa Distribución · ana@alfa.es");
     expect(originatorLabel(resolveOriginator(SALES, dir))).toBe("Tecfys · ventas@tecfys.com");
-    expect(originatorLabel(resolveOriginator(null, dir))).toBe("Sin partner");
-    expect(originatorLabel(resolveOriginator(GONE, dir))).toBe("Usuario eliminado");
+    expect(originatorLabel(resolveOriginator(null, dir))).toBe("pipeline.text.noPartner");
+    expect(originatorLabel(resolveOriginator(GONE, dir))).toBe("pipeline.text.deletedUser");
   });
 });
 
@@ -141,11 +141,11 @@ describe("buildPipelineRows", () => {
     expect(row("s2:c2").lifecycle).toMatchObject({ stage: "operation", outcome: "in_progress" });
     expect(row("s2:c3").lifecycle).toMatchObject({ stage: "operation", outcome: "cancelled" });
     expect(row("s3").lifecycle).toMatchObject({ stage: "scoring", outcome: "rejected" });
-    expect(row("s4").lifecycle).toMatchObject({ stage: "scoring", outcome: "in_progress", label: "Pendiente de revisión" });
+    expect(row("s4").lifecycle).toMatchObject({ stage: "scoring", outcome: "in_progress", label: "pipeline.lifecycle.labels.pendingReview" });
   });
 
   it("a legacy scoring with no creator is listed as 'Sin partner', with the operation's distributor", () => {
-    expect(row("s7:c7").originator).toMatchObject({ kind: "none", name: "Sin partner" });
+    expect(row("s7:c7").originator).toMatchObject({ kind: "none", name: "pipeline.text.noPartner" });
     expect(row("s7:c7").distributorName).toBe("Gamma");
     expect(row("s7:c7").sector).toBeNull();
   });
@@ -213,7 +213,7 @@ describe("filterPipeline", () => {
     expect(options.partner).toEqual([
       { value: P1, label: "Alfa Distribución · ana@alfa.es" },
       { value: P2, label: "Beta Tech · luis@beta.es" },
-      { value: NO_PARTNER_KEY, label: "Sin partner" },
+      { value: NO_PARTNER_KEY, label: "pipeline.text.noPartner" },
       { value: SALES, label: "Tecfys · ventas@tecfys.com" },
     ]);
     expect(options.distributor.map((d) => d.value)).toEqual(["Alfa Distribución", "Beta Tech", "Direct", "Gamma"]);
@@ -280,7 +280,7 @@ describe("aggregations", () => {
     expect(partners.map((p) => [p.label, p.scorings])).toEqual([
       ["Alfa Distribución · ana@alfa.es", 3],
       ["Beta Tech · luis@beta.es", 2],
-      ["Sin partner", 1],
+      ["pipeline.text.noPartner", 1],
       ["Tecfys · ventas@tecfys.com", 1],
     ]);
     expect(partners[0]).toMatchObject({ key: P1, kind: "partner", approved: 2, rejected: 1, pendingReview: 0, approvalRate: 2 / 3, rejectionRate: 1 / 3, operations: 3, signed: 1, lastActivity: "2026-10-06T10:00:00+00:00" });
@@ -299,9 +299,9 @@ describe("aggregations", () => {
 
   it("chart slices: approved / manual review / rejected in a fixed order, empty ones left out", () => {
     expect(scoringsByStatus(ROWS).map((s) => [s.key, s.label, s.amount])).toEqual([
-      ["approved", "Aprobado", 4],
-      ["pending_review", "Revisión manual", 1],
-      ["rejected", "Rechazado", 2],
+      ["approved", "pipeline.statusLabels.approved", 4],
+      ["pending_review", "pipeline.statusLabels.pending_review", 1],
+      ["rejected", "pipeline.statusLabels.rejected", 2],
     ]);
     expect(scoringsByStatus(filterPipeline(ROWS, { q: "", partner: P2, distributor: null, status: null })).map((s) => s.key)).toEqual(["pending_review", "rejected"]);
   });
