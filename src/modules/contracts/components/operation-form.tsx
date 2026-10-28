@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Calculator } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
@@ -11,7 +11,8 @@ import { fmtEur, fmtPct } from "@/lib/format";
 import { createAssetType, createDistributor } from "@/modules/catalog/actions";
 import { CatalogSelect } from "@/modules/catalog/components/catalog-select";
 import type { AssetType, ContractType, Distributor } from "@/modules/catalog/data";
-import { createContract, updateDraftContract } from "../actions";
+import type { ChangePreview } from "@/modules/companies/domain/update-policy";
+import { createContract, previewOperationCompanyChanges, updateDraftContract } from "../actions";
 import { AttachmentInput } from "./attachment-input";
 import type { IdentityPrefill, OperationInput } from "../domain/operation";
 import { installmentForRate, monthlyFromAnnual } from "../domain/pricing";
@@ -104,6 +105,26 @@ export function OperationForm({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, startSaving] = useTransition();
+  const tChanges = useTranslations("operation.companyChanges");
+  const tCompanyFields = useTranslations("companies.fields");
+
+  // Staff only (the server answers a partner with nothing): what saving will change in the client's master record.
+  const [companyChanges, setCompanyChanges] = useState<ChangePreview[]>([]);
+  const { fiscalAddress, fiscalPostalCode, fiscalCity, fiscalProvince, signatoryName, signatoryNif, contactPhone, contactEmail } = identity;
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(async () => {
+      const res = await previewOperationCompanyChanges({
+        scoringId: scoring.id,
+        identity: { fiscalAddress, fiscalPostalCode, fiscalCity, fiscalProvince, signatoryName, signatoryNif, contactPhone, contactEmail },
+      }).catch(() => null);
+      if (live) setCompanyChanges(res?.ok ? res.changes : []);
+    }, 500);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [scoring.id, fiscalAddress, fiscalPostalCode, fiscalCity, fiscalProvince, signatoryName, signatoryNif, contactPhone, contactEmail]);
 
   const lag = contractTypes.find((t) => t.code === contractType)?.billing_lag_months ?? 0;
   const cost = num(purchaseValue);
@@ -203,6 +224,20 @@ export function OperationForm({
             )
           }
         />
+        {companyChanges.length > 0 && (
+          <Alert tone="info" title={tChanges("title")}>
+            <p className="mb-1">{tChanges("intro")}</p>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {companyChanges.map((c) => (
+                <li key={c.field}>
+                  {c.kind === "fill"
+                    ? tChanges("fill", { field: tCompanyFields(c.field), to: c.to })
+                    : tChanges("change", { field: tCompanyFields(c.field), from: c.from ?? "", to: c.to })}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        )}
         <SepaSection
           value={sepa}
           onChange={(patch) => setSepa((prev) => ({ ...prev, ...patch }))}

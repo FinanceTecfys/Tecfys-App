@@ -195,8 +195,19 @@ export function operationMandateFields(v: Operation) {
   };
 }
 
-/** The company record is refreshed with the corrected identification (never its CIF, which identifies it). */
-export function operationCompanyFields(v: Operation) {
+/** The operation fields that speak about the company master. */
+export const OPERATION_COMPANY_KEYS = [
+  "fiscalAddress", "fiscalPostalCode", "fiscalCity", "fiscalProvince", "signatoryName", "signatoryNif", "contactPhone", "contactEmail",
+] as const satisfies readonly (keyof Operation)[];
+export type OperationCompanyInput = Pick<Operation, (typeof OPERATION_COMPANY_KEYS)[number]>;
+
+/**
+ * What the operation says about the company master (never its CIF, which
+ * identifies it, nor its name). It is not written as is: it goes through the
+ * company update policy (companies/domain/update-policy.ts) like a scoring's
+ * data, so it only changes the master with history - and never for a partner.
+ */
+export function operationCompanyFields(v: OperationCompanyInput) {
   return {
     address: v.fiscalAddress,
     fiscal_postal_code: v.fiscalPostalCode,

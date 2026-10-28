@@ -10,9 +10,12 @@ import { fmtDate } from "@/lib/format";
 import { decideCompanyChange } from "../actions";
 import type { PendingCompanyChange } from "../data";
 
+const sourceHref = (c: PendingCompanyChange): string | null =>
+  c.source === "operation" ? (c.contractId ? `/contracts/${c.contractId}` : null) : c.scoringId ? `/scoring/${c.scoringId}` : null;
+
 /**
  * Settings > "Cambios de clientes" (owner / admin): the differences partner
- * scorings found against the company master. Each one is approved (applied to
+ * scorings and partner operations found against the company master. Each one is approved (applied to
  * the company) or rejected on its own; both are recorded.
  */
 export function CompanyChangesPanel({ changes }: { changes: PendingCompanyChange[] }) {
@@ -61,7 +64,8 @@ export function CompanyChangesPanel({ changes }: { changes: PendingCompanyChange
               <Td className="text-slate-400">{c.currentValue ?? t("emptyValue")}</Td>
               <Td className="text-slate-100">{c.newValue}</Td>
               <Td className="text-slate-400">
-                {c.scoringId ? <Link href={`/scoring/${c.scoringId}`} className="hover:text-mint-400">{tSources(c.source as "informa_pdf" | "informa_api")}</Link> : tSources(c.source as "informa_pdf" | "informa_api")}
+                {/* The record behind the change: the scoring (Informa) or the contract (operation). */}
+                {sourceHref(c) ? <Link href={sourceHref(c)!} className="hover:text-mint-400">{tSources(c.source)}</Link> : tSources(c.source)}
               </Td>
               <Td className="text-slate-400">{fmtDate(c.createdAt)}</Td>
               <Td right>

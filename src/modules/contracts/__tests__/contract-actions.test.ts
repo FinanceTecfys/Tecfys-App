@@ -84,7 +84,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { createContract, updateDraftContract } from "../actions";
+import { createContract, previewOperationCompanyChanges, updateDraftContract } from "../actions";
 import type { OperationInput } from "../domain/operation";
 
 const SCORING_ID = "0b0e7a3c-1b1d-4c57-9b0e-3f6a1f0c2d11";
@@ -93,6 +93,7 @@ const ASSET_TYPE_ID = "5d3c2b1a-9f8e-4d7c-8b6a-1a2b3c4d5e6f";
 const DISTRIBUTOR_ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
 
 const OWNER = { id: "user-owner", role: "owner", partnerDistributorId: null };
+const SALES = { id: "user-sales", role: "sales", partnerDistributorId: null };
 const PARTNER = { id: "user-partner", role: "partner", partnerDistributorId: "dist-partner" };
 const OTHER_PARTNER = { id: "user-partner-2", role: "partner", partnerDistributorId: "dist-2" };
 
@@ -107,6 +108,12 @@ const input = (over: Partial<OperationInput> = {}): OperationInput => ({
   hasGuarantor: false, guarantorName: "", guarantorNif: "", guarantorAddress: "", guarantorRepresentative: "", guarantorRepresentativeNif: "", notes: "",
   ...over,
 });
+
+const MASTER = {
+  id: "company-1", cif: "B12345678", name: "Alfa Hostelería SL", address: "Calle Vieja 9", fiscal_postal_code: "28013", fiscal_city: "Madrid",
+  fiscal_province: "Madrid", admin_name: "Ana Pérez", admin_nif: "12345678Z", cnae: null, sector: "Retail trade", constitution_date: null,
+  phone: "600000000", email: null, web: null, employees: null,
+};
 
 const PDF = new Uint8Array([..."%PDF-1.7 documento"].map((c) => c.charCodeAt(0)));
 function files() {
@@ -135,8 +142,10 @@ beforeEach(() => {
   state.removed = [];
   state.uploadError = null;
   state.tables = {
-    scorings: [{ id: SCORING_ID, status: "approved", rating: "A", created_by: PARTNER.id, company: { id: "company-1", sector: "Retail trade" } }],
-    contracts: [{ id: CONTRACT_ID, workflow_status: "draft", created_by: PARTNER.id, scoring_id: SCORING_ID }],
+    scorings: [{ id: SCORING_ID, status: "approved", rating: "A", created_by: PARTNER.id, company_id: "company-1", company: { id: "company-1", sector: "Retail trade" } }],
+    contracts: [{ id: CONTRACT_ID, workflow_status: "draft", created_by: PARTNER.id, scoring_id: SCORING_ID, company_id: "company-1" }],
+    // The client's master record: a different fiscal address than the form types, no email yet.
+    companies: [{ ...MASTER }],
   };
   state.rpc = (name, args) =>
     name === "create_draft_contract"
@@ -150,7 +159,7 @@ describe("createContract writes everything in one database call", () => {
     expect(state.rpcCalls).toHaveLength(1);
     const { name, args } = state.rpcCalls[0];
     expect(name).toBe("create_draft_contract");
-    expect(Object.keys(args).sort()).toEqual(["p_asset", "p_attachments", "p_company", "p_contract", "p_mandate"]);
+    expect(Object.keys(args).sort()).toEqual(["p_asset", "p_attachments", "p_changes", "p_company", "p_contract", "p_mandate"]);
     expect(state.tableWrites).toEqual([]);
 
     const contract = args.p_contract as Row;
@@ -160,7 +169,12 @@ describe("createContract writes everything in one database call", () => {
     });
     expect(args.p_asset).toMatchObject({ quantity: 3, unit_cost: 3333.33 });
     expect(args.p_mandate).toMatchObject({ iban: "ES9121000418450200051332", debtor_name: "Alfa Hostelería SL" });
-    expect(args.p_company).toMatchObject({ address: "Calle Mayor 1", admin_nif: "12345678Z" });
+    // Staff: only the real differences reach the master, with their history; the rest is the same or cosmetic.
+    expect(args.p_company).toEqual({ address: "Calle Mayor 1", email: "ana@alfa.example" });
+    expect(args.p_changes).toEqual([
+      { field: "address", old_value: "Calle Vieja 9", new_value: "Calle Mayor 1", status: "applied" },
+      { field: "email", old_value: null, new_value: "ana@alfa.example", status: "applied" },
+    ]);
 
     // The files are stored under the id the contract is created with, and the rows point at them.
     const attachments = args.p_attachments as Row[];
@@ -222,7 +236,8 @@ describe("updateDraftContract writes everything in one database call", () => {
     expect(state.rpcCalls).toHaveLength(1);
     const { name, args } = state.rpcCalls[0];
     expect(name).toBe("update_draft_contract");
-    expect(Object.keys(args).sort()).toEqual(["p_asset", "p_company", "p_contract", "p_contract_id", "p_mandate"]);
+    expect(Object.keys(args).sort()).toEqual(["p_actor", "p_asset", "p_changes", "p_company", "p_contract", "p_contract_id", "p_mandate"]);
+    expect(args.p_actor).toBe(OWNER.id);
     expect(args.p_contract_id).toBe(CONTRACT_ID);
     expect(args.p_contract).toMatchObject({ duration_months: 48, installment: 280, purchase_value: 11000, distributor_id: DISTRIBUTOR_ID });
     expect(args.p_asset).toMatchObject({ quantity: 5, unit_cost: 2200 });
@@ -267,5 +282,67 @@ describe("updateDraftContract writes everything in one database call", () => {
     state.user = PARTNER;
     expect((await edit()).redirected).toBe(`/contracts/${CONTRACT_ID}`);
     expect(state.rpcCalls[0].args.p_contract).toMatchObject({ distributor_id: "dist-partner" });
+  });
+});
+
+describe("the company master goes through the update policy", () => {
+  const typed = { fiscalAddress: "Avenida Diagonal 1", signatoryNif: "87654321X" };
+
+  it("a partner's draft never touches the company: the differences go pending, the contract keeps what was typed", async () => {
+    state.user = PARTNER;
+    await run(() => createContract(input(typed)));
+    const { args } = state.rpcCalls[0];
+    expect(args.p_company).toEqual({});
+    expect(args.p_changes).toEqual([
+      { field: "address", old_value: "Calle Vieja 9", new_value: "Avenida Diagonal 1", status: "pending" },
+      { field: "admin_nif", old_value: "12345678Z", new_value: "87654321X", status: "pending" },
+      { field: "email", old_value: null, new_value: "ana@alfa.example", status: "pending" },
+    ]);
+    expect(args.p_contract).toMatchObject({ fiscal_address: "Avenida Diagonal 1", signatory_nif: "87654321X" });
+    expect(state.tableWrites).toEqual([]);
+  });
+
+  it("a partner editing its draft: the same - pending, never applied", async () => {
+    state.user = PARTNER;
+    await run(() => updateDraftContract(CONTRACT_ID, input(typed)));
+    const { args } = state.rpcCalls[0];
+    expect(args.p_company).toEqual({});
+    expect((args.p_changes as Row[]).every((c) => c.status === "pending")).toBe(true);
+    expect(args.p_actor).toBe(PARTNER.id);
+    expect(args.p_contract).toMatchObject({ fiscal_address: "Avenida Diagonal 1" });
+  });
+
+  it("staff (sales): applied with history, in the same database call as the contract", async () => {
+    state.user = SALES;
+    await run(() => createContract(input(typed)));
+    expect(state.rpcCalls).toHaveLength(1);
+    const { args } = state.rpcCalls[0];
+    expect(args.p_company).toEqual({ address: "Avenida Diagonal 1", admin_nif: "87654321X", email: "ana@alfa.example" });
+    expect((args.p_changes as Row[]).map((c) => [c.field, c.status])).toEqual([["address", "applied"], ["admin_nif", "applied"], ["email", "applied"]]);
+  });
+
+  it("the master's contact data is never overwritten by an operation, only filled", async () => {
+    state.user = SALES;
+    await run(() => createContract(input({ contactPhone: "699 999 999" })));
+    expect(state.rpcCalls[0].args.p_company).not.toHaveProperty("phone");
+  });
+
+  it("previewOperationCompanyChanges: staff see what saving will change; a partner sees nothing; nothing is written", async () => {
+    const preview = { scoringId: SCORING_ID, identity: { ...typed, contactEmail: "ana@alfa.example", fiscalCity: "Madrid" } };
+    state.user = SALES;
+    expect(await previewOperationCompanyChanges(preview)).toEqual({
+      ok: true,
+      changes: [
+        { field: "address", kind: "change", from: "Calle Vieja 9", to: "Avenida Diagonal 1" },
+        { field: "admin_nif", kind: "change", from: "12345678Z", to: "87654321X" },
+        { field: "email", kind: "fill", from: null, to: "ana@alfa.example" },
+      ],
+    });
+    state.user = PARTNER;
+    expect(await previewOperationCompanyChanges(preview)).toEqual({ ok: true, changes: [] });
+    state.user = SALES;
+    expect(await previewOperationCompanyChanges({ scoringId: "not-a-uuid", identity: {} })).toEqual({ ok: false });
+    expect(state.rpcCalls).toEqual([]);
+    expect(state.tableWrites).toEqual([]);
   });
 });

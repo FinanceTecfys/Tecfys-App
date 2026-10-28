@@ -1,7 +1,7 @@
 /**
  * The company master update policy, pure so every rule is unit-tested:
- * current company + incoming Informa data + actor role -> what to write and
- * what to record.
+ * current company + incoming data (an Informa report behind a scoring, or what
+ * was typed in "Nueva operación") + actor role -> what to write and what to record.
  *
  *   COMPANY = the current truth about the client, changed only through here and
  *             always recorded (company_changes);
@@ -14,24 +14,24 @@
  *    punctuation of legal forms, the format of a NIF / date / postal code), so a
  *    cosmetic difference is never a change.
  *  - A value is never replaced by an empty one.
- *  - Informa-authoritative identity fields: a real difference is applied and
- *    recorded when the actor is Tecfys staff (companyMaster.update); for anyone
- *    else (a partner) it is NOT applied and is recorded as pending review.
+ *  - Authoritative identity fields: a real difference is applied and recorded
+ *    when the actor is Tecfys staff (companyMaster.update); for anyone else (a
+ *    partner) it is NOT applied and is recorded as pending review.
  *  - Tecfys-maintained fields: filled only when empty, never overwritten
  *    (and, for a partner, the fill is pending too: a partner never writes).
- *  - Without an Informa report (a scoring typed by hand) an existing company
- *    is left alone: there is no Informa data to compare with.
+ *  - Without a source (a scoring typed by hand, no Informa report) an existing
+ *    company is left alone: there is nothing authoritative to compare with.
  */
 import { can, type Role } from "@/lib/auth/permissions";
 import type { Financials } from "@/modules/scoring/domain/financials";
 
-/** Identity fields Informa is the authority on. */
+/** Identity fields applied for staff and pending for a partner (Informa is their authority). */
 export const INFORMA_FIELDS = [
   "name", "address", "fiscal_postal_code", "fiscal_city", "fiscal_province",
-  "admin_name", "admin_nif", "cnae", "sector", "constitution_date",
+  "admin_name", "admin_nif", "cnae", "sector", "constitution_date", "employees",
 ] as const;
-/** Fields Tecfys users maintain (contact data typed in the app): fill-only. */
-export const FILL_ONLY_FIELDS = ["phone", "email", "web", "employees"] as const;
+/** Contact data Tecfys users maintain: fill-only, never overwritten. */
+export const FILL_ONLY_FIELDS = ["phone", "email", "web"] as const;
 export const COMPANY_FIELDS = [...INFORMA_FIELDS, ...FILL_ONLY_FIELDS] as const;
 
 export type InformaField = (typeof INFORMA_FIELDS)[number];
@@ -42,7 +42,8 @@ export type CompanyValues = Partial<Record<CompanyField, CompanyValue>>;
 /** The company as stored (the columns this policy reads). */
 export type CurrentCompany = { id: string; cif: string } & Record<CompanyField, CompanyValue>;
 
-export type ChangeSource = "informa_pdf" | "informa_api";
+/** Where a change comes from: an Informa report behind a scoring, or an operation's form. */
+export type ChangeSource = "informa_pdf" | "informa_api" | "operation";
 export type ChangeStatus = "applied" | "pending";
 
 export interface CompanyChange {
@@ -53,6 +54,9 @@ export interface CompanyChange {
   newValue: string;
   status: ChangeStatus;
 }
+
+/** What a scoring or an operation brings. Creating a company needs its CIF and name. */
+export type IncomingCompany = CompanyValues & { cif?: string; country?: string };
 
 export type CompanyUpdateDecision =
   /** New CIF: create the company with these columns. */
@@ -136,14 +140,18 @@ export function comparable(field: CompanyField, value: CompanyValue | undefined)
 export function decideCompanyUpdate(input: {
   /** The stored company with this CIF, or null when the CIF is new. */
   current: CurrentCompany | null;
-  /** What the scoring brings (companyValuesFromFinancials). */
-  incoming: CompanyValues & { cif: string; name: string; country: string };
+  /** What the scoring (companyValuesFromFinancials) or the operation (operationCompanyFields) brings. */
+  incoming: IncomingCompany;
   actorRole: Role;
-  /** The Informa report behind the data; null for a scoring typed by hand. */
+  /** Where the data comes from; null for a scoring typed by hand (no Informa report). */
   source: ChangeSource | null;
 }): CompanyUpdateDecision {
   const { current, incoming, actorRole, source } = input;
-  if (!current) return { kind: "create", values: incoming };
+  if (!current) {
+    const name = asText(incoming.name);
+    if (!incoming.cif || !name) throw new Error("A new company needs its CIF and name");
+    return { kind: "create", values: { ...incoming, cif: incoming.cif, name, country: incoming.country || "ES" } };
+  }
   if (!source) return { kind: "update", companyId: current.id, apply: {}, changes: [] };
 
   const staff = can(actorRole, "companyMaster.update");
@@ -163,3 +171,14 @@ export function decideCompanyUpdate(input: {
   }
   return { kind: "update", companyId: current.id, apply, changes };
 }
+
+/** One change as the forms show it before saving (staff only). */
+export interface ChangePreview {
+  field: CompanyField;
+  kind: "change" | "fill";
+  from: string | null;
+  to: string;
+}
+
+export const changePreviews = (changes: readonly CompanyChange[]): ChangePreview[] =>
+  changes.map((c) => ({ field: c.field, kind: c.kind, from: c.oldValue, to: c.newValue }));

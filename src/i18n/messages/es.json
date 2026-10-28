@@ -975,6 +975,12 @@
       "save": "Guardar",
       "cancel": "Cancelar",
       "create": "Crear: {label}"
+    },
+    "companyChanges": {
+      "title": "Cambios en la ficha del cliente",
+      "intro": "La identificación de esta operación difiere de la ficha del cliente. Al guardar se aplicará a la ficha y quedará en el historial:",
+      "change": "{field}: {from} → {to}",
+      "fill": "{field}: se completa con {to}"
     }
   },
   "errors": {
@@ -1345,11 +1351,12 @@
     },
     "sources": {
       "informa_pdf": "PDF de Informa",
-      "informa_api": "API de Informa"
+      "informa_api": "API de Informa",
+      "operation": "Nueva operación"
     },
     "review": {
       "title": "Cambios de clientes pendientes de revisión",
-      "subtitle": "{count, plural, =0 {Ningún cambio pendiente} one {# cambio pendiente} other {# cambios pendientes}} · Informa trae datos distintos de la ficha del cliente en scorings de partners. Aprobar aplica el valor a la ficha; rechazar lo descarta. Ambos quedan en el historial.",
+      "subtitle": "{count, plural, =0 {Ningún cambio pendiente} one {# cambio pendiente} other {# cambios pendientes}} · Scorings y operaciones de partners traen datos distintos de la ficha del cliente. Aprobar aplica el valor a la ficha; rechazar lo descarta. Ambos quedan en el historial.",
       "empty": "No hay cambios pendientes.",
       "emptyValue": "(vacío)",
       "client": "Cliente",

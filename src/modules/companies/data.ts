@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/supabase/server";
-import type { CompanyField, CompanyValue, CurrentCompany } from "./domain/update-policy";
+import type { ChangeSource, CompanyField, CompanyValue, CurrentCompany } from "./domain/update-policy";
 
 // Literal selects (the generated types parse them); the columns are COMPANY_FIELDS (guarded by a test).
 const POLICY_COLUMNS =
@@ -13,6 +13,13 @@ export async function getCompanyByCif(cif: string): Promise<CurrentCompany | nul
   return data;
 }
 
+/** The stored company by id, with the columns the update policy reads; null when it does not exist. */
+export async function getCompanyById(id: string): Promise<CurrentCompany | null> {
+  const { data, error } = await db().from("companies").select(POLICY_COLUMNS).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export interface PendingCompanyChange {
   id: string;
   field: CompanyField;
@@ -20,10 +27,12 @@ export interface PendingCompanyChange {
   newValue: string;
   /** The company's value today (it may differ from oldValue if it changed since). */
   currentValue: string | null;
-  source: string;
+  source: ChangeSource;
   createdAt: string;
   createdBy: string | null;
   scoringId: string | null;
+  /** operation: the contract whose creation or edit brought it. */
+  contractId: string | null;
   company: { id: string; cif: string; name: string } | null;
 }
 
@@ -32,7 +41,7 @@ export async function listPendingCompanyChanges(): Promise<PendingCompanyChange[
   const { data, error } = await db()
     .from("company_changes")
     .select(
-      "id, field, old_value, new_value, source, created_at, created_by, scoring_id, company:companies ( id, cif, name, address, fiscal_postal_code, fiscal_city, fiscal_province, admin_name, admin_nif, cnae, sector, constitution_date, phone, email, web, employees )",
+      "id, field, old_value, new_value, source, created_at, created_by, scoring_id, contract_id, company:companies ( id, cif, name, address, fiscal_postal_code, fiscal_city, fiscal_province, admin_name, admin_nif, cnae, sector, constitution_date, phone, email, web, employees )",
     )
     .eq("status", "pending")
     .order("created_at", { ascending: true })
@@ -47,10 +56,11 @@ export async function listPendingCompanyChanges(): Promise<PendingCompanyChange[
       oldValue: row.old_value,
       newValue: row.new_value,
       currentValue: current === null || current === undefined ? null : String(current),
-      source: row.source,
+      source: row.source as ChangeSource,
       createdAt: row.created_at,
       createdBy: row.created_by,
       scoringId: row.scoring_id,
+      contractId: row.contract_id,
       company: row.company ? { id: row.company.id, cif: row.company.cif, name: row.company.name } : null,
     };
   });
