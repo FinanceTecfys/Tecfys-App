@@ -5,9 +5,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Translate } from "@/i18n/message";
 import { fieldErrorsOf, getTranslate } from "@/i18n/server";
+import { can } from "@/lib/auth/permissions";
 import { dataScopeFor } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
+import { getCompanyByCif } from "@/modules/companies/data";
+import { RECORD_SCORING_RPC, recordedScoringOf, recordScoringArgs } from "@/modules/companies/domain/record-scoring";
+import { type ChangeSource, type CompanyField, companyValuesFromFinancials, decideCompanyUpdate } from "@/modules/companies/domain/update-policy";
 import type { Json } from "@/lib/supabase/database.types";
 import { getActiveCriteria, getInformaReport } from "./data";
 import { scoreCompany } from "./domain/engine";
@@ -188,6 +192,12 @@ export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Reco
  * by whoever ran it. The Informa report it links must be inside the user's
  * scope: a partner only links a report it fetched or uploaded itself, and one
  * outside its scope reads as not found - checked before anything is written.
+ *
+ * The scoring is a new, immutable snapshot. The company master record is NOT
+ * overwritten: the update policy (companies/domain/update-policy.ts) decides
+ * which fields change - applied with history for Tecfys staff, pending review
+ * for a partner, fill-only for contact data - and record_scoring writes the
+ * scoring, the company and its change rows in one transaction.
  */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
   const user = await requireRole("scoring.run");
@@ -209,66 +219,80 @@ export async function createScoring(input: { financials: Financials; informaRepo
   const criteria = await getActiveCriteria();
   const result = scoreCompany(f, criteria.config);
 
-  const { data: company, error: companyError } = await db()
-    .from("companies")
-    .upsert(
-      {
-        cif: f.cif,
-        name: f.name,
-        country: f.country,
-        sector: f.sector,
-        cnae: f.cnae,
-        address: f.address,
-        fiscal_postal_code: f.fiscalPostalCode,
-        fiscal_city: f.fiscalCity,
-        fiscal_province: f.fiscalProvince,
-        phone: f.phone,
-        email: f.email,
-        web: f.web,
-        constitution_date: toIsoDate(f.constitutionDate),
-        employees: f.employees,
-        admin_name: f.adminName,
-        admin_nif: f.adminNif?.toUpperCase() ?? null,
-      },
-      { onConflict: "cif" },
-    )
-    .select("id")
-    .single();
-  if (companyError) return { ok: false, error: companyError.message };
-
-  if (reportId) await db().from("informa_reports").update({ company_id: company.id }).eq("id", reportId);
+  const source = changeSourceOf(provenance?.source ?? null);
+  const decision = decideCompanyUpdate({
+    current: await getCompanyByCif(f.cif),
+    incoming: companyValuesFromFinancials(f),
+    actorRole: user.role,
+    source,
+  });
 
   const status = result.decision === "reject" ? "rejected" : result.decision === "manual" ? "pending_review" : "approved";
-  const { data: scoring, error } = await db()
-    .from("scorings")
-    .insert({
-      company_id: company.id,
-      informa_report_id: reportId,
-      report_source: provenance?.source ?? null,
-      report_date: provenance?.reportDate ?? null,
-      report_file_name: provenance?.fileName ?? null,
-      report_file_sha256: provenance?.fileSha256 ?? null,
-      report_fetched_at: provenance?.fetchedAt ?? null,
-      criteria_id: criteria.id,
-      criteria_snapshot: criteria.config as unknown as Json,
-      financials: f as unknown as Json,
-      ratios: result.ratios as unknown as Json,
-      breakdown: result.breakdown as unknown as Json,
-      total_score: round(result.totalScore, 3),
-      rating: result.rating,
-      decision: result.decision,
-      prudence: result.prudence,
-      adjusted_ebitda: result.adjustedEbitda,
-      credit_opinion: round(result.creditOpinion, 2),
-      status,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  const scoringRow = {
+    informa_report_id: reportId,
+    report_source: provenance?.source ?? null,
+    report_date: provenance?.reportDate ?? null,
+    report_file_name: provenance?.fileName ?? null,
+    report_file_sha256: provenance?.fileSha256 ?? null,
+    report_fetched_at: provenance?.fetchedAt ?? null,
+    criteria_id: criteria.id,
+    criteria_snapshot: criteria.config as unknown as Json,
+    financials: f as unknown as Json,
+    ratios: result.ratios as unknown as Json,
+    breakdown: result.breakdown as unknown as Json,
+    total_score: round(result.totalScore, 3),
+    rating: result.rating,
+    decision: result.decision,
+    prudence: result.prudence,
+    adjusted_ebitda: result.adjustedEbitda,
+    credit_opinion: round(result.creditOpinion, 2),
+    status,
+    created_by: user.id,
+  };
+  const { data, error } = await db().rpc(RECORD_SCORING_RPC, recordScoringArgs({ decision, source, scoring: scoringRow, reportId }));
   if (error) return { ok: false, error: error.message };
+  const recorded = recordedScoringOf(data);
+  if (!recorded) return { ok: false, error: translate("scoring.errors.notSaved") };
 
   revalidatePath("/scoring");
-  redirect(`/scoring/${scoring.id}`);
+  redirect(`/scoring/${recorded.scoringId}`);
+}
+
+const changeSourceOf = (source: "pdf" | "api" | null): ChangeSource | null =>
+  source === "pdf" ? "informa_pdf" : source === "api" ? "informa_api" : null;
+
+export interface CompanyChangePreview {
+  field: CompanyField;
+  kind: "change" | "fill";
+  from: string | null;
+  to: string;
+}
+
+export type PreviewCompanyChangesResult = { ok: true; newCompany: boolean; changes: CompanyChangePreview[] } | { ok: false };
+
+/**
+ * Wizard, before saving: what the scoring will change in the company master.
+ * Tecfys staff only - a partner gets nothing back, never the existing master
+ * data of a client it may not own (its differences become pending silently).
+ * Informative: createScoring decides again, from the data actually saved.
+ */
+export async function previewCompanyChanges(input: { financials: Financials; informaReportId?: string | null }): Promise<PreviewCompanyChangesResult> {
+  const user = await requireRole("scoring.run");
+  if (!can(user.role, "companyMaster.update")) return { ok: true, newCompany: false, changes: [] };
+  const parsed = financialsSchema.safeParse(input.financials);
+  if (!parsed.success) return { ok: false };
+  const f = { ...parsed.data, cif: parsed.data.cif.replace(/[\s.-]/g, "").toUpperCase() };
+  const id = input.informaReportId ? z.uuid().safeParse(input.informaReportId) : null;
+  const report = id?.success ? await getInformaReport(id.data, dataScopeFor(user)) : null;
+  const provenance = report ? receiptProvenance(report) : null;
+  const decision = decideCompanyUpdate({
+    current: await getCompanyByCif(f.cif),
+    incoming: companyValuesFromFinancials(f),
+    actorRole: user.role,
+    source: changeSourceOf(provenance?.source ?? null),
+  });
+  if (decision.kind === "create") return { ok: true, newCompany: true, changes: [] };
+  return { ok: true, newCompany: false, changes: decision.changes.map((c) => ({ field: c.field, kind: c.kind, from: c.oldValue, to: c.newValue })) };
 }
 
 const reviewSchema = z.object({
@@ -293,11 +317,3 @@ export async function reviewScoring(_prev: { error?: string } | null, formData: 
 }
 
 const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
-
-/** "dd/mm/yyyy" (Informa) or ISO -> ISO date. */
-function toIsoDate(value: string | null): string | null {
-  if (!value) return null;
-  const dmy = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
-  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
-}

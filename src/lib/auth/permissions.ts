@@ -60,6 +60,13 @@ const MATRIX = {
   "users.manage": ADMINS,
   /** Create or modify an admin. */
   "admins.manage": OWNER_ONLY,
+  /**
+   * A scoring by this role may change the company master record (with history).
+   * A partner's scoring never does: its differences wait for review.
+   */
+  "companyMaster.update": TECFYS,
+  /** Review the pending company changes (from partner scorings): approve or reject each one. */
+  "companyChanges.review": ADMINS,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof MATRIX;

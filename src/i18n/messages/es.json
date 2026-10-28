@@ -116,6 +116,7 @@
       "assets": "Tipos de activo",
       "scoring": "Modelo de scoring",
       "apis": "APIs",
+      "companyChanges": "Cambios de clientes",
       "preferences": "Preferencias"
     },
     "users": {
@@ -322,7 +323,23 @@
       "netResult": "Resultado neto",
       "equity": "Patrimonio neto",
       "totalLiabilities": "Pasivo total",
-      "backToList": "← Volver al listado"
+      "backToList": "← Volver al listado",
+      "history": {
+        "title": "Historial de scorings del cliente",
+        "subtitle": "Del más reciente al más antiguo, por fecha del informe",
+        "currentRating": "Rating actual del cliente",
+        "currentHint": "El del scoring más reciente",
+        "date": "Fecha",
+        "rating": "Rating",
+        "score": "Puntuación",
+        "status": "Estado",
+        "source": "Origen",
+        "sourcePdf": "PDF de Informa",
+        "sourceApi": "API de Informa",
+        "sourceManual": "Manual",
+        "thisOne": "este scoring",
+        "current": "actual"
+      }
     },
     "review": {
       "note": "Motivo de la decisión",
@@ -382,7 +399,14 @@
       "creditOpinion": "Opinión de crédito",
       "previewFailed": "{error}. El scoring se recalcula al guardar.",
       "save": "Guardar scoring",
-      "saving": "Guardando…"
+      "saving": "Guardando…",
+      "companyChanges": {
+        "title": "Cambios en la ficha del cliente",
+        "intro": "Informa trae datos distintos de la ficha actual. Al guardar el scoring se aplicarán y quedarán en el historial:",
+        "change": "{field}: {from} → {to}",
+        "fill": "{field}: se completa con {to}",
+        "newCompany": "Cliente nuevo: al guardar se creará su ficha con estos datos."
+      }
     },
     "fieldGroups": {
       "pnl": "Cuenta de resultados",
@@ -482,7 +506,8 @@
       "pdfNotInforma": "El PDF no parece un informe de Informa: no se encontró CIF, razón social ni ventas",
       "invalidFinancials": "Hay datos financieros no válidos",
       "previewFailed": "No se pudo calcular la vista previa",
-      "reportNotFound": "Informe de Informa no encontrado"
+      "reportNotFound": "Informe de Informa no encontrado",
+      "notSaved": "No se pudo guardar el scoring"
     }
   },
   "validation": {
@@ -1299,6 +1324,48 @@
       "resent": "Invitación reenviada. El rol que ya tenía asignado no cambia.",
       "sentTo": "Invitación enviada a {email}.",
       "deleted": "Usuario {email} eliminado."
+    }
+  },
+  "companies": {
+    "fields": {
+      "name": "Razón social",
+      "address": "Domicilio fiscal",
+      "fiscal_postal_code": "Código postal fiscal",
+      "fiscal_city": "Población fiscal",
+      "fiscal_province": "Provincia fiscal",
+      "admin_name": "Administrador",
+      "admin_nif": "NIF del administrador",
+      "cnae": "CNAE",
+      "sector": "Sector",
+      "constitution_date": "Fecha de constitución",
+      "phone": "Teléfono",
+      "email": "Email",
+      "web": "Web",
+      "employees": "Empleados"
+    },
+    "sources": {
+      "informa_pdf": "PDF de Informa",
+      "informa_api": "API de Informa"
+    },
+    "review": {
+      "title": "Cambios de clientes pendientes de revisión",
+      "subtitle": "{count, plural, =0 {Ningún cambio pendiente} one {# cambio pendiente} other {# cambios pendientes}} · Informa trae datos distintos de la ficha del cliente en scorings de partners. Aprobar aplica el valor a la ficha; rechazar lo descarta. Ambos quedan en el historial.",
+      "empty": "No hay cambios pendientes.",
+      "emptyValue": "(vacío)",
+      "client": "Cliente",
+      "field": "Campo",
+      "current": "Valor en la ficha",
+      "proposed": "Valor de Informa",
+      "source": "Origen",
+      "date": "Fecha",
+      "decision": "Decisión",
+      "approve": "Aprobar",
+      "reject": "Rechazar",
+      "errors": {
+        "notFound": "Cambio no encontrado",
+        "alreadyDecided": "Este cambio ya se había decidido",
+        "failed": "No se pudo registrar la decisión"
+      }
     }
   }
 }

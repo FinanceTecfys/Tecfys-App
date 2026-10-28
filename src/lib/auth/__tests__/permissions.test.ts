@@ -24,6 +24,8 @@ const EXPECTED: Record<Capability, [boolean, boolean, boolean, boolean]> = {
   "records.viewAll": [true, true, true, false],
   "users.manage": [true, true, false, false],
   "admins.manage": [true, false, false, false],
+  "companyMaster.update": [true, true, true, false],
+  "companyChanges.review": [true, true, false, false],
 };
 
 describe("can (role x capability)", () => {

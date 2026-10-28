@@ -6,6 +6,7 @@ import { DEFAULT_CRITERIA, type ScoringCriteria } from "./domain/criteria";
 import type { RatioKey } from "./domain/criteria";
 import type { RatioResult } from "./domain/engine";
 import type { Financials } from "./domain/financials";
+import { orderScoringHistory, type ScoringHistoryEntry } from "./domain/history";
 
 export async function getActiveCriteria(): Promise<{ id: string | null; version: number; config: ScoringCriteria }> {
   const { data, error } = await db().from("scoring_criteria").select("id, version, config").eq("is_active", true).maybeSingle();
@@ -46,6 +47,38 @@ export async function getScoring(id: string, scope: DataScope) {
     financials: data.financials as unknown as Financials,
     breakdown: data.breakdown as unknown as Record<RatioKey, RatioResult>,
   };
+}
+
+export type CompanyScoring = ScoringHistoryEntry & {
+  rating: Database["public"]["Enums"]["credit_rating"];
+  status: Database["public"]["Enums"]["scoring_status"];
+};
+
+/**
+ * A company's scorings inside the caller's scope (a partner only gets the ones
+ * it created), most recent first (domain/history.ts). Read-only.
+ */
+export async function getCompanyScoringHistory(companyId: string, scope: DataScope): Promise<CompanyScoring[]> {
+  let q = db()
+    .from("scorings")
+    .select("id, rating, status, total_score, report_source, report_date, created_at")
+    .eq("company_id", companyId)
+    .limit(200);
+  const createdBy = createdByFilter(scope);
+  if (createdBy) q = q.eq("created_by", createdBy);
+  const { data, error } = await q;
+  if (error) throw error;
+  return orderScoringHistory(
+    data.map((s) => ({
+      id: s.id,
+      rating: s.rating,
+      status: s.status,
+      totalScore: Number(s.total_score),
+      reportSource: s.report_source === "pdf" || s.report_source === "api" ? s.report_source : null,
+      reportDate: s.report_date,
+      createdAt: s.created_at,
+    })),
+  );
 }
 
 /**

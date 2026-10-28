@@ -8,6 +8,8 @@ import { can } from "@/lib/auth/permissions";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { requireRole, type SessionUser } from "@/lib/supabase/auth";
 import { ActiveToggle, NewAssetTypeForm, NewDistributorForm } from "@/modules/catalog/components/catalog-forms";
+import { CompanyChangesPanel } from "@/modules/companies/components/company-changes-panel";
+import { listPendingCompanyChanges } from "@/modules/companies/data";
 import { listAssetTypes, listContractTypes, listDistributors } from "@/modules/catalog/data";
 import { HoldedSettingsForm } from "@/modules/erp/components/holded-settings-form";
 import { getErpSettings } from "@/modules/erp/data";
@@ -50,6 +52,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       {tab === "assets" && <AssetTypesTab />}
       {tab === "scoring" && <ScoringModelTab />}
       {tab === "apis" && <ApisTab />}
+      {tab === "companyChanges" && <CompanyChangesTab />}
       {tab === "preferences" && <PreferencesTab user={user} />}
     </>
   );
@@ -63,6 +66,17 @@ async function UsersTab({ user }: { user: SessionUser }) {
   return (
     <Card title={t("title")} subtitle={t("subtitle", { count: users.length })}>
       <UsersPanel actor={{ id: user.id, role: user.role }} users={users} distributors={distributors.map((d) => ({ id: d.id, name: d.name }))} />
+    </Card>
+  );
+}
+
+/** Pending company master changes from partner scorings (companyChanges.review: owner / admin, gated by the tab). */
+async function CompanyChangesTab() {
+  const t = await getTranslations("companies.review");
+  const changes = await listPendingCompanyChanges();
+  return (
+    <Card title={t("title")} subtitle={t("subtitle", { count: changes.length })}>
+      <CompanyChangesPanel changes={changes} />
     </Card>
   );
 }

@@ -22,6 +22,7 @@ export const SETTINGS_TABS = [
   { key: "assets", capability: "settings.access" },
   { key: "scoring", capability: "settings.access" },
   { key: "apis", capability: "settings.access" },
+  { key: "companyChanges", capability: "companyChanges.review" },
   { key: "preferences", capability: "preferences.manage" },
 ] as const satisfies readonly { key: string; capability: Capability }[];
 

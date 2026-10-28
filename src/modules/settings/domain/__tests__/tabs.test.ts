@@ -16,20 +16,21 @@ import {
 } from "../tabs";
 
 const ADMIN_TABS: SettingsTab[] = ["users", "distributors", "assets", "scoring", "apis"];
-const ALL_TABS: SettingsTab[] = [...ADMIN_TABS, "preferences"];
+const ALL_TABS: SettingsTab[] = [...ADMIN_TABS, "companyChanges", "preferences"];
 
 describe("settings tabs", () => {
-  it("are the five administration sections and then Preferencias, in order", () => {
+  it("are the five administration sections, the company-change review and then Preferencias, in order", () => {
     expect(SETTINGS_TABS.map((t) => t.key)).toEqual(ALL_TABS);
     expect(new Set(SETTINGS_TABS.map((t) => t.key)).size).toBe(SETTINGS_TABS.length);
     expect(SETTINGS_TABS.at(-1)).toEqual({ key: "preferences", capability: "preferences.manage" });
     for (const tab of ADMIN_TABS) expect(SETTINGS_TABS.find((t) => t.key === tab)?.capability, tab).toBe("settings.access");
+    expect(SETTINGS_TABS.find((t) => t.key === "companyChanges")?.capability).toBe("companyChanges.review");
   });
 
   it("every tab has a label in both languages, and the Spanish ones are unchanged", () => {
     expect(Object.keys(es.settings.tabs).sort()).toEqual([...ALL_TABS].sort());
     expect(Object.keys(en.settings.tabs).sort()).toEqual([...ALL_TABS].sort());
-    expect(ALL_TABS.map((t) => es.settings.tabs[t])).toEqual(["Usuarios y roles", "Distribuidores", "Tipos de activo", "Modelo de scoring", "APIs", "Preferencias"]);
+    expect(ALL_TABS.map((t) => es.settings.tabs[t])).toEqual(["Usuarios y roles", "Distribuidores", "Tipos de activo", "Modelo de scoring", "APIs", "Cambios de clientes", "Preferencias"]);
     expect(en.settings.tabs.preferences).toBe("Preferences");
   });
 

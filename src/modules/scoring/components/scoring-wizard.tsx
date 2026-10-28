@@ -10,7 +10,7 @@ import { Field, SelectField } from "@/components/ui/field";
 import { useTranslate } from "@/i18n/client";
 import { type AppMessage, render } from "@/i18n/message";
 import { fmtEur, fmtNum } from "@/lib/format";
-import { createScoring, fetchInformaReport, parseInformaPdf, previewScoring } from "../actions";
+import { type CompanyChangePreview, createScoring, fetchInformaReport, parseInformaPdf, previewCompanyChanges, previewScoring } from "../actions";
 import { EMPTY_FINANCIALS, FINANCIAL_FIELDS, type Financials } from "../domain/financials";
 import type { InformaCompanyStatus, InformaRisk } from "../informa/map-informa-report";
 import { MAX_PDF_BYTES, MAX_PDF_MB } from "../informa/pdf-limits";
@@ -66,6 +66,12 @@ export function ScoringWizard({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeq = useRef(0);
+  /** The report behind the data, read by the debounced preview (state would be one render late there). */
+  const reportIdRef = useRef<string | null>(null);
+  /** Staff only: what saving will change in the company master (informative, not blocking). */
+  const [companyPreview, setCompanyPreview] = useState<{ newCompany: boolean; changes: CompanyChangePreview[] } | null>(null);
+  const tChanges = useTranslations("scoring.wizard.companyChanges");
+  const tCompanyFields = useTranslations("companies.fields");
 
   useEffect(() => () => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
@@ -89,6 +95,12 @@ export function ScoringWizard({
       setStale(false);
       if (res.ok) setResult(res.preview);
       setPreviewError(res.ok ? null : res.error);
+
+      // Only for data from an Informa report; a partner always gets an empty answer.
+      const informaReportId = reportIdRef.current;
+      const changes = informaReportId ? await previewCompanyChanges({ financials: next, informaReportId }).catch(() => null) : null;
+      if (seq !== previewSeq.current) return;
+      setCompanyPreview(changes?.ok ? { newCompany: changes.newCompany, changes: changes.changes } : null);
     }, delay);
   }
 
@@ -107,6 +119,7 @@ export function ScoringWizard({
     startParsing(async () => {
       const res = await parseInformaPdf(formData);
       if (!res.ok) return setError(res.error);
+      reportIdRef.current = res.reportId;
       applyFinancials(res.financials, 0);
       setReportId(res.reportId);
       setMissing(res.missing);
@@ -121,6 +134,7 @@ export function ScoringWizard({
     startParsing(async () => {
       const res = await fetchInformaReport(cifQuery);
       if (!res.ok) return setError(res.error);
+      reportIdRef.current = res.reportId;
       applyFinancials(res.financials, 0);
       setReportId(res.reportId);
       setMissing(res.missing);
@@ -215,6 +229,26 @@ export function ScoringWizard({
             <ul className="list-disc space-y-0.5 pl-4">
               {informa.warnings.map((w) => <li key={`${w.key}:${JSON.stringify(w.values ?? {})}`}>{render(translate, w)}</li>)}
             </ul>
+          </Alert>
+        )}
+        {companyPreview && (companyPreview.newCompany || companyPreview.changes.length > 0) && (
+          <Alert tone="info" title={tChanges("title")}>
+            {companyPreview.newCompany ? (
+              tChanges("newCompany")
+            ) : (
+              <>
+                <p className="mb-1">{tChanges("intro")}</p>
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {companyPreview.changes.map((c) => (
+                    <li key={c.field}>
+                      {c.kind === "fill"
+                        ? tChanges("fill", { field: tCompanyFields(c.field), to: c.to })
+                        : tChanges("change", { field: tCompanyFields(c.field), from: c.from ?? "", to: c.to })}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </Alert>
         )}
         {missing.length > 0 && (

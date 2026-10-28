@@ -42,6 +42,7 @@ describe("server-side enforcement is wired everywhere", () => {
     expect(actionFiles.map(rel).sort()).toEqual([
       "modules/auth/actions.ts",
       "modules/catalog/actions.ts",
+      "modules/companies/actions.ts",
       "modules/contracts/actions.ts",
       "modules/erp/actions.ts",
       "modules/scoring/actions.ts",
