@@ -502,13 +502,24 @@ describe("company master: history, never a silent overwrite", () => {
     ]);
   });
 
-  it("a partner scoring never writes the company of an existing CIF: its differences wait as pending", async () => {
+  it("a partner scoring never overwrites the company of an existing CIF: its differences wait as pending", async () => {
     state.user = PARTNER;
     expect((await newReport()).redirected).toMatch(/^\/scoring\//);
+    // The report's other phone is contact data from Informa (ignored); the new name waits for review.
     expect(companyWrites()).toEqual([]);
     expect(state.tables.companies[0]).toEqual(MASTER);
     expect(writesTo("company_changes").map((w) => [w.values.field, w.values.status])).toEqual([["name", "pending"]]);
     expect(storedScoring()).toMatchObject({ company_id: COMPANY_ID, created_by: PARTNER.id });
+  });
+
+  it("a partner scoring fills an empty master field: applied and recorded, nothing else written", async () => {
+    state.user = PARTNER;
+    await save({ financials: company({ adminName: "LUIS PEREZ" }), informaReportId: OWN_REPORT });
+    expect(companyWrites()).toEqual([{ table: "companies", op: "update", values: { admin_name: "LUIS PEREZ" }, rpc: "record_scoring" }]);
+    expect(state.tables.companies[0]).toEqual({ ...MASTER, admin_name: "LUIS PEREZ" });
+    expect(writesTo("company_changes").map((w) => w.values)).toEqual([
+      expect.objectContaining({ field: "admin_name", old_value: null, new_value: "LUIS PEREZ", status: "applied" }),
+    ]);
   });
 
   it("existing scorings are never modified, and a contract keeps its origination scoring", async () => {

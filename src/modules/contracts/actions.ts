@@ -277,7 +277,8 @@ export async function updateContractCancellation(input: CancellationInput): Prom
 /**
  * The company side of an operation: what was typed, through the same update
  * policy as a scoring (source "operation"). Staff: real differences applied and
- * recorded; partner: nothing applied, differences pending review. Null when the
+ * recorded; partner: existing values never overwritten, differences pending
+ * review; anyone fills an empty field (applied). Null when the
  * company does not exist.
  */
 async function operationCompanyWrite(companyId: string, v: OperationCompanyInput, role: Role): Promise<CompanyWrite | null> {

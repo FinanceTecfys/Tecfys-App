@@ -288,26 +288,27 @@ describe("updateDraftContract writes everything in one database call", () => {
 describe("the company master goes through the update policy", () => {
   const typed = { fiscalAddress: "Avenida Diagonal 1", signatoryNif: "87654321X" };
 
-  it("a partner's draft never touches the company: the differences go pending, the contract keeps what was typed", async () => {
+  it("a partner's draft never overwrites the company: differences go pending, only the empty email is filled", async () => {
     state.user = PARTNER;
     await run(() => createContract(input(typed)));
     const { args } = state.rpcCalls[0];
-    expect(args.p_company).toEqual({});
+    expect(args.p_company).toEqual({ email: "ana@alfa.example" });
     expect(args.p_changes).toEqual([
       { field: "address", old_value: "Calle Vieja 9", new_value: "Avenida Diagonal 1", status: "pending" },
       { field: "admin_nif", old_value: "12345678Z", new_value: "87654321X", status: "pending" },
-      { field: "email", old_value: null, new_value: "ana@alfa.example", status: "pending" },
+      { field: "email", old_value: null, new_value: "ana@alfa.example", status: "applied" },
     ]);
     expect(args.p_contract).toMatchObject({ fiscal_address: "Avenida Diagonal 1", signatory_nif: "87654321X" });
     expect(state.tableWrites).toEqual([]);
   });
 
-  it("a partner editing its draft: the same - pending, never applied", async () => {
+  it("a partner editing its draft: the same - existing values pending, never overwritten", async () => {
     state.user = PARTNER;
+    state.tables.companies[0].email = "info@alfa.example"; // nothing empty to fill this time
     await run(() => updateDraftContract(CONTRACT_ID, input(typed)));
     const { args } = state.rpcCalls[0];
     expect(args.p_company).toEqual({});
-    expect((args.p_changes as Row[]).every((c) => c.status === "pending")).toBe(true);
+    expect((args.p_changes as Row[]).map((c) => [c.field, c.status])).toEqual([["address", "pending"], ["admin_nif", "pending"], ["email", "pending"]]);
     expect(args.p_actor).toBe(PARTNER.id);
     expect(args.p_contract).toMatchObject({ fiscal_address: "Avenida Diagonal 1" });
   });
@@ -321,10 +322,17 @@ describe("the company master goes through the update policy", () => {
     expect((args.p_changes as Row[]).map((c) => [c.field, c.status])).toEqual([["address", "applied"], ["admin_nif", "applied"], ["email", "applied"]]);
   });
 
-  it("the master's contact data is never overwritten by an operation, only filled", async () => {
+  it("an operation changes the master's existing phone: applied for staff, pending for a partner", async () => {
     state.user = SALES;
     await run(() => createContract(input({ contactPhone: "699 999 999" })));
+    expect(state.rpcCalls[0].args.p_company).toMatchObject({ phone: "699 999 999" });
+    expect(state.rpcCalls[0].args.p_changes).toContainEqual({ field: "phone", old_value: "600000000", new_value: "699 999 999", status: "applied" });
+
+    state.user = PARTNER;
+    state.rpcCalls = [];
+    await run(() => createContract(input({ contactPhone: "699 999 999" })));
     expect(state.rpcCalls[0].args.p_company).not.toHaveProperty("phone");
+    expect(state.rpcCalls[0].args.p_changes).toContainEqual({ field: "phone", old_value: "600000000", new_value: "699 999 999", status: "pending" });
   });
 
   it("previewOperationCompanyChanges: staff see what saving will change; a partner sees nothing; nothing is written", async () => {

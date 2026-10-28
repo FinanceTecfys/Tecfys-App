@@ -196,7 +196,7 @@ export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Reco
  * The scoring is a new, immutable snapshot. The company master record is NOT
  * overwritten: the update policy (companies/domain/update-policy.ts) decides
  * which fields change - applied with history for Tecfys staff, pending review
- * for a partner, fill-only for contact data - and record_scoring writes the
+ * for a partner, empty fields filled by anyone - and record_scoring writes the
  * scoring, the company and its change rows in one transaction.
  */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {

@@ -205,7 +205,8 @@ export type OperationCompanyInput = Pick<Operation, (typeof OPERATION_COMPANY_KE
  * What the operation says about the company master (never its CIF, which
  * identifies it, nor its name). It is not written as is: it goes through the
  * company update policy (companies/domain/update-policy.ts) like a scoring's
- * data, so it only changes the master with history - and never for a partner.
+ * data: it fills empty fields for anyone and changes existing values with
+ * history for staff only (a partner's differences wait for review).
  */
 export function operationCompanyFields(v: OperationCompanyInput) {
   return {

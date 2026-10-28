@@ -14,27 +14,30 @@
  *    punctuation of legal forms, the format of a NIF / date / postal code), so a
  *    cosmetic difference is never a change.
  *  - A value is never replaced by an empty one.
- *  - Authoritative identity fields: a real difference is applied and recorded
- *    when the actor is Tecfys staff (companyMaster.update); for anyone else (a
- *    partner) it is NOT applied and is recorded as pending review.
- *  - Tecfys-maintained fields: filled only when empty, never overwritten
- *    (and, for a partner, the fill is pending too: a partner never writes).
+ *  - An EMPTY master field is filled by anyone - staff or partner, from any
+ *    source - and recorded as applied (kind "fill"): the flow stays automated.
+ *  - An existing value that really differs:
+ *      identity fields: applied with history for Tecfys staff
+ *        (companyMaster.update), pending review for anyone else (a partner);
+ *      contact fields: an Informa report never overwrites them (the Tecfys
+ *        value stays); an operation does - applied for staff, pending for a
+ *        partner.
  *  - Without a source (a scoring typed by hand, no Informa report) an existing
- *    company is left alone: there is nothing authoritative to compare with.
+ *    company is left alone: there is nothing to compare with.
  */
 import { can, type Role } from "@/lib/auth/permissions";
 import type { Financials } from "@/modules/scoring/domain/financials";
 
-/** Identity fields applied for staff and pending for a partner (Informa is their authority). */
-export const INFORMA_FIELDS = [
+/** Identity: a difference from any source is applied for staff, pending for a partner. */
+export const IDENTITY_FIELDS = [
   "name", "address", "fiscal_postal_code", "fiscal_city", "fiscal_province",
   "admin_name", "admin_nif", "cnae", "sector", "constitution_date", "employees",
 ] as const;
-/** Contact data Tecfys users maintain: fill-only, never overwritten. */
-export const FILL_ONLY_FIELDS = ["phone", "email", "web"] as const;
-export const COMPANY_FIELDS = [...INFORMA_FIELDS, ...FILL_ONLY_FIELDS] as const;
+/** Contact data Tecfys users maintain: Informa never overwrites it; an operation does (staff) or proposes it (partner). */
+export const CONTACT_FIELDS = ["phone", "email", "web"] as const;
+export const COMPANY_FIELDS = [...IDENTITY_FIELDS, ...CONTACT_FIELDS] as const;
 
-export type InformaField = (typeof INFORMA_FIELDS)[number];
+export type IdentityField = (typeof IDENTITY_FIELDS)[number];
 export type CompanyField = (typeof COMPANY_FIELDS)[number];
 export type CompanyValue = string | number | null;
 export type CompanyValues = Partial<Record<CompanyField, CompanyValue>>;
@@ -64,7 +67,7 @@ export type CompanyUpdateDecision =
   /** Existing company: write `apply` ({} = nothing) and record `changes`. */
   | { kind: "update"; companyId: string; apply: CompanyValues; changes: CompanyChange[] };
 
-const isInforma = (field: CompanyField): field is InformaField => (INFORMA_FIELDS as readonly string[]).includes(field);
+const isIdentity = (field: CompanyField): field is IdentityField => (IDENTITY_FIELDS as readonly string[]).includes(field);
 
 /** "dd/mm/yyyy" (Informa) or ISO -> ISO date; anything else null. */
 export function toIsoDate(value: string | null | undefined): string | null {
@@ -163,8 +166,10 @@ export function decideCompanyUpdate(input: {
     const now = comparable(field, current[field]);
     if (now === next) continue; // cosmetic or no difference
     const kind = now === null ? "fill" : "change";
-    if (kind === "change" && !isInforma(field)) continue; // Tecfys-maintained: fill-only
-    const status: ChangeStatus = staff ? "applied" : "pending";
+    // Contact data: an Informa report never overwrites what Tecfys holds; an operation may.
+    if (kind === "change" && !isIdentity(field) && source !== "operation") continue;
+    // An empty field is filled by anyone; a real difference needs staff, otherwise it waits for review.
+    const status: ChangeStatus = kind === "fill" || staff ? "applied" : "pending";
     const value = incoming[field] as CompanyValue;
     changes.push({ field, kind, oldValue: asText(current[field]), newValue: asText(value)!, status });
     if (status === "applied") apply[field] = typeof value === "string" ? asText(value) : value;

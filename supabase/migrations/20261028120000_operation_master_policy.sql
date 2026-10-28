@@ -14,7 +14,7 @@
 --    the company master the server action runs the same pure update policy as
 --    a scoring (src/modules/companies/domain/update-policy.ts) and sends:
 --      p_company  ONLY the columns the policy applies ({} = the master is not
---                 touched: always the case for a partner);
+--                 touched; a partner only ever fills empty fields);
 --      p_changes  the change rows: applied (staff) or pending (partner).
 --    Both functions are dropped and recreated with the extra parameters; the
 --    rest of their body is unchanged. Everything - contract, equipment line,
