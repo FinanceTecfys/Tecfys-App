@@ -13,7 +13,9 @@ const state = vi.hoisted(() => ({
   user: null as { id: string; role: string; partnerDistributorId: string | null } | null,
   capabilities: [] as string[],
   tables: {} as Record<string, Record<string, unknown>[]>,
-  writes: [] as { table: string; op: string; values: Record<string, unknown> }[],
+  /** Every write; `rpc` names the database function that made it (one call = one transaction). */
+  writes: [] as { table: string; op: string; values: Record<string, unknown>; rpc?: string }[],
+  rpcCalls: [] as { fn: string; args: Record<string, unknown> }[],
   /** Every Storage call any action makes: must stay empty (Informa reports are never stored). */
   storageCalls: [] as string[],
   seq: 0,
@@ -75,6 +77,38 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       return query;
     },
+    // record_scoring as the SQL function does it (migration 20261028000000), in one call.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      state.rpcCalls.push({ fn, args });
+      if (fn !== "record_scoring") return { data: null, error: { message: `unexpected rpc ${fn}` } };
+      const write = (table: string, op: string, values: Record<string, unknown>) => state.writes.push({ table, op, values, rpc: fn });
+      const companies = (state.tables.companies ??= []);
+      const company = args.p_company as Record<string, unknown>;
+      let companyId = args.p_company_id as string | undefined;
+      if (!companyId) {
+        const row = { id: `companies-${++state.seq}`, ...company };
+        companies.push(row);
+        write("companies", "insert", company);
+        companyId = row.id;
+      } else if (Object.keys(company).length > 0) {
+        Object.assign(companies.find((c) => c.id === companyId)!, company);
+        write("companies", "update", company);
+      }
+      const scoring = { id: `scorings-${++state.seq}`, company_id: companyId, ...(args.p_scoring as Record<string, unknown>) };
+      (state.tables.scorings ??= []).push(scoring);
+      write("scorings", "insert", { company_id: companyId, ...(args.p_scoring as Record<string, unknown>) });
+      for (const change of (args.p_changes as Record<string, unknown>[]) ?? []) {
+        const row = { id: `company_changes-${++state.seq}`, company_id: companyId, scoring_id: scoring.id, source: args.p_source, ...change };
+        (state.tables.company_changes ??= []).push(row);
+        write("company_changes", "insert", row);
+      }
+      if (args.p_report_id) {
+        const report = state.tables.informa_reports.find((r) => r.id === args.p_report_id);
+        if (report) report.company_id = companyId;
+        write("informa_reports", "update", { company_id: companyId });
+      }
+      return { data: { scoring_id: scoring.id, company_id: companyId }, error: null };
+    },
     storage: {
       from: (bucket: string) => {
         state.storageCalls.push(`from ${bucket}`);
@@ -110,7 +144,7 @@ vi.mock("@/modules/scoring/informa/map-informa-report", async (original) => {
 });
 
 import { createHash } from "node:crypto";
-import { createScoring, fetchInformaReport, parseInformaPdf, previewScoring } from "../actions";
+import { createScoring, fetchInformaReport, parseInformaPdf, previewCompanyChanges, previewScoring } from "../actions";
 import { DEFAULT_CRITERIA, type ScoringCriteria } from "../domain/criteria";
 import { EMPTY_FINANCIALS, type Financials } from "../domain/financials";
 
@@ -165,6 +199,7 @@ beforeEach(() => {
   state.user = OWNER;
   state.capabilities = [];
   state.writes = [];
+  state.rpcCalls = [];
   state.storageCalls = [];
   state.seq = 0;
   state.tables = {
@@ -432,5 +467,85 @@ describe("zero retention of Informa reports", () => {
       informa_report_id: null, report_source: null, report_date: null, report_file_name: null, report_file_sha256: null, report_fetched_at: null,
     });
     expect(state.storageCalls).toEqual([]);
+  });
+});
+
+describe("company master: history, never a silent overwrite", () => {
+  const COMPANY_ID = "company-alfa";
+  const MASTER = {
+    id: COMPANY_ID, cif: "B12345678", name: "Alfa SL", country: "ES", sector: "Information technology", cnae: null,
+    address: "CALLE VIEJA 1", fiscal_postal_code: null, fiscal_city: null, fiscal_province: null, phone: "911000000", email: null, web: null,
+    constitution_date: null, employees: null, admin_name: null, admin_nif: null,
+  };
+  const OLD_SCORING = { id: "scoring-old", company_id: COMPANY_ID, rating: "BB", total_score: 5.1, created_by: "user-sales", status: "approved" };
+  const SIGNED_CONTRACT = { id: "contract-1", company_id: COMPANY_ID, scoring_id: "scoring-old", workflow_status: "signed" };
+
+  beforeEach(() => {
+    state.tables.companies = [{ ...MASTER }];
+    state.tables.scorings = [{ ...OLD_SCORING }];
+    state.tables.contracts = [{ ...SIGNED_CONTRACT }];
+  });
+
+  /** A new report for the existing client: a new legal name and a phone (the master already has one). */
+  const newReport = () => save({ financials: company({ name: "ALFA NUEVA SL", phone: "922000000" }), informaReportId: OWN_REPORT });
+  const companyWrites = () => writesTo("companies");
+
+  it("a staff scoring applies the identity change and records it, all in ONE database call", async () => {
+    state.user = SALES;
+    expect((await newReport()).redirected).toMatch(/^\/scoring\//);
+    expect(state.rpcCalls.map((c) => c.fn)).toEqual(["record_scoring"]);
+    expect(state.writes.every((w) => w.rpc === "record_scoring")).toBe(true);
+    expect(companyWrites()).toEqual([{ table: "companies", op: "update", values: { name: "ALFA NUEVA SL" }, rpc: "record_scoring" }]);
+    expect(state.tables.companies[0]).toMatchObject({ name: "ALFA NUEVA SL", phone: "911000000", address: "CALLE VIEJA 1" });
+    expect(writesTo("company_changes").map((w) => w.values)).toEqual([
+      expect.objectContaining({ field: "name", old_value: "Alfa SL", new_value: "ALFA NUEVA SL", status: "applied", source: "informa_pdf", company_id: COMPANY_ID }),
+    ]);
+  });
+
+  it("a partner scoring never writes the company of an existing CIF: its differences wait as pending", async () => {
+    state.user = PARTNER;
+    expect((await newReport()).redirected).toMatch(/^\/scoring\//);
+    expect(companyWrites()).toEqual([]);
+    expect(state.tables.companies[0]).toEqual(MASTER);
+    expect(writesTo("company_changes").map((w) => [w.values.field, w.values.status])).toEqual([["name", "pending"]]);
+    expect(storedScoring()).toMatchObject({ company_id: COMPANY_ID, created_by: PARTNER.id });
+  });
+
+  it("existing scorings are never modified, and a contract keeps its origination scoring", async () => {
+    for (const user of [SALES, PARTNER]) {
+      state.user = user;
+      await newReport();
+    }
+    expect(state.tables.scorings[0]).toEqual(OLD_SCORING);
+    expect(writesTo("scorings").every((w) => w.op === "insert")).toBe(true);
+    expect(state.tables.contracts).toEqual([SIGNED_CONTRACT]);
+    expect(writesTo("contracts")).toEqual([]);
+  });
+
+  it("a scoring typed by hand (no Informa report) leaves an existing company alone", async () => {
+    state.user = OWNER;
+    await save({ financials: company({ name: "OTRO NOMBRE SL" }) });
+    expect(companyWrites()).toEqual([]);
+    expect(writesTo("company_changes")).toEqual([]);
+  });
+
+  it("a brand-new CIF still creates the company, for a partner too", async () => {
+    state.user = PARTNER;
+    state.tables.companies = [];
+    await save({ financials: company({ cif: "B87654321", name: "Beta SL" }), informaReportId: OWN_REPORT });
+    expect(companyWrites()).toEqual([expect.objectContaining({ op: "insert", values: expect.objectContaining({ cif: "B87654321", name: "Beta SL" }) })]);
+    expect(writesTo("company_changes")).toEqual([]);
+  });
+
+  it("previewCompanyChanges: staff see what will change; a partner sees nothing of the master; nothing is written", async () => {
+    const input = { financials: company({ name: "ALFA NUEVA SL" }), informaReportId: OWN_REPORT };
+    state.user = SALES;
+    expect(await previewCompanyChanges(input)).toEqual({ ok: true, newCompany: false, changes: [{ field: "name", kind: "change", from: "Alfa SL", to: "ALFA NUEVA SL" }] });
+    state.user = PARTNER;
+    expect(await previewCompanyChanges(input)).toEqual({ ok: true, newCompany: false, changes: [] });
+    state.user = SALES;
+    expect(await previewCompanyChanges({ ...input, financials: company({ cif: "B99999999" }) })).toEqual({ ok: true, newCompany: true, changes: [] });
+    expect(state.writes).toEqual([]);
+    expect(state.rpcCalls).toEqual([]);
   });
 });

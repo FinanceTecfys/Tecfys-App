@@ -24,16 +24,62 @@ export interface InformaParseResult {
   missing: (keyof Financials)[];
 }
 
+/**
+ * Remove the artefacts of the PDF layout from a company name: the page header's
+ * "Informa Comercial - " prefix, a leading dash, the "DENOMINACIÓN PRINCIPAL"
+ * label and runs of spaces. Informa's own punctuation ("SL.", "S.L.") is kept.
+ */
+export function cleanCompanyName(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let name = raw.replace(/\s+/g, " ").trim();
+  for (let previous = ""; previous !== name; ) {
+    previous = name;
+    name = name
+      .replace(/^Informa Comercial\b\s*/i, "")
+      .replace(/^Informa (?:Abreviado|[A-ZÁÉÍÓÚ][a-záéíóú]+)\s*[-–—]\s*/, "")
+      .replace(/^DENOMINACI[ÓO]N PRINCIPAL\b\s*/i, "")
+      .replace(/^[-–—:|·]+\s*/, "")
+      .trim();
+  }
+  return name || null;
+}
+
+/** Labels that follow the name where the PDF runs it into the next field. */
+const NAME_STOP = /\s+(?:DENOMINACI[ÓO]N|ANAGRAMA|MARCA|NOMBRE COMERCIAL|Existen|Denominaciones|Informa Comercial|Usuario:|NIF\b)/;
+
+/**
+ * The legal name of the company, in order of reliability:
+ *  1. the page header every page carries: "Informa Comercial - <NAME> Usuario: ..."
+ *     ("Informa Abreviado - ..." for the short product);
+ *  2. the identification block: "DENOMINACIÓN PRINCIPAL <NAME>" up to the next label;
+ *  3. the older layout: "Informa Comercial <NAME> NIF ...", or a line ending in SL / SA.
+ */
+export function parseCompanyName(text: string): string | null {
+  const principal = text.match(/DENOMINACI[ÓO]N PRINCIPAL\s+(.{1,200})/)?.[1];
+  const candidates = [
+    text.match(/Informa (?:Comercial|Abreviado|[A-ZÁÉÍÓÚ][a-záéíóú]+)\s+[-–—]\s+(.{1,200}?)\s+Usuario:/)?.[1],
+    principal?.split(NAME_STOP)[0],
+    text.match(/Informa Comercial\s+(?![-–—]|Resumen\b)([^\n]{1,120}?)\s+NIF\s+[A-Z]\d{8}/)?.[1],
+    text.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 .,&-]+(?:SL|S\.L|S\.A|SA))\.?/m)?.[1],
+  ];
+  for (const candidate of candidates) {
+    const name = cleanCompanyName(candidate);
+    if (name) return name;
+  }
+  return null;
+}
+
 export function parseInformaText(text: string, today = new Date()): InformaParseResult {
   const grab = (re: RegExp) => text.match(re)?.[1] ?? null;
 
-  const name =
-    grab(/Informa Comercial\s+([A-ZÁÉÍÓÚÑ0-9 ,.\-&]+SL\.?|[A-ZÁÉÍÓÚÑ0-9 ,.\-&]+S\.A\.?)/) ??
-    grab(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 .,&-]+(?:SL|S\.L|S\.A|SA))\.?/m);
+  const name = parseCompanyName(text);
   const cif = grab(/NIF\s+([A-Z][0-9]{8})/);
   const fiscal = parseFiscalAddress(text);
+  // "CNAE <version>" names the classification (2009, and 2025 in current reports), not the code: skip it.
   const cnae =
-    grab(/CNAE 2009\)\s+(\d{4})/) ?? grab(/CNAE 2009:\s+(\d{4})/) ?? grab(/ACTIVIDAD CNAE\s+(?:CNAE 2009:\s+)?(\d{4})/);
+    grab(/CNAE (?:19|20)\d{2}\)\s+(\d{4})/) ??
+    grab(/CNAE (?:19|20)\d{2}:\s+(\d{4})/) ??
+    grab(/ACTIVIDAD CNAE\s+(?:(?:CNAE\s+)?(?:19|20)\d{2}:?\s+)?(\d{4})/);
   const constitutionDate = grab(/FECHA DE CONSTITUCIÓN\s+(\d{2}\/\d{2}\/\d{4})/);
   const adminName = parseAdministrator(text);
 

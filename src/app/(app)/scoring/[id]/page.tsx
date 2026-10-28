@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
+import { Table, Td, Th } from "@/components/ui/table";
 import { can } from "@/lib/auth/permissions";
 import { dataScopeFor } from "@/lib/auth/scope";
 import { fmtDate, fmtEur, fmtNum } from "@/lib/format";
@@ -14,14 +15,21 @@ import { requireRole } from "@/lib/supabase/auth";
 import { DecisionBadge, RatingBadge, ScoringStatusBadge } from "@/modules/scoring/components/badges";
 import { ReviewForm } from "@/modules/scoring/components/review-form";
 import { ScoreBreakdown } from "@/modules/scoring/components/score-breakdown";
-import { getScoring } from "@/modules/scoring/data";
+import { getCompanyScoringHistory, getScoring } from "@/modules/scoring/data";
+import { currentScoring, effectiveDate } from "@/modules/scoring/domain/history";
 import { breakdownRows } from "@/modules/scoring/domain/preview";
 
 export default async function ScoringDetailPage({ params }: PageProps<"/scoring/[id]">) {
   const user = await requireRole("scoring.view");
   const { id } = await params;
-  const scoring = await getScoring(id, dataScopeFor(user));
+  const scope = dataScopeFor(user);
+  const scoring = await getScoring(id, scope);
   if (!scoring) notFound();
+  // Scoped like every list: a partner only sees its own scorings of this client.
+  const history = await getCompanyScoringHistory(scoring.company_id, scope);
+  // The client's current rating is a statement about ALL its scorings: Tecfys staff only.
+  const current = can(user.role, "records.viewAll") ? currentScoring(history) : null;
+  const tHistory = await getTranslations("scoring.detail.history");
   const f = scoring.financials;
   const t = await getTranslations("scoring.detail");
   // The weight and the per-rating score are the model: Tecfys staff see them, a partner never does.
@@ -66,9 +74,48 @@ export default async function ScoringDetailPage({ params }: PageProps<"/scoring/
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <Card title={t("breakdown")}>
-          <ScoreBreakdown rows={rows} />
-        </Card>
+        <div className="space-y-6">
+          <Card title={t("breakdown")}>
+            <ScoreBreakdown rows={rows} />
+          </Card>
+          <Card title={tHistory("title")} subtitle={tHistory("subtitle")}>
+            {current && (
+              <div className="mb-4 flex items-center gap-3 text-sm">
+                <span className="text-slate-400">{tHistory("currentRating")}</span>
+                <RatingBadge rating={current.rating} />
+                <span className="text-xs text-slate-500">{tHistory("currentHint")}</span>
+              </div>
+            )}
+            <Table>
+              <thead>
+                <tr>
+                  <Th>{tHistory("date")}</Th>
+                  <Th>{tHistory("rating")}</Th>
+                  <Th right>{tHistory("score")}</Th>
+                  <Th>{tHistory("status")}</Th>
+                  <Th>{tHistory("source")}</Th>
+                  <Th />
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id}>
+                    <Td mono>
+                      {h.id === scoring.id ? fmtDate(effectiveDate(h)) : <Link href={`/scoring/${h.id}`} className="hover:text-mint-400">{fmtDate(effectiveDate(h))}</Link>}
+                    </Td>
+                    <Td><RatingBadge rating={h.rating} /></Td>
+                    <Td right mono>{fmtNum(h.totalScore, 2)}</Td>
+                    <Td><ScoringStatusBadge status={h.status} /></Td>
+                    <Td className="text-slate-400">{h.reportSource === "pdf" ? tHistory("sourcePdf") : h.reportSource === "api" ? tHistory("sourceApi") : tHistory("sourceManual")}</Td>
+                    <Td className="text-xs text-slate-500">
+                      {[h.id === scoring.id && tHistory("thisOne"), current?.id === h.id && tHistory("current")].filter(Boolean).join(" · ")}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        </div>
         <div className="space-y-6">
           {scoring.status === "pending_review" &&
             (can(user.role, "scoring.review") ? (

@@ -12,7 +12,13 @@ import { DEFAULT_LOCALE, LOCALES } from "../config";
  * shipping half-translated.
  */
 const SRC = path.join(process.cwd(), "src");
-const read = (file: string) => readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+// Read each file once: several tests scan the whole of src/, and re-reading it under a full parallel run was slow enough to time out.
+const cache = new Map<string, string>();
+const read = (file: string) => {
+  let text = cache.get(file);
+  if (text === undefined) cache.set(file, (text = readFileSync(file, "utf8").replace(/\r\n/g, "\n")));
+  return text;
+};
 const rel = (file: string) => path.relative(SRC, file).replaceAll("\\", "/");
 const catalogue = (locale: string): unknown => JSON.parse(read(path.join(SRC, "i18n", "messages", `${locale}.json`)));
 

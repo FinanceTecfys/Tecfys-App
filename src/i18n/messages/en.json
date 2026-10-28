@@ -116,6 +116,7 @@
       "assets": "Asset types",
       "scoring": "Scoring model",
       "apis": "APIs",
+      "companyChanges": "Client changes",
       "preferences": "Preferences"
     },
     "users": {
@@ -322,7 +323,23 @@
       "netResult": "Net result",
       "equity": "Equity",
       "totalLiabilities": "Total liabilities",
-      "backToList": "← Back to the list"
+      "backToList": "← Back to the list",
+      "history": {
+        "title": "Client scoring history",
+        "subtitle": "Most recent first, by report date",
+        "currentRating": "Client's current rating",
+        "currentHint": "From the most recent scoring",
+        "date": "Date",
+        "rating": "Rating",
+        "score": "Score",
+        "status": "Status",
+        "source": "Source",
+        "sourcePdf": "Informa PDF",
+        "sourceApi": "Informa API",
+        "sourceManual": "Manual",
+        "thisOne": "this scoring",
+        "current": "current"
+      }
     },
     "review": {
       "note": "Reason for the decision",
@@ -382,7 +399,14 @@
       "creditOpinion": "Credit opinion",
       "previewFailed": "{error}. The scoring is recalculated on saving.",
       "save": "Save scoring",
-      "saving": "Saving…"
+      "saving": "Saving…",
+      "companyChanges": {
+        "title": "Changes to the client record",
+        "intro": "Informa brings data that differs from the current record. Saving the scoring applies them and keeps them in the history:",
+        "change": "{field}: {from} → {to}",
+        "fill": "{field}: filled with {to}",
+        "newCompany": "New client: saving creates its record with this data."
+      }
     },
     "fieldGroups": {
       "pnl": "Income statement",
@@ -482,7 +506,8 @@
       "pdfNotInforma": "The PDF does not look like an Informa report: no tax ID, company name or revenue was found",
       "invalidFinancials": "Some financial data is not valid",
       "previewFailed": "The preview could not be calculated",
-      "reportNotFound": "Informa report not found"
+      "reportNotFound": "Informa report not found",
+      "notSaved": "The scoring could not be saved"
     }
   },
   "validation": {
@@ -1299,6 +1324,48 @@
       "resent": "Invitation sent again. The role already assigned does not change.",
       "sentTo": "Invitation sent to {email}.",
       "deleted": "User {email} deleted."
+    }
+  },
+  "companies": {
+    "fields": {
+      "name": "Legal name",
+      "address": "Fiscal address",
+      "fiscal_postal_code": "Fiscal postal code",
+      "fiscal_city": "Fiscal city",
+      "fiscal_province": "Fiscal province",
+      "admin_name": "Administrator",
+      "admin_nif": "Administrator NIF",
+      "cnae": "CNAE",
+      "sector": "Sector",
+      "constitution_date": "Incorporation date",
+      "phone": "Phone",
+      "email": "Email",
+      "web": "Website",
+      "employees": "Employees"
+    },
+    "sources": {
+      "informa_pdf": "Informa PDF",
+      "informa_api": "Informa API"
+    },
+    "review": {
+      "title": "Client changes pending review",
+      "subtitle": "{count, plural, =0 {No pending changes} one {# pending change} other {# pending changes}} · Informa brought data that differs from the client record in partner scorings. Approving applies the value to the record; rejecting discards it. Both are kept in the history.",
+      "empty": "No pending changes.",
+      "emptyValue": "(empty)",
+      "client": "Client",
+      "field": "Field",
+      "current": "Value on record",
+      "proposed": "Informa value",
+      "source": "Source",
+      "date": "Date",
+      "decision": "Decision",
+      "approve": "Approve",
+      "reject": "Reject",
+      "errors": {
+        "notFound": "Change not found",
+        "alreadyDecided": "This change was already decided",
+        "failed": "The decision could not be recorded"
+      }
     }
   }
 }

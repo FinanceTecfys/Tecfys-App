@@ -124,6 +124,66 @@ export type Database = {
         }
         Relationships: []
       }
+      company_changes: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          decided_at: string | null
+          decided_by: string | null
+          field: string
+          id: string
+          new_value: string
+          old_value: string | null
+          scoring_id: string | null
+          source: string
+          status: Database["public"]["Enums"]["company_change_status"]
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          field: string
+          id?: string
+          new_value: string
+          old_value?: string | null
+          scoring_id?: string | null
+          source: string
+          status: Database["public"]["Enums"]["company_change_status"]
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          field?: string
+          id?: string
+          new_value?: string
+          old_value?: string | null
+          scoring_id?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["company_change_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_changes_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_changes_scoring_id_fkey"
+            columns: ["scoring_id"]
+            isOneToOne: false
+            referencedRelation: "scorings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_assets: {
         Row: {
           asset_type_id: string
@@ -967,6 +1027,21 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      decide_company_change: {
+        Args: { p_actor: string; p_approve: boolean; p_change_id: string }
+        Returns: string
+      }
+      record_scoring: {
+        Args: {
+          p_changes?: Json
+          p_company: Json
+          p_company_id?: string
+          p_report_id?: string
+          p_scoring: Json
+          p_source?: string
+        }
+        Returns: Json
+      }
       update_draft_contract: {
         Args: {
           p_asset: Json
@@ -979,6 +1054,7 @@ export type Database = {
       }
     }
     Enums: {
+      company_change_status: "applied" | "pending" | "rejected"
       contract_attachment_kind:
         | "id_document"
         | "bank_certificate"
@@ -1124,6 +1200,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      company_change_status: ["applied", "pending", "rejected"],
       contract_attachment_kind: [
         "id_document",
         "bank_certificate",
