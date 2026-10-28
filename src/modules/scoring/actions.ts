@@ -11,7 +11,7 @@ import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
 import { getCompanyByCif } from "@/modules/companies/data";
 import { RECORD_SCORING_RPC, recordedScoringOf, recordScoringArgs } from "@/modules/companies/domain/record-scoring";
-import { type ChangeSource, type CompanyField, companyValuesFromFinancials, decideCompanyUpdate } from "@/modules/companies/domain/update-policy";
+import { type ChangePreview, type ChangeSource, changePreviews, companyValuesFromFinancials, decideCompanyUpdate } from "@/modules/companies/domain/update-policy";
 import type { Json } from "@/lib/supabase/database.types";
 import { getActiveCriteria, getInformaReport } from "./data";
 import { scoreCompany } from "./domain/engine";
@@ -196,7 +196,7 @@ export type CreateScoringResult = { ok: false; error: string; fieldErrors?: Reco
  * The scoring is a new, immutable snapshot. The company master record is NOT
  * overwritten: the update policy (companies/domain/update-policy.ts) decides
  * which fields change - applied with history for Tecfys staff, pending review
- * for a partner, fill-only for contact data - and record_scoring writes the
+ * for a partner, empty fields filled by anyone - and record_scoring writes the
  * scoring, the company and its change rows in one transaction.
  */
 export async function createScoring(input: { financials: Financials; informaReportId?: string | null }): Promise<CreateScoringResult> {
@@ -261,12 +261,7 @@ export async function createScoring(input: { financials: Financials; informaRepo
 const changeSourceOf = (source: "pdf" | "api" | null): ChangeSource | null =>
   source === "pdf" ? "informa_pdf" : source === "api" ? "informa_api" : null;
 
-export interface CompanyChangePreview {
-  field: CompanyField;
-  kind: "change" | "fill";
-  from: string | null;
-  to: string;
-}
+export type CompanyChangePreview = ChangePreview;
 
 export type PreviewCompanyChangesResult = { ok: true; newCompany: boolean; changes: CompanyChangePreview[] } | { ok: false };
 
@@ -292,7 +287,7 @@ export async function previewCompanyChanges(input: { financials: Financials; inf
     source: changeSourceOf(provenance?.source ?? null),
   });
   if (decision.kind === "create") return { ok: true, newCompany: true, changes: [] };
-  return { ok: true, newCompany: false, changes: decision.changes.map((c) => ({ field: c.field, kind: c.kind, from: c.oldValue, to: c.newValue })) };
+  return { ok: true, newCompany: false, changes: changePreviews(decision.changes) };
 }
 
 const reviewSchema = z.object({

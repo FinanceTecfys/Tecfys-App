@@ -4,7 +4,7 @@
  * records the changes - in one transaction. Pure, so the exact payload is tested.
  */
 import type { Json } from "@/lib/supabase/database.types";
-import type { ChangeSource, CompanyUpdateDecision } from "./update-policy";
+import type { ChangeSource, CompanyChange, CompanyUpdateDecision } from "./update-policy";
 
 export const RECORD_SCORING_RPC = "record_scoring";
 
@@ -31,13 +31,17 @@ export function recordScoringArgs(input: {
   const args: RecordScoringArgs = {
     p_scoring: scoring as Json,
     p_company: (decision.kind === "create" ? decision.values : decision.apply) as Json,
-    p_changes: decision.kind === "create" ? [] : decision.changes.map((c) => ({ field: c.field, old_value: c.oldValue, new_value: c.newValue, status: c.status })),
+    p_changes: decision.kind === "create" ? [] : changeRows(decision.changes),
   };
   if (decision.kind === "update") args.p_company_id = decision.companyId;
   if (decision.kind === "update" && decision.changes.length > 0 && source) args.p_source = source;
   if (reportId) args.p_report_id = reportId;
   return args;
 }
+
+/** Change rows as the database functions take them (record_scoring, the operation writes). */
+export const changeRows = (changes: readonly CompanyChange[]) =>
+  changes.map((c) => ({ field: c.field, old_value: c.oldValue, new_value: c.newValue, status: c.status }));
 
 /** { scoring_id, company_id } returned by the function, or null when it did not answer that. */
 export function recordedScoringOf(data: unknown): { scoringId: string; companyId: string } | null {

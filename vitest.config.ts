@@ -7,5 +7,8 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts"],
+    // Several tests scan the whole of src/ or supabase/; under a full parallel run on a loaded
+    // machine they exceeded the 5 s default without anything being wrong.
+    testTimeout: 20_000,
   },
 });

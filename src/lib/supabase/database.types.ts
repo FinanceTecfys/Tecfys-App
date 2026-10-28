@@ -127,6 +127,7 @@ export type Database = {
       company_changes: {
         Row: {
           company_id: string
+          contract_id: string | null
           created_at: string
           created_by: string | null
           decided_at: string | null
@@ -141,6 +142,7 @@ export type Database = {
         }
         Insert: {
           company_id: string
+          contract_id?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -155,6 +157,7 @@ export type Database = {
         }
         Update: {
           company_id?: string
+          contract_id?: string | null
           created_at?: string
           created_by?: string | null
           decided_at?: string | null
@@ -173,6 +176,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_changes_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
             referencedColumns: ["id"]
           },
           {
@@ -1013,10 +1023,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_operation_company_changes: {
+        Args: {
+          p_actor: string
+          p_changes: Json
+          p_company: Json
+          p_company_id: string
+          p_contract_id: string
+        }
+        Returns: undefined
+      }
       create_draft_contract: {
         Args: {
           p_asset: Json
           p_attachments?: Json
+          p_changes?: Json
           p_company: Json
           p_contract: Json
           p_mandate: Json
@@ -1044,7 +1065,9 @@ export type Database = {
       }
       update_draft_contract: {
         Args: {
+          p_actor?: string
           p_asset: Json
+          p_changes?: Json
           p_company: Json
           p_contract: Json
           p_contract_id: string

@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { fieldErrorsOf, getTranslate } from "@/i18n/server";
+import { can, type Role } from "@/lib/auth/permissions";
 import { dataScopeFor, inScope, operationDistributorId } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/supabase/auth";
 import { db } from "@/lib/supabase/server";
+import { getCompanyById } from "@/modules/companies/data";
+import { type ChangePreview, changePreviews, decideCompanyUpdate } from "@/modules/companies/domain/update-policy";
 import {
   ATTACHMENT_BUCKET,
   type AttachmentRowInsert,
@@ -17,8 +20,8 @@ import {
   toAttachmentRow,
 } from "./domain/attachments";
 import { type CancellationInput, cancellationSchema, resolveCancellation } from "./domain/cancellation";
-import { CREATE_DRAFT_RPC, createDraftArgs, createdDraftOf, UPDATE_DRAFT_RPC, updateDraftArgs } from "./domain/contract-write";
-import { isEditableDraft, type OperationInput, operationSchema } from "./domain/operation";
+import { type CompanyWrite, CREATE_DRAFT_RPC, createDraftArgs, createdDraftOf, UPDATE_DRAFT_RPC, updateDraftArgs } from "./domain/contract-write";
+import { isEditableDraft, type OperationCompanyInput, operationCompanyFields, type OperationInput, operationSchema } from "./domain/operation";
 
 export type CreateContractResult = { ok: false; error: string; fieldErrors?: Record<string, string> };
 
@@ -26,8 +29,10 @@ export type CreateContractResult = { ok: false; error: string; fieldErrors?: Rec
  * Create a DRAFT contract from an approved scoring the user can reach (a
  * partner only its own, and always for its own distributor): the contract with its
  * frozen identification snapshot, the equipment line and the SEPA mandate.
- * The company record is refreshed with the corrected identification (not the
- * CIF, which identifies it). Everything is re-validated here, including the
+ * What was typed is kept on the contract's snapshot; toward the company master
+ * it goes through the company update policy (operationCompanyWrite): applied
+ * with history for staff, pending review for a partner, never emptied.
+ * Everything is re-validated here, including the
  * optional attachments in `files` (fields "id_document" / "bank_certificate"),
  * whose type is sniffed from their bytes before anything is written.
  *
@@ -81,7 +86,10 @@ export async function createContract(input: OperationInput, files?: FormData): P
     rows.push(toAttachmentRow(contractId, attachment, path));
   }
 
-  // Contract, equipment line, SEPA mandate, attachment rows and company: one transaction.
+  const company = await operationCompanyWrite(scoring.company.id, v, user.role);
+  if (!company) return fail(translate("errors.contract.scoringNotFound"));
+
+  // Contract, equipment line, SEPA mandate, attachment rows, company and its history: one transaction.
   const { data, error } = await db().rpc(
     CREATE_DRAFT_RPC,
     createDraftArgs(v, {
@@ -94,6 +102,7 @@ export async function createContract(input: OperationInput, files?: FormData): P
       createdBy: user.id,
       attachments: rows,
       today,
+      company,
     }),
   );
   if (error) return fail(error.message);
@@ -129,7 +138,7 @@ export async function updateDraftContract(contractId: string, input: OperationIn
 
   const { data: contract, error: readError } = await db()
     .from("contracts")
-    .select("id, workflow_status, created_by, scoring_id")
+    .select("id, workflow_status, created_by, scoring_id, company_id")
     .eq("id", id.data)
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message };
@@ -138,6 +147,9 @@ export async function updateDraftContract(contractId: string, input: OperationIn
   if (!isEditableDraft(contract.workflow_status)) return { ok: false, error: translate("errors.contract.onlyDraftEditable") };
   if (contract.scoring_id !== v.scoringId) return { ok: false, error: translate("errors.contract.scoringMismatch") };
 
+  const company = await operationCompanyWrite(contract.company_id, v, user.role);
+  if (!company) return { ok: false, error: translate("errors.contract.notFound") };
+
   // The function checks the status again inside the write: a draft signed in the meantime is not touched.
   const { data: updated, error } = await db().rpc(
     UPDATE_DRAFT_RPC,
@@ -145,6 +157,8 @@ export async function updateDraftContract(contractId: string, input: OperationIn
       contractId: contract.id,
       distributorId: operationDistributorId(user, v.distributorId),
       today: new Date().toISOString().slice(0, 10),
+      company,
+      actorId: user.id,
     }),
   );
   if (error) return { ok: false, error: error.message };
@@ -258,4 +272,51 @@ export async function updateContractCancellation(input: CancellationInput): Prom
   revalidatePath("/portfolio");
   revalidatePath("/");
   return { ok: true };
+}
+
+/**
+ * The company side of an operation: what was typed, through the same update
+ * policy as a scoring (source "operation"). Staff: real differences applied and
+ * recorded; partner: existing values never overwritten, differences pending
+ * review; anyone fills an empty field (applied). Null when the
+ * company does not exist.
+ */
+async function operationCompanyWrite(companyId: string, v: OperationCompanyInput, role: Role): Promise<CompanyWrite | null> {
+  const current = await getCompanyById(companyId);
+  if (!current) return null;
+  const decision = decideCompanyUpdate({ current, incoming: operationCompanyFields(v), actorRole: role, source: "operation" });
+  return decision.kind === "update" ? { apply: decision.apply, changes: decision.changes } : null;
+}
+
+export type PreviewOperationChangesResult = { ok: true; changes: ChangePreview[] } | { ok: false };
+
+const typed = z.string().max(500).optional().transform((value) => value ?? "");
+/** The identification fields of OPERATION_COMPANY_KEYS, as typed so far (possibly incomplete). */
+const operationCompanySchema = z.object({
+  fiscalAddress: typed,
+  fiscalPostalCode: typed,
+  fiscalCity: typed,
+  fiscalProvince: typed,
+  signatoryName: typed,
+  signatoryNif: typed,
+  contactPhone: typed,
+  contactEmail: typed,
+}) satisfies z.ZodType<OperationCompanyInput, Partial<OperationCompanyInput>>;
+
+/**
+ * "Nueva operación", before saving: what the identification typed so far will
+ * change in the client's master record. Tecfys staff only - a partner gets
+ * nothing back, never the existing master data (its differences become pending
+ * silently). Informative: the save decides again from what is actually sent.
+ */
+export async function previewOperationCompanyChanges(input: { scoringId: string; identity: Partial<OperationCompanyInput> }): Promise<PreviewOperationChangesResult> {
+  const user = await requireRole("operation.create");
+  if (!can(user.role, "companyMaster.update")) return { ok: true, changes: [] };
+  const id = z.uuid().safeParse(input.scoringId);
+  const identity = operationCompanySchema.safeParse(input.identity ?? {});
+  if (!id.success || !identity.success) return { ok: false };
+  const { data: scoring, error } = await db().from("scorings").select("company_id, created_by").eq("id", id.data).maybeSingle();
+  if (error || !scoring || !inScope(dataScopeFor(user), scoring.created_by)) return { ok: false };
+  const write = await operationCompanyWrite(scoring.company_id, identity.data, user.role);
+  return write ? { ok: true, changes: changePreviews(write.changes) } : { ok: false };
 }

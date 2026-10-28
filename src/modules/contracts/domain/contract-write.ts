@@ -1,16 +1,27 @@
 /**
  * The contract of the two database functions that write an operation in one
- * transaction (supabase/migrations/20261001000000_atomic_contract_writes.sql):
- * their names and the arguments the server actions send. Pure, so what is sent
- * is unit-tested and checked against the SQL signature without a database.
+ * transaction (supabase/migrations/20261028120000_operation_master_policy.sql,
+ * first 20261001000000_atomic_contract_writes.sql): their names and the
+ * arguments the server actions send. Pure, so what is sent is unit-tested and
+ * checked against the SQL signature without a database.
  *
  * Every argument is a JSON object keyed by the column names of its table; the
- * values come from the same mappings creation and edit have always shared
- * (domain/operation.ts), so what is stored does not change - only that it is
- * now stored atomically.
+ * contract's values come from the mappings creation and edit have always shared
+ * (domain/operation.ts). The company is no longer written with what was typed:
+ * p_company / p_changes carry the update policy's decision (only the applied
+ * columns, and the change rows).
  */
+import { changeRows } from "@/modules/companies/domain/record-scoring";
+import type { CompanyChange, CompanyValues } from "@/modules/companies/domain/update-policy";
 import type { AttachmentRowInsert } from "./attachments";
-import { type Operation, operationAssetFields, operationCompanyFields, operationContractFields, operationMandateFields } from "./operation";
+import { type Operation, operationAssetFields, operationContractFields, operationMandateFields } from "./operation";
+
+/** The company side of an operation write, as the update policy decided it. */
+export interface CompanyWrite {
+  /** Only the columns to apply ({} = the master is not touched). */
+  apply: CompanyValues;
+  changes: readonly CompanyChange[];
+}
 
 export const CREATE_DRAFT_RPC = "create_draft_contract";
 export const UPDATE_DRAFT_RPC = "update_draft_contract";
@@ -28,6 +39,7 @@ export interface CreateDraftContext {
   attachments: AttachmentRowInsert[];
   /** ISO date the SEPA mandate is dated. */
   today: string;
+  company: CompanyWrite;
 }
 
 export function createDraftArgs(v: Operation, ctx: CreateDraftContext) {
@@ -44,8 +56,9 @@ export function createDraftArgs(v: Operation, ctx: CreateDraftContext) {
     },
     p_asset: operationAssetFields(v),
     p_mandate: { ...operationMandateFields(v), signed_at: ctx.today },
-    p_company: operationCompanyFields(v),
+    p_company: ctx.company.apply,
     p_attachments: ctx.attachments.map(({ kind, file_name, mime_type, size_bytes, storage_path }) => ({ kind, file_name, mime_type, size_bytes, storage_path })),
+    p_changes: changeRows(ctx.company.changes),
   };
 }
 
@@ -54,6 +67,9 @@ export interface UpdateDraftContext {
   distributorId: string | null;
   /** Dates the SEPA mandate only when the draft has none yet; an existing mandate keeps its date. */
   today: string;
+  company: CompanyWrite;
+  /** Who edits: recorded on the change rows. */
+  actorId: string;
 }
 
 export function updateDraftArgs(v: Operation, ctx: UpdateDraftContext) {
@@ -62,7 +78,9 @@ export function updateDraftArgs(v: Operation, ctx: UpdateDraftContext) {
     p_contract: { ...operationContractFields(v), distributor_id: ctx.distributorId },
     p_asset: operationAssetFields(v),
     p_mandate: { ...operationMandateFields(v), signed_at: ctx.today },
-    p_company: operationCompanyFields(v),
+    p_company: ctx.company.apply,
+    p_changes: changeRows(ctx.company.changes),
+    p_actor: ctx.actorId,
   };
 }
 

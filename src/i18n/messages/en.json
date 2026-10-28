@@ -975,6 +975,12 @@
       "save": "Save",
       "cancel": "Cancel",
       "create": "Create: {label}"
+    },
+    "companyChanges": {
+      "title": "Changes to the client record",
+      "intro": "This operation's identification differs from the client record. Saving applies it to the record and keeps it in the history:",
+      "change": "{field}: {from} → {to}",
+      "fill": "{field}: filled with {to}"
     }
   },
   "errors": {
@@ -1345,11 +1351,12 @@
     },
     "sources": {
       "informa_pdf": "Informa PDF",
-      "informa_api": "Informa API"
+      "informa_api": "Informa API",
+      "operation": "Operation"
     },
     "review": {
       "title": "Client changes pending review",
-      "subtitle": "{count, plural, =0 {No pending changes} one {# pending change} other {# pending changes}} · Informa brought data that differs from the client record in partner scorings. Approving applies the value to the record; rejecting discards it. Both are kept in the history.",
+      "subtitle": "{count, plural, =0 {No pending changes} one {# pending change} other {# pending changes}} · Partner scorings and operations brought data that differs from the client record. Approving applies the value to the record; rejecting discards it. Both are kept in the history.",
       "empty": "No pending changes.",
       "emptyValue": "(empty)",
       "client": "Client",

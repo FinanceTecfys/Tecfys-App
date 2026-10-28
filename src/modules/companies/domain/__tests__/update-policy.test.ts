@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { operationCompanyFields } from "@/modules/contracts/domain/operation";
 import { EMPTY_FINANCIALS, type Financials } from "@/modules/scoring/domain/financials";
 import {
   COMPANY_FIELDS,
   comparable,
   companyValuesFromFinancials,
+  CONTACT_FIELDS,
   type CurrentCompany,
   decideCompanyUpdate,
-  FILL_ONLY_FIELDS,
-  INFORMA_FIELDS,
+  IDENTITY_FIELDS,
 } from "../update-policy";
 
 const COMPANY: CurrentCompany = {
@@ -44,8 +45,9 @@ const decide = (over: Partial<Financials>, actorRole: "owner" | "admin" | "sales
 
 describe("field groups", () => {
   it("cover every company field exactly once", () => {
-    expect(new Set(COMPANY_FIELDS).size).toBe(INFORMA_FIELDS.length + FILL_ONLY_FIELDS.length);
-    expect([...FILL_ONLY_FIELDS]).toEqual(["phone", "email", "web", "employees"]);
+    expect(new Set(COMPANY_FIELDS).size).toBe(IDENTITY_FIELDS.length + CONTACT_FIELDS.length);
+    expect([...CONTACT_FIELDS]).toEqual(["phone", "email", "web"]);
+    expect(IDENTITY_FIELDS).toContain("employees");
   });
 });
 
@@ -91,14 +93,14 @@ describe("decideCompanyUpdate", () => {
     for (const role of ["owner", "admin"] as const) expect(decide({ name: "ALFA NUEVA SL." }, role)).toMatchObject({ apply: { name: "ALFA NUEVA SL." } });
   });
 
-  it("partner: never applies anything; every difference waits as pending", () => {
-    const d = decide({ name: "ALFA NUEVA SL.", constitutionDate: "01/01/2010" }, "partner", { ...COMPANY, phone: null });
+  it("partner: a real difference of an existing value waits as pending; an empty field is filled (applied)", () => {
+    const d = decide({ name: "ALFA NUEVA SL.", constitutionDate: "01/01/2010", phone: "911111111" }, "partner", { ...COMPANY, phone: null });
     if (d.kind !== "update") throw new Error("expected update");
-    expect(d.apply).toEqual({});
+    expect(d.apply).toEqual({ phone: "911111111" });
     expect(d.changes.map((c) => [c.field, c.kind, c.status])).toEqual([
       ["name", "change", "pending"],
       ["constitution_date", "change", "pending"],
-      ["phone", "fill", "pending"],
+      ["phone", "fill", "applied"],
     ]);
   });
 
@@ -107,19 +109,38 @@ describe("decideCompanyUpdate", () => {
     expect(d).toEqual({ kind: "update", companyId: "company-1", apply: {}, changes: [] });
   });
 
-  it("Tecfys-maintained fields: fills an empty one, never overwrites a set one", () => {
-    const overwrite = decide({ phone: "911111111", email: "otro@alfa.es", web: "alfa.com", employees: 40 });
-    expect(overwrite).toEqual({ kind: "update", companyId: "company-1", apply: {}, changes: [] });
-
-    const fill = decide({ phone: "911111111", web: "alfa.com" }, "sales", { ...COMPANY, phone: null, web: "" });
-    if (fill.kind !== "update") throw new Error("expected update");
-    expect(fill.apply).toEqual({ phone: "911111111", web: "alfa.com" });
-    expect(fill.changes.every((c) => c.kind === "fill" && c.oldValue === null && c.status === "applied")).toBe(true);
+  it("Informa never overwrites an existing phone, email or web - for staff or partner, PDF or API", () => {
+    for (const actorRole of ["owner", "sales", "partner"] as const) {
+      for (const source of ["informa_pdf", "informa_api"] as const) {
+        const d = decideCompanyUpdate({ current: COMPANY, incoming: incoming({ phone: "911111111", email: "otro@alfa.es", web: "alfa.com" }), actorRole, source });
+        expect(d, `${actorRole} ${source}`).toEqual({ kind: "update", companyId: "company-1", apply: {}, changes: [] });
+      }
+    }
   });
 
-  it("fills an empty Informa field too, recorded as a fill", () => {
-    const d = decide({ cnae: "6201" }, "admin", { ...COMPANY, cnae: null });
-    expect(d).toMatchObject({ apply: { cnae: "6201" }, changes: [{ field: "cnae", kind: "fill", oldValue: null, newValue: "6201", status: "applied" }] });
+  it("Informa fills an empty contact field, for staff and partner alike", () => {
+    for (const actorRole of ["sales", "partner"] as const) {
+      const fill = decide({ phone: "911111111", web: "alfa.com" }, actorRole, { ...COMPANY, phone: null, web: "" });
+      if (fill.kind !== "update") throw new Error("expected update");
+      expect(fill.apply, actorRole).toEqual({ phone: "911111111", web: "alfa.com" });
+      expect(fill.changes.every((c) => c.kind === "fill" && c.oldValue === null && c.status === "applied"), actorRole).toBe(true);
+    }
+  });
+
+  it("fills an empty identity field too, for anyone, recorded as an applied fill", () => {
+    for (const actorRole of ["admin", "partner"] as const) {
+      const d = decide({ cnae: "6201" }, actorRole, { ...COMPANY, cnae: null });
+      expect(d, actorRole).toMatchObject({ apply: { cnae: "6201" }, changes: [{ field: "cnae", kind: "fill", oldValue: null, newValue: "6201", status: "applied" }] });
+    }
+  });
+
+  it("employees is authoritative: applied with history for staff, pending for a partner", () => {
+    expect(decide({ employees: 40 }, "sales")).toMatchObject({ apply: { employees: 40 }, changes: [{ field: "employees", kind: "change", oldValue: "12", newValue: "40", status: "applied" }] });
+    expect(decide({ employees: 40 }, "partner")).toMatchObject({ apply: {}, changes: [{ field: "employees", status: "pending" }] });
+  });
+
+  it("refuses to create a company without its CIF and name", () => {
+    expect(() => decideCompanyUpdate({ current: null, incoming: { address: "X" }, actorRole: "owner", source: "operation" })).toThrow();
   });
 
   it("leaves an existing company alone for a scoring typed by hand (no Informa source)", () => {
@@ -140,5 +161,77 @@ describe("comparable", () => {
     expect(comparable("name", "ALFA SL")).not.toBe(comparable("name", "ALFA SA"));
     expect(comparable("constitution_date", "26/05/2016")).toBe("2016-05-26");
     expect(comparable("employees", 12)).toBe(comparable("employees", "12"));
+  });
+});
+
+describe("an operation as the source", () => {
+  /** What "Nueva operación" says about the company (domain/operation.ts), the same as the master unless overridden. */
+  const typed = (over: Partial<Parameters<typeof operationCompanyFields>[0]> = {}) =>
+    operationCompanyFields({
+      fiscalAddress: "CALLE MAYOR, 3", fiscalPostalCode: "08006", fiscalCity: "BARCELONA", fiscalProvince: "BARCELONA",
+      signatoryName: "ANA GARCIA LOPEZ", signatoryNif: "12345678Z", contactPhone: "934000000", contactEmail: "info@alfa.es",
+      ...over,
+    });
+  const fromOperation = (over: Parameters<typeof typed>[0], actorRole: "sales" | "partner") =>
+    decideCompanyUpdate({ current: COMPANY, incoming: typed(over), actorRole, source: "operation" });
+
+  it("staff: a different fiscal address or signatory is applied and recorded; cosmetic edits are nothing", () => {
+    expect(fromOperation({ fiscalAddress: "Calle  mayor, 3", signatoryName: "Ana García López" }, "sales")).toEqual({ kind: "update", companyId: "company-1", apply: {}, changes: [] });
+    const d = fromOperation({ fiscalAddress: "AVENIDA DIAGONAL 1", signatoryNif: "87654321X" }, "sales");
+    expect(d).toMatchObject({
+      apply: { address: "AVENIDA DIAGONAL 1", admin_nif: "87654321X" },
+      changes: [
+        { field: "address", kind: "change", newValue: "AVENIDA DIAGONAL 1", status: "applied" },
+        { field: "admin_nif", kind: "change", newValue: "87654321X", status: "applied" },
+      ],
+    });
+  });
+
+  it("partner: an existing value that differs is not applied, it waits as pending", () => {
+    const d = fromOperation({ fiscalAddress: "AVENIDA DIAGONAL 1" }, "partner");
+    expect(d).toMatchObject({ apply: {}, changes: [{ field: "address", status: "pending" }] });
+  });
+
+  it("partner fills an empty phone and an empty administrator NIF: applied", () => {
+    const d = decideCompanyUpdate({
+      current: { ...COMPANY, phone: null, admin_nif: null },
+      incoming: typed({ contactPhone: "600111222", signatoryNif: "87654321X" }),
+      actorRole: "partner",
+      source: "operation",
+    });
+    expect(d).toEqual({
+      kind: "update",
+      companyId: "company-1",
+      apply: { admin_nif: "87654321X", phone: "600111222" },
+      changes: [
+        { field: "admin_nif", kind: "fill", oldValue: null, newValue: "87654321X", status: "applied" },
+        { field: "phone", kind: "fill", oldValue: null, newValue: "600111222", status: "applied" },
+      ],
+    });
+  });
+
+  it("partner changes an existing phone: pending", () => {
+    expect(fromOperation({ contactPhone: "600111222" }, "partner")).toEqual({
+      kind: "update",
+      companyId: "company-1",
+      apply: {},
+      changes: [{ field: "phone", kind: "change", oldValue: "934000000", newValue: "600111222", status: "pending" }],
+    });
+  });
+
+  it("staff changes an existing phone or email from an operation: applied with history", () => {
+    expect(fromOperation({ contactPhone: "600111222", contactEmail: "otra@alfa.es" }, "sales")).toEqual({
+      kind: "update",
+      companyId: "company-1",
+      apply: { phone: "600111222", email: "otra@alfa.es" },
+      changes: [
+        { field: "phone", kind: "change", oldValue: "934000000", newValue: "600111222", status: "applied" },
+        { field: "email", kind: "change", oldValue: "info@alfa.es", newValue: "otra@alfa.es", status: "applied" },
+      ],
+    });
+  });
+
+  it("an empty field typed in the form never empties the master", () => {
+    expect(fromOperation({ fiscalProvince: "", signatoryNif: " ", contactEmail: "" }, "sales")).toEqual({ kind: "update", companyId: "company-1", apply: {}, changes: [] });
   });
 });
